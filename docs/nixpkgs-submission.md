@@ -5,7 +5,7 @@ This guide covers submission prep for packages tracked from this repository.
 
 ## Current Scope
 
-- `xen-orchestra-ce`: maintained in this repo (`default.nix` + `scripts/yarn-chmod-sanitize.js`)
+- `xen-orchestra-ce`: maintained in this repo (`default.nix`)
 - `libvhdi`: currently consumed as a flake input from `NiXOA/libvhdi`; submit from that source tree or vendor its package definition into your nixpkgs branch.
 
 ## Prerequisites
@@ -45,36 +45,21 @@ mkdir -p pkgs/by-name/xe/xen-orchestra-ce
 
 ```bash
 cp /path/to/xen-orchestra-ce-nix/default.nix pkgs/by-name/xe/xen-orchestra-ce/package.nix
-cp /path/to/xen-orchestra-ce-nix/scripts/yarn-chmod-sanitize.js pkgs/by-name/xe/xen-orchestra-ce/
 ```
 
-### Step 4: Adjust Local Helper Path
-
-In `pkgs/by-name/xe/xen-orchestra-ce/package.nix`, update:
-
-```nix
-yarnChmodSanitize = ./scripts/yarn-chmod-sanitize.js;
-```
-
-to:
-
-```nix
-yarnChmodSanitize = ./yarn-chmod-sanitize.js;
-```
-
-### Step 5: Finalize Maintainers
+### Step 4: Finalize Maintainers
 
 - Add yourself to `maintainers/maintainer-list.nix` (if needed)
 - Set `meta.maintainers` in `package.nix` to your maintainer entry
 
-### Step 6: Test in nixpkgs
+### Step 5: Test in nixpkgs
 
 ```bash
 nix-build -A xen-orchestra-ce
 nixpkgs-review wip
 ```
 
-### Step 7: Commit and Open PR
+### Step 6: Commit and Open PR
 
 ```bash
 git checkout -b xen-orchestra-ce-init

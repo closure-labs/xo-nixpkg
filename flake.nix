@@ -44,6 +44,8 @@
           default = pkgs.mkShell {
             name = "xen-orchestra-ce-dev";
             packages = with pkgs; [
+              curl
+              gnused
               nix-prefetch-github
               nix-prefetch
               nixfmt

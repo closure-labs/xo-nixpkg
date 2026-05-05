@@ -1,5 +1,4 @@
-#!/usr/bin/env nix-shell
-#!nix-shell -i bash -p curl jq nix-prefetch-github gnused
+#!/usr/bin/env bash
 
 set -euo pipefail
 
@@ -7,7 +6,14 @@ set -euo pipefail
 # like "feat: release 6.3.3". This script searches recent commits for version
 # bumps based on the first line of the commit message.
 
-repo_root="$(cd "$(dirname "$0")/.." && pwd)"
+script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+repo_root="$(cd "$script_dir/.." && pwd)"
+
+if [ -z "${XO_NIXPKG_UPDATE_IN_DEV_SHELL:-}" ]; then
+    export XO_NIXPKG_UPDATE_IN_DEV_SHELL=1
+    exec nix develop "$repo_root" --command bash "$script_dir/update.sh" "$@"
+fi
+
 cd "$repo_root"
 
 echo "Searching for latest version commit in xen-orchestra..."
@@ -45,9 +51,13 @@ echo "New source hash: $new_hash"
 # Get yarnOfflineCache hash from the new yarn.lock
 echo "Fetching yarnOfflineCache hash..."
 placeholder_hash="sha256-AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA="
+nixpkgs_path=$(nix eval --raw --impure --expr "(builtins.getFlake \"path:$repo_root\").inputs.nixpkgs.outPath")
 prefetch_expr=$(cat <<EOF
 let
-  pkgs = import <nixpkgs> {};
+  pkgs = import $nixpkgs_path {};
+  fetchNormalizedYarnDeps = import ./nix/fetch-normalized-yarn-deps.nix {
+    inherit (pkgs) fetchYarnDeps;
+  };
   src = pkgs.fetchFromGitHub {
     owner = "vatesfr";
     repo = "xen-orchestra";
@@ -55,7 +65,7 @@ let
     hash = "$new_hash";
   };
 in
-pkgs.fetchYarnDeps {
+fetchNormalizedYarnDeps {
   yarnLock = src + "/yarn.lock";
   hash = "$placeholder_hash";
 }
@@ -88,7 +98,7 @@ echo "New yarn hash: $new_yarn_hash"
 sed -i "s/version = \"[^\"]*\"/version = \"$new_version\"/" default.nix
 sed -i "s/rev = \"[a-f0-9]*\"/rev = \"$commit_sha\"/" default.nix
 sed -i "/src = fetchFromGitHub {/,/};/ s|hash = \"[^\"]*\"|hash = \"$new_hash\"|" default.nix
-sed -i "/yarnOfflineCache = fetchYarnDeps {/,/};/ s|hash = \"[^\"]*\"|hash = \"$new_yarn_hash\"|" default.nix
+sed -i "/yarnOfflineCache = /,/};/ s|hash = \"[^\"]*\"|hash = \"$new_yarn_hash\"|" default.nix
 
 echo ""
 echo "Updated default.nix to version $new_version"

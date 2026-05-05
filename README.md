@@ -73,11 +73,10 @@ nix flake check --all-systems --no-build
 
 ## Nixpkgs Submission
 
-xen-orchestra-ce is maintained here as `default.nix` with helper script `scripts/yarn-chmod-sanitize.js`.
+xen-orchestra-ce is maintained here as `default.nix`.
 
-When preparing a nixpkgs PR, copy these into:
+When preparing a nixpkgs PR, copy it to:
 - `pkgs/by-name/xe/xen-orchestra-ce/package.nix`
-- `pkgs/by-name/xe/xen-orchestra-ce/yarn-chmod-sanitize.js`
 
 See [docs/nixpkgs-submission.md](docs/nixpkgs-submission.md) for details.
 

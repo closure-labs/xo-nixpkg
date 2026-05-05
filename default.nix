@@ -16,13 +16,12 @@
   libpng,
   zlib,
   fuse,
-  enableChmodSanitizer ? true,
 }:
 
 let
-  # Helper script to sanitize chmod calls that fail in Nix sandbox
-  # Some npm packages ship files with setuid/setgid bits which cause EPERM
-  yarnChmodSanitize = ./scripts/yarn-chmod-sanitize.js;
+  fetchNormalizedYarnDeps = import ./nix/fetch-normalized-yarn-deps.nix {
+    inherit fetchYarnDeps;
+  };
 in
 stdenv.mkDerivation (finalAttrs: {
   pname = "xen-orchestra-ce";
@@ -37,9 +36,9 @@ stdenv.mkDerivation (finalAttrs: {
     hash = "sha256-8coyJNLdte4e5DDP/+byFfag3ticALL0xmALhlrtPg8=";
   };
 
-  yarnOfflineCache = fetchYarnDeps {
+  yarnOfflineCache = fetchNormalizedYarnDeps {
     yarnLock = "${finalAttrs.src}/yarn.lock";
-    hash = "sha256-2w/AG1llhMZqLajFlZHXFy+KaBXjzniwTCQTWr9VPKA=";
+    hash = "sha256-WMu6U3+8tHmw7Fz81MhieNcoojnSAccXIYLOQC7d4+o=";
   };
 
   nativeBuildInputs = [
@@ -71,8 +70,6 @@ stdenv.mkDerivation (finalAttrs: {
     LD_LIBRARY_PATH = lib.makeLibraryPath [ fuse ];
   };
 
-  NODE_OPTIONS = lib.optionalString enableChmodSanitizer "--require ${yarnChmodSanitize}";
-
   yarnInstallFlags = [
     "--offline"
     "--frozen-lockfile"
@@ -84,6 +81,10 @@ stdenv.mkDerivation (finalAttrs: {
   yarnFlags = finalAttrs.yarnInstallFlags;
 
   postPatch = ''
+    # Keep yarnConfigHook's source/cache lockfile validation aligned with the
+    # normalized tarball checksums above.
+    cp ${finalAttrs.yarnOfflineCache}/yarn.lock yarn.lock
+
     # Patch SMB handler to include missing createReadStream import
     if [ -f packages/xo-server/src/xo-mixins/storage/smb.js ] \
       && grep -q "const { join } = require('path')" packages/xo-server/src/xo-mixins/storage/smb.js; then
