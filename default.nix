@@ -15,7 +15,7 @@
   makeWrapper,
   libpng,
   zlib,
-  fuse3,
+  fuse,
   enableChmodSanitizer ? true,
 }:
 
@@ -56,7 +56,8 @@ stdenv.mkDerivation (finalAttrs: {
   ];
 
   buildInputs = [
-    fuse3
+    # libfuse2 for fuse-native/@vates/fuse-vhd.
+    fuse
     zlib
     libpng
     stdenv.cc.cc.lib
@@ -67,6 +68,7 @@ stdenv.mkDerivation (finalAttrs: {
     CI = "1";
     YARN_PRODUCTION = "false";
     NPM_CONFIG_PRODUCTION = "false";
+    LD_LIBRARY_PATH = lib.makeLibraryPath [ fuse ];
   };
 
   NODE_OPTIONS = lib.optionalString enableChmodSanitizer "--require ${yarnChmodSanitize}";
@@ -186,6 +188,7 @@ stdenv.mkDerivation (finalAttrs: {
 
     makeWrapper ${nodejs_24}/bin/node $out/bin/xo-server \
       --chdir $out/libexec/xen-orchestra \
+      --prefix LD_LIBRARY_PATH : ${lib.makeLibraryPath [ fuse ]} \
       --add-flags "packages/xo-server/bin/xo-server"
 
     runHook postInstall
