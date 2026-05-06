@@ -7,7 +7,7 @@
   yarnConfigHook,
   yarnBuildHook,
   writableTmpDirAsHomeHook,
-  nodejs_24,
+  nodejs_22,
   esbuild,
   git,
   python3,
@@ -46,7 +46,7 @@ stdenv.mkDerivation (finalAttrs: {
     yarn
     yarnConfigHook
     yarnBuildHook
-    nodejs_24
+    nodejs_22
     esbuild
     git
     python3
@@ -151,13 +151,13 @@ stdenv.mkDerivation (finalAttrs: {
 
       cat > "$pkg/node_modules/.bin/vite" <<WRAPPER
     #!${stdenv.shell}
-    exec ${nodejs_24}/bin/node "$vite_target" "\$@"
+    exec ${nodejs_22}/bin/node "$vite_target" "\$@"
     WRAPPER
       chmod +x "$pkg/node_modules/.bin/vite"
 
       cat > "$pkg/node_modules/.bin/vue-tsc" <<WRAPPER
     #!${stdenv.shell}
-    exec ${nodejs_24}/bin/node "$vue_tsc_target" "\$@"
+    exec ${nodejs_22}/bin/node "$vue_tsc_target" "\$@"
     WRAPPER
       chmod +x "$pkg/node_modules/.bin/vue-tsc"
     }
@@ -187,7 +187,7 @@ stdenv.mkDerivation (finalAttrs: {
       fi
     done
 
-    makeWrapper ${nodejs_24}/bin/node $out/bin/xo-server \
+    makeWrapper ${nodejs_22}/bin/node $out/bin/xo-server \
       --chdir $out/libexec/xen-orchestra \
       --prefix LD_LIBRARY_PATH : ${lib.makeLibraryPath [ fuse ]} \
       --add-flags "packages/xo-server/bin/xo-server"
