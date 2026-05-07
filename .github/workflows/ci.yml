@@ -107,7 +107,7 @@ jobs:
         continue-on-error: true
         uses: actions/create-github-app-token@v3
         with:
-          app-id: ${{ vars.UPDATE_GITHUB_APP_ID }}
+          client-id: ${{ vars.UPDATE_GITHUB_APP_CLIENT_ID }}
           private-key: ${{ secrets.UPDATE_GITHUB_APP_PRIVATE_KEY }}
           permission-contents: write
           permission-workflows: write
@@ -194,7 +194,7 @@ jobs:
               echo "Automatic release tagging skipped because GitHub App token creation failed."
               echo ""
               echo "Configure the GitHub App credentials before rerunning this workflow:"
-              echo "- Variable: \`UPDATE_GITHUB_APP_ID\`"
+              echo "- Variable: \`UPDATE_GITHUB_APP_CLIENT_ID\`"
               echo "- Secret: \`UPDATE_GITHUB_APP_PRIVATE_KEY\`"
             } >> "$GITHUB_STEP_SUMMARY"
           elif [ "${{ steps.detect_tag.outputs.create_tag }}" = "true" ]; then

@@ -22,7 +22,7 @@ jobs:
         id: app_token
         uses: actions/create-github-app-token@v3
         with:
-          app-id: ${{ vars.UPDATE_GITHUB_APP_ID }}
+          client-id: ${{ vars.UPDATE_GITHUB_APP_CLIENT_ID }}
           private-key: ${{ secrets.UPDATE_GITHUB_APP_PRIVATE_KEY }}
           permission-contents: write
           permission-workflows: write
