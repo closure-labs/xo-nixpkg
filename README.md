@@ -49,6 +49,14 @@ nix build .#libvhdi
 nix flake check --all-systems --no-build
 ```
 
+## CI Binary Cache
+
+GitHub Actions configures Cachix read-only before builds when
+`CACHIX_CACHE_NAME` is set. If `CACHIX_AUTH_TOKEN` is also configured, each
+workflow explicitly pushes only the `result` path after `nix build` succeeds.
+This avoids uploading fetched source tarballs or other incidental store paths
+created during evaluation or builds.
+
 ## Updating Sources
 
 ### Update xen-orchestra-ce

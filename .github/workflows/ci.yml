@@ -32,7 +32,7 @@ jobs:
         with:
           name: ${{ vars.CACHIX_CACHE_NAME }}
           authToken: ${{ secrets.CACHIX_AUTH_TOKEN }}
-          skipPush: ${{ secrets.CACHIX_AUTH_TOKEN == '' }}
+          skipPush: true
         continue-on-error: true
 
       - name: Build ${{ matrix.package }}
@@ -54,6 +54,22 @@ jobs:
           else
             nix build .#${{ matrix.package }} -L
           fi
+
+      - name: Push ${{ matrix.package }} result to Cachix
+        if: vars.CACHIX_CACHE_NAME != ''
+        env:
+          CACHIX_AUTH_TOKEN: ${{ secrets.CACHIX_AUTH_TOKEN }}
+        run: |
+          set -euo pipefail
+
+          if [ -z "${CACHIX_AUTH_TOKEN:-}" ]; then
+            echo "CACHIX_AUTH_TOKEN is not configured; skipping Cachix push."
+            exit 0
+          fi
+
+          out_path=$(readlink -f result)
+          echo "Pushing built package output: $out_path"
+          printf '%s\n' "$out_path" | cachix push "${{ vars.CACHIX_CACHE_NAME }}"
 
       - name: Test binary execution
         run: |

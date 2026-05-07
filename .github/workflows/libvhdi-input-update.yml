@@ -33,7 +33,7 @@ jobs:
         with:
           name: ${{ vars.CACHIX_CACHE_NAME }}
           authToken: ${{ secrets.CACHIX_AUTH_TOKEN }}
-          skipPush: ${{ secrets.CACHIX_AUTH_TOKEN == '' }}
+          skipPush: true
         continue-on-error: true
 
       - name: Update libvhdi flake input
@@ -60,6 +60,22 @@ jobs:
       - name: Validate updated libvhdi input
         if: steps.detect.outputs.update_available == 'true'
         run: nix build .#libvhdi -L
+
+      - name: Push validated package result to Cachix
+        if: steps.detect.outputs.update_available == 'true' && (github.event_name != 'workflow_dispatch' || github.event.inputs.dry_run != 'true') && vars.CACHIX_CACHE_NAME != ''
+        env:
+          CACHIX_AUTH_TOKEN: ${{ secrets.CACHIX_AUTH_TOKEN }}
+        run: |
+          set -euo pipefail
+
+          if [ -z "${CACHIX_AUTH_TOKEN:-}" ]; then
+            echo "CACHIX_AUTH_TOKEN is not configured; skipping Cachix push."
+            exit 0
+          fi
+
+          out_path=$(readlink -f result)
+          echo "Pushing built package output: $out_path"
+          printf '%s\n' "$out_path" | cachix push "${{ vars.CACHIX_CACHE_NAME }}"
 
       - name: Report dry run result
         if: steps.detect.outputs.update_available == 'true' && github.event_name == 'workflow_dispatch' && github.event.inputs.dry_run == 'true'
@@ -100,7 +116,7 @@ jobs:
 
             Validation:
             - `nix build .#libvhdi -L`
-            - built outputs will be pushed to Cachix when `CACHIX_CACHE_NAME` and `CACHIX_AUTH_TOKEN` are configured
+            - the validated `result` output is pushed to Cachix when `CACHIX_CACHE_NAME` and `CACHIX_AUTH_TOKEN` are configured
           branch: ${{ steps.detect.outputs.branch_name }}
           add-paths: |
             flake.lock

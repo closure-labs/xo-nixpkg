@@ -36,6 +36,15 @@ jobs:
         with:
           nix_path: nixpkgs=channel:nixos-unstable
 
+      - name: Setup Cachix
+        if: steps.app_token.outcome == 'success' && vars.CACHIX_CACHE_NAME != ''
+        uses: cachix/cachix-action@v17
+        with:
+          name: ${{ vars.CACHIX_CACHE_NAME }}
+          authToken: ${{ secrets.CACHIX_AUTH_TOKEN }}
+          skipPush: true
+        continue-on-error: true
+
       - name: Select latest-upstream base
         if: steps.app_token.outcome == 'success'
         run: |
@@ -96,6 +105,22 @@ jobs:
             echo "Retrying xen-orchestra-ce upstream build after transient failure (attempt $attempt failed)..." >&2
             sleep $((attempt * 15))
           done
+
+      - name: Push latest upstream result to Cachix
+        if: steps.app_token.outcome == 'success' && steps.update.outputs.update_needed == 'true' && vars.CACHIX_CACHE_NAME != ''
+        env:
+          CACHIX_AUTH_TOKEN: ${{ secrets.CACHIX_AUTH_TOKEN }}
+        run: |
+          set -euo pipefail
+
+          if [ -z "${CACHIX_AUTH_TOKEN:-}" ]; then
+            echo "CACHIX_AUTH_TOKEN is not configured; skipping Cachix push."
+            exit 0
+          fi
+
+          out_path=$(readlink -f result)
+          echo "Pushing built package output: $out_path"
+          printf '%s\n' "$out_path" | cachix push "${{ vars.CACHIX_CACHE_NAME }}"
 
       - name: Update latest-upstream tag
         if: steps.app_token.outcome == 'success' && steps.update.outputs.update_needed == 'true'
