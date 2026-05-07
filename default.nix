@@ -190,7 +190,7 @@ stdenv.mkDerivation (finalAttrs: {
     makeWrapper ${nodejs_22}/bin/node $out/bin/xo-server \
       --chdir $out/libexec/xen-orchestra \
       --prefix LD_LIBRARY_PATH : ${lib.makeLibraryPath [ fuse ]} \
-      --add-flags "packages/xo-server/bin/xo-server"
+      --add-flags "packages/xo-server/dist/cli.mjs"
 
     runHook postInstall
   '';

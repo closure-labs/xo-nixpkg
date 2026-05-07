@@ -20,22 +20,20 @@ jobs:
 
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       - name: Install Nix
-        uses: cachix/install-nix-action@v27
+        uses: cachix/install-nix-action@v31
         with:
           nix_path: nixpkgs=channel:nixos-unstable
 
       - name: Setup Cachix (optional)
-        if: env.CACHIX_CACHE_NAME != '' && env.CACHIX_AUTH_TOKEN != ''
-        env:
-          CACHIX_CACHE_NAME: ${{ vars.CACHIX_CACHE_NAME }}
-          CACHIX_AUTH_TOKEN: ${{ secrets.CACHIX_AUTH_TOKEN }}
-        uses: cachix/cachix-action@v15
+        if: vars.CACHIX_CACHE_NAME != ''
+        uses: cachix/cachix-action@v17
         with:
-          name: ${{ env.CACHIX_CACHE_NAME }}
-          authToken: ${{ env.CACHIX_AUTH_TOKEN }}
+          name: ${{ vars.CACHIX_CACHE_NAME }}
+          authToken: ${{ secrets.CACHIX_AUTH_TOKEN }}
+          skipPush: ${{ secrets.CACHIX_AUTH_TOKEN == '' }}
         continue-on-error: true
 
       - name: Run updater script
@@ -54,10 +52,12 @@ jobs:
           new_version=$(grep 'version = ' default.nix | sed 's/.*version = "\([^"]*\)".*/\1/')
           new_rev=$(grep 'rev = ' default.nix | sed 's/.*rev = "\([a-f0-9]*\)".*/\1/')
 
-          echo "update_available=true" >> "$GITHUB_OUTPUT"
-          echo "new_version=$new_version" >> "$GITHUB_OUTPUT"
-          echo "new_rev=$new_rev" >> "$GITHUB_OUTPUT"
-          echo "branch_name=update/xen-orchestra-ce-$new_version" >> "$GITHUB_OUTPUT"
+          {
+            echo "update_available=true"
+            echo "new_version=$new_version"
+            echo "new_rev=$new_rev"
+            echo "branch_name=update/xen-orchestra-ce-$new_version"
+          } >> "$GITHUB_OUTPUT"
 
       - name: Validate updated package
         if: steps.detect.outputs.update_available == 'true'
@@ -80,7 +80,7 @@ jobs:
         id: app_token
         if: steps.detect.outputs.update_available == 'true' && (github.event_name != 'workflow_dispatch' || github.event.inputs.dry_run != 'true')
         continue-on-error: true
-        uses: actions/create-github-app-token@v2
+        uses: actions/create-github-app-token@v3
         with:
           app-id: ${{ vars.UPDATE_GITHUB_APP_ID }}
           private-key: ${{ secrets.UPDATE_GITHUB_APP_PRIVATE_KEY }}
@@ -91,7 +91,7 @@ jobs:
         id: create_pr
         if: steps.detect.outputs.update_available == 'true' && (github.event_name != 'workflow_dispatch' || github.event.inputs.dry_run != 'true') && steps.app_token.outcome == 'success'
         continue-on-error: true
-        uses: peter-evans/create-pull-request@v6
+        uses: peter-evans/create-pull-request@v8
         with:
           token: ${{ steps.app_token.outputs.token }}
           commit-message: "xen-orchestra-ce: update to ${{ steps.detect.outputs.new_version }}"
@@ -123,26 +123,32 @@ jobs:
           pull_url="https://github.com/${{ github.repository }}/pull/new/${branch_name}"
 
           if [ "${{ steps.app_token.outcome }}" != "success" ]; then
-            echo "GitHub App token creation failed." >> "$GITHUB_STEP_SUMMARY"
-            echo "" >> "$GITHUB_STEP_SUMMARY"
-            echo "Configure the GitHub App credentials before rerunning this workflow:" >> "$GITHUB_STEP_SUMMARY"
-            echo "- Variable: \`UPDATE_GITHUB_APP_ID\`" >> "$GITHUB_STEP_SUMMARY"
-            echo "- Secret: \`UPDATE_GITHUB_APP_PRIVATE_KEY\`" >> "$GITHUB_STEP_SUMMARY"
+            {
+              echo "GitHub App token creation failed."
+              echo ""
+              echo "Configure the GitHub App credentials before rerunning this workflow:"
+              echo "- Variable: \`UPDATE_GITHUB_APP_ID\`"
+              echo "- Secret: \`UPDATE_GITHUB_APP_PRIVATE_KEY\`"
+            } >> "$GITHUB_STEP_SUMMARY"
             echo "::warning::GitHub App token creation failed. Verify UPDATE_GITHUB_APP_ID, UPDATE_GITHUB_APP_PRIVATE_KEY, and the app installation."
           elif [ "${{ steps.create_pr.outcome }}" = "success" ]; then
             echo "Automated pull request step succeeded." >> "$GITHUB_STEP_SUMMARY"
             if [ -n "${{ steps.create_pr.outputs.pull-request-url }}" ]; then
-              echo "" >> "$GITHUB_STEP_SUMMARY"
-              echo "Pull request: ${{ steps.create_pr.outputs.pull-request-url }}" >> "$GITHUB_STEP_SUMMARY"
+              {
+                echo ""
+                echo "Pull request: ${{ steps.create_pr.outputs.pull-request-url }}"
+              } >> "$GITHUB_STEP_SUMMARY"
             fi
           else
-            echo "Automated pull request creation is not permitted in this repository." >> "$GITHUB_STEP_SUMMARY"
-            echo "" >> "$GITHUB_STEP_SUMMARY"
-            echo "The update branch was pushed successfully and is ready for manual review." >> "$GITHUB_STEP_SUMMARY"
-            echo "" >> "$GITHUB_STEP_SUMMARY"
-            echo "- Branch: \`${branch_name}\`" >> "$GITHUB_STEP_SUMMARY"
-            echo "- Open PR: ${pull_url}" >> "$GITHUB_STEP_SUMMARY"
-            echo "- Compare diff: ${compare_url}" >> "$GITHUB_STEP_SUMMARY"
+            {
+              echo "Automated pull request creation is not permitted in this repository."
+              echo ""
+              echo "The update branch was pushed successfully and is ready for manual review."
+              echo ""
+              echo "- Branch: \`${branch_name}\`"
+              echo "- Open PR: ${pull_url}"
+              echo "- Compare diff: ${compare_url}"
+            } >> "$GITHUB_STEP_SUMMARY"
             echo "::warning::Automatic pull request creation was blocked. Open a PR manually from ${pull_url}"
           fi
 
