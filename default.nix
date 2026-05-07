@@ -22,6 +22,19 @@ let
   fetchNormalizedYarnDeps = import ./nix/fetch-normalized-yarn-deps.nix {
     inherit fetchYarnDeps;
   };
+  # Keep Yarn classic on the same Node major as Xen Orchestra. nixpkgs' default
+  # yarn may be shebanged to a newer Node, which emits DEP0169 during install.
+  yarn' = yarn.override {
+    nodejs = nodejs_22;
+  };
+  yarnConfigHook' = yarnConfigHook.override {
+    nodejs = nodejs_22;
+    yarn = yarn';
+  };
+  yarnBuildHook' = yarnBuildHook.override {
+    nodejs = nodejs_22;
+    yarn = yarn';
+  };
 in
 stdenv.mkDerivation (finalAttrs: {
   pname = "xen-orchestra-ce";
@@ -43,9 +56,9 @@ stdenv.mkDerivation (finalAttrs: {
 
   nativeBuildInputs = [
     writableTmpDirAsHomeHook
-    yarn
-    yarnConfigHook
-    yarnBuildHook
+    yarn'
+    yarnConfigHook'
+    yarnBuildHook'
     nodejs_22
     esbuild
     git
