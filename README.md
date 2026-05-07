@@ -55,7 +55,11 @@ nix flake check --all-systems --no-build
 
 ```bash
 # Automatically updates version, src.hash, and yarnOfflineCache.hash
-./scripts/update.sh
+# from the latest upstream release commit.
+./scripts/update.sh --release
+
+# Track upstream source HEAD without changing version.
+./scripts/update.sh --upstream
 
 # Validate evaluation
 nix flake check --all-systems --no-build

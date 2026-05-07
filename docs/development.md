@@ -22,10 +22,11 @@ nix flake check --all-systems --no-build
 
 ## Updating xen-orchestra-ce
 
-Use the updater script to refresh version and hashes in `default.nix`.
+Use the updater script to refresh version and hashes in `default.nix` from the
+latest upstream release commit.
 
 ```bash
-./scripts/update.sh
+./scripts/update.sh --release
 
 # Validate after update
 nix flake check --all-systems --no-build
@@ -36,6 +37,15 @@ The script updates:
 - `src.rev`
 - `src.hash`
 - `yarnOfflineCache.hash`
+
+To refresh only `src.rev`, `src.hash`, and `yarnOfflineCache.hash` to the
+latest upstream source commit without changing `version`, run:
+
+```bash
+./scripts/update.sh --upstream
+```
+
+The `latest-upstream` tag workflow uses this mode for the source-head channel.
 
 ## Updating libvhdi Input
 

@@ -1,0 +1,125 @@
+name: Maintain latest upstream tag
+
+on:
+  schedule:
+    - cron: '40 6 * * *'
+  workflow_dispatch:
+
+jobs:
+  update-latest-upstream:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
+    steps:
+      - name: Create GitHub App token
+        id: app_token
+        continue-on-error: true
+        uses: actions/create-github-app-token@v2
+        with:
+          app-id: ${{ vars.UPDATE_GITHUB_APP_ID }}
+          private-key: ${{ secrets.UPDATE_GITHUB_APP_PRIVATE_KEY }}
+          permission-contents: write
+          permission-workflows: write
+
+      - name: Checkout repository
+        if: steps.app_token.outcome == 'success'
+        uses: actions/checkout@v4
+        with:
+          token: ${{ steps.app_token.outputs.token }}
+          fetch-depth: 0
+          fetch-tags: true
+
+      - name: Install Nix
+        if: steps.app_token.outcome == 'success'
+        uses: cachix/install-nix-action@v27
+        with:
+          nix_path: nixpkgs=channel:nixos-unstable
+
+      - name: Select latest-upstream base
+        if: steps.app_token.outcome == 'success'
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+          if git ls-remote --exit-code --tags origin latest-upstream >/dev/null 2>&1; then
+            git fetch --force origin refs/tags/latest-upstream:refs/tags/latest-upstream
+            git switch -c latest-upstream-work refs/tags/latest-upstream
+          else
+            git switch -c latest-upstream-work
+          fi
+
+      - name: Update package to upstream HEAD
+        if: steps.app_token.outcome == 'success'
+        id: update
+        run: |
+          chmod +x ./scripts/update.sh
+          ./scripts/update.sh --upstream
+
+          new_rev=$(sed -n 's/.*rev = "\([a-f0-9]\{40\}\)".*/\1/p' default.nix | head -n 1)
+          short_rev=$(printf '%.12s' "$new_rev")
+          tag_commit=$(git rev-parse -q --verify refs/tags/latest-upstream 2>/dev/null || true)
+          head_commit=$(git rev-parse HEAD)
+
+          if git diff --quiet -- default.nix; then
+            changed=false
+          else
+            changed=true
+          fi
+
+          if [ "$changed" = "false" ] && [ -n "$tag_commit" ] && [ "$tag_commit" = "$head_commit" ]; then
+            update_needed=false
+          else
+            update_needed=true
+          fi
+
+          {
+            echo "changed=$changed"
+            echo "new_rev=$new_rev"
+            echo "short_rev=$short_rev"
+            echo "update_needed=$update_needed"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Validate latest upstream package
+        if: steps.app_token.outcome == 'success' && steps.update.outputs.update_needed == 'true'
+        run: |
+          for attempt in 1 2 3; do
+            if nix build .#xen-orchestra-ce -L; then
+              exit 0
+            fi
+
+            if [ "$attempt" -eq 3 ]; then
+              echo "xen-orchestra-ce upstream build failed after $attempt attempts" >&2
+              exit 1
+            fi
+
+            echo "Retrying xen-orchestra-ce upstream build after transient failure (attempt $attempt failed)..." >&2
+            sleep $((attempt * 15))
+          done
+
+      - name: Update latest-upstream tag
+        if: steps.app_token.outcome == 'success' && steps.update.outputs.update_needed == 'true'
+        run: |
+          if [ "${{ steps.update.outputs.changed }}" = "true" ]; then
+            git add default.nix
+            git commit -m "xen-orchestra-ce: track upstream ${{ steps.update.outputs.short_rev }}"
+          fi
+
+          git tag -f latest-upstream HEAD
+          git push --force origin refs/tags/latest-upstream
+
+      - name: Summarize latest-upstream result
+        run: |
+          if [ "${{ steps.app_token.outcome }}" != "success" ]; then
+            {
+              echo "latest-upstream maintenance skipped because GitHub App token creation failed."
+              echo ""
+              echo "Configure the GitHub App credentials before rerunning this workflow:"
+              echo "- Variable: \`UPDATE_GITHUB_APP_ID\`"
+              echo "- Secret: \`UPDATE_GITHUB_APP_PRIVATE_KEY\`"
+            } >> "$GITHUB_STEP_SUMMARY"
+          elif [ "${{ steps.update.outputs.update_needed }}" = "true" ]; then
+            echo "Updated \`latest-upstream\` for vatesfr/xen-orchestra@${{ steps.update.outputs.new_rev }}." >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo "\`latest-upstream\` already tracks vatesfr/xen-orchestra@${{ steps.update.outputs.new_rev }}." >> "$GITHUB_STEP_SUMMARY"
+          fi

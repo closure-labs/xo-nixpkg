@@ -18,7 +18,7 @@ nix build .#xen-orchestra-ce
 
 2. Source and yarn hashes are current:
 ```bash
-./scripts/update.sh
+./scripts/update.sh --release
 ```
 
 3. Metadata is ready for review:

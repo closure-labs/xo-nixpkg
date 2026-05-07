@@ -1,4 +1,4 @@
-name: Check for XO updates
+name: Check for XO release updates
 
 on:
   schedule:
@@ -21,7 +21,7 @@ jobs:
       - name: Run updater script
         run: |
           chmod +x ./scripts/update.sh
-          ./scripts/update.sh
+          ./scripts/update.sh --release
 
       - name: Detect changes
         id: detect

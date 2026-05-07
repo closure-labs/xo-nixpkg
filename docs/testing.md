@@ -50,7 +50,7 @@ nix build .#libvhdi --dry-run
 If `yarnOfflineCache` hash mismatches:
 
 ```bash
-./scripts/update.sh
+./scripts/update.sh --release
 ```
 
 ### Source Hash Mismatch
