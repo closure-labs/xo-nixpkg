@@ -1,22 +1,11 @@
-name: Check for libvhdi input updates
+name: Validate pinned libvhdi input
 
 on:
-  schedule:
-    - cron: '20 6 * * *'
   workflow_dispatch:
-    inputs:
-      dry_run:
-        description: "Run update detection and validation without creating a pull request"
-        required: false
-        default: false
-        type: boolean
 
 jobs:
-  check-update:
+  validate:
     runs-on: ubuntu-latest
-    permissions:
-      contents: write
-      pull-requests: write
 
     steps:
       - name: Checkout repository
@@ -26,6 +15,9 @@ jobs:
         uses: cachix/install-nix-action@v31
         with:
           nix_path: nixpkgs=channel:nixos-unstable
+          extra_nix_config: |
+            extra-substituters = https://libvhdi-nixpkg.cachix.org
+            extra-trusted-public-keys = libvhdi-nixpkg.cachix.org-1:HvYHKZcfczn2nGfCmd7F21E/MDZrlaXtN3p9mWAZT/4=
 
       - name: Setup Cachix (optional)
         if: vars.CACHIX_CACHE_NAME != ''
@@ -36,125 +28,26 @@ jobs:
           skipPush: true
         continue-on-error: true
 
-      - name: Update libvhdi flake input
-        run: nix flake lock --update-input libvhdi
-
-      - name: Detect changes
-        id: detect
-        run: |
-          if git diff --quiet -- flake.lock; then
-            echo "update_available=false" >> "$GITHUB_OUTPUT"
-            exit 0
-          fi
-
-          new_rev=$(jq -r '.nodes.libvhdi.locked.rev' flake.lock)
-          short_rev=$(printf '%s' "$new_rev" | cut -c1-7)
-
-          {
-            echo "update_available=true"
-            echo "new_rev=$new_rev"
-            echo "short_rev=$short_rev"
-            echo "branch_name=update/libvhdi-input-$short_rev"
-          } >> "$GITHUB_OUTPUT"
-
-      - name: Validate updated libvhdi input
-        if: steps.detect.outputs.update_available == 'true'
-        run: nix build .#libvhdi -L
-
-      - name: Push validated package result to Cachix
-        if: steps.detect.outputs.update_available == 'true' && (github.event_name != 'workflow_dispatch' || github.event.inputs.dry_run != 'true') && vars.CACHIX_CACHE_NAME != ''
-        env:
-          CACHIX_AUTH_TOKEN: ${{ secrets.CACHIX_AUTH_TOKEN }}
+      - name: Validate pinned libvhdi release
         run: |
           set -euo pipefail
 
-          if [ -z "${CACHIX_AUTH_TOKEN:-}" ]; then
-            echo "CACHIX_AUTH_TOKEN is not configured; skipping Cachix push."
-            exit 0
+          expected_ref="refs/tags/20251119"
+          expected_rev="7c5d0d002d88e9b14e62e8bd624cb6dea77d65a9"
+          locked_ref="$(jq -r '.nodes.libvhdi.locked.ref' flake.lock)"
+          locked_rev="$(jq -r '.nodes.libvhdi.locked.rev' flake.lock)"
+
+          if [ "$locked_ref" != "$expected_ref" ]; then
+            echo "Expected libvhdi ref $expected_ref, got $locked_ref" >&2
+            exit 1
           fi
 
-          out_path=$(readlink -f result)
-          echo "Pushing built package output: $out_path"
-          printf '%s\n' "$out_path" | cachix push "${{ vars.CACHIX_CACHE_NAME }}"
-
-      - name: Report dry run result
-        if: steps.detect.outputs.update_available == 'true' && github.event_name == 'workflow_dispatch' && github.event.inputs.dry_run == 'true'
-        run: |
-          echo "Dry run detected an updated libvhdi input at ${{
-            steps.detect.outputs.new_rev
-          }}."
-          echo "Validation succeeded and no pull request was created."
-
-      - name: Create GitHub App token
-        id: app_token
-        if: steps.detect.outputs.update_available == 'true' && (github.event_name != 'workflow_dispatch' || github.event.inputs.dry_run != 'true')
-        continue-on-error: true
-        uses: actions/create-github-app-token@v3
-        with:
-          client-id: ${{ vars.UPDATE_GITHUB_APP_CLIENT_ID }}
-          private-key: ${{ secrets.UPDATE_GITHUB_APP_PRIVATE_KEY }}
-          permission-contents: write
-          permission-pull-requests: write
-
-      - name: Create Pull Request
-        id: create_pr
-        if: steps.detect.outputs.update_available == 'true' && (github.event_name != 'workflow_dispatch' || github.event.inputs.dry_run != 'true') && steps.app_token.outcome == 'success'
-        continue-on-error: true
-        uses: peter-evans/create-pull-request@v8
-        with:
-          token: ${{ steps.app_token.outputs.token }}
-          commit-message: "libvhdi: update flake input to ${{ steps.detect.outputs.short_rev }}"
-          title: "libvhdi: update flake input to ${{ steps.detect.outputs.short_rev }}"
-          body: |
-            Automated update to the `libvhdi` flake input.
-
-            Changes include:
-            - `flake.lock`
-
-            Locked revision:
-            - `NiXOA/libvhdi@${{ steps.detect.outputs.new_rev }}`
-
-            Validation:
-            - `nix build .#libvhdi -L`
-            - the validated `result` output is pushed to Cachix when `CACHIX_CACHE_NAME` and `CACHIX_AUTH_TOKEN` are configured
-          branch: ${{ steps.detect.outputs.branch_name }}
-          add-paths: |
-            flake.lock
-          delete-branch: true
-
-      - name: Report PR result
-        if: steps.detect.outputs.update_available == 'true' && (github.event_name != 'workflow_dispatch' || github.event.inputs.dry_run != 'true')
-        run: |
-          branch_name="${{ steps.detect.outputs.branch_name }}"
-          compare_url="https://github.com/${{ github.repository }}/compare/main...${branch_name}?expand=1"
-          pull_url="https://github.com/${{ github.repository }}/pull/new/${branch_name}"
-
-          if [ "${{ steps.app_token.outcome }}" != "success" ]; then
-            {
-              echo "GitHub App token creation failed."
-              echo ""
-              echo "Configure the GitHub App credentials before rerunning this workflow:"
-              echo "- Variable: \`UPDATE_GITHUB_APP_CLIENT_ID\`"
-              echo "- Secret: \`UPDATE_GITHUB_APP_PRIVATE_KEY\`"
-            } >> "$GITHUB_STEP_SUMMARY"
-            echo "::warning::GitHub App token creation failed. Verify UPDATE_GITHUB_APP_CLIENT_ID, UPDATE_GITHUB_APP_PRIVATE_KEY, and the app installation."
-          elif [ "${{ steps.create_pr.outcome }}" = "success" ]; then
-            echo "Automated pull request step succeeded." >> "$GITHUB_STEP_SUMMARY"
-            if [ -n "${{ steps.create_pr.outputs.pull-request-url }}" ]; then
-              {
-                echo ""
-                echo "Pull request: ${{ steps.create_pr.outputs.pull-request-url }}"
-              } >> "$GITHUB_STEP_SUMMARY"
-            fi
-          else
-            {
-              echo "Automated pull request creation is not permitted in this repository."
-              echo ""
-              echo "The update branch was pushed successfully and is ready for manual review."
-              echo ""
-              echo "- Branch: \`${branch_name}\`"
-              echo "- Open PR: ${pull_url}"
-              echo "- Compare diff: ${compare_url}"
-            } >> "$GITHUB_STEP_SUMMARY"
-            echo "::warning::Automatic pull request creation was blocked. Open a PR manually from ${pull_url}"
+          if [ "$locked_rev" != "$expected_rev" ]; then
+            echo "Expected libvhdi rev $expected_rev, got $locked_rev" >&2
+            exit 1
           fi
+
+          nix eval --raw .#packages.x86_64-linux.libvhdi.name
+          nix path-info .#libvhdi \
+            --option extra-substituters 'https://libvhdi-nixpkg.cachix.org' \
+            --option extra-trusted-public-keys 'libvhdi-nixpkg.cachix.org-1:HvYHKZcfczn2nGfCmd7F21E/MDZrlaXtN3p9mWAZT/4='

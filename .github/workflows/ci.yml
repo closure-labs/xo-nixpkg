@@ -15,7 +15,6 @@ jobs:
       matrix:
         package:
           - xen-orchestra-ce
-          - libvhdi
 
     steps:
       - name: Checkout repository
@@ -25,6 +24,9 @@ jobs:
         uses: cachix/install-nix-action@v31
         with:
           nix_path: nixpkgs=channel:nixos-unstable
+          extra_nix_config: |
+            extra-substituters = https://libvhdi-nixpkg.cachix.org
+            extra-trusted-public-keys = libvhdi-nixpkg.cachix.org-1:HvYHKZcfczn2nGfCmd7F21E/MDZrlaXtN3p9mWAZT/4=
 
       - name: Setup Cachix (optional)
         if: vars.CACHIX_CACHE_NAME != ''
@@ -37,23 +39,19 @@ jobs:
 
       - name: Build ${{ matrix.package }}
         run: |
-          if [ "${{ matrix.package }}" = "xen-orchestra-ce" ]; then
-            for attempt in 1 2 3; do
-              if nix build .#xen-orchestra-ce -L; then
-                exit 0
-              fi
+          for attempt in 1 2 3; do
+            if nix build .#xen-orchestra-ce -L; then
+              exit 0
+            fi
 
-              if [ "$attempt" -eq 3 ]; then
-                echo "xen-orchestra-ce build failed after $attempt attempts" >&2
-                exit 1
-              fi
+            if [ "$attempt" -eq 3 ]; then
+              echo "xen-orchestra-ce build failed after $attempt attempts" >&2
+              exit 1
+            fi
 
-              echo "Retrying xen-orchestra-ce build after transient failure (attempt $attempt failed)..." >&2
-              sleep $((attempt * 15))
-            done
-          else
-            nix build .#${{ matrix.package }} -L
-          fi
+            echo "Retrying xen-orchestra-ce build after transient failure (attempt $attempt failed)..." >&2
+            sleep $((attempt * 15))
+          done
 
       - name: Push ${{ matrix.package }} result to Cachix
         if: vars.CACHIX_CACHE_NAME != ''
@@ -73,9 +71,7 @@ jobs:
 
       - name: Test binary execution
         run: |
-          if [ "${{ matrix.package }}" = "xen-orchestra-ce" ]; then
-            ./result/bin/xo-server --help || echo "xo-server help output (may require runtime config)"
-          fi
+          ./result/bin/xo-server --help || echo "xo-server help output (may require runtime config)"
 
   checks:
     runs-on: ubuntu-latest
@@ -88,9 +84,19 @@ jobs:
         uses: cachix/install-nix-action@v31
         with:
           nix_path: nixpkgs=channel:nixos-unstable
+          extra_nix_config: |
+            extra-substituters = https://libvhdi-nixpkg.cachix.org
+            extra-trusted-public-keys = libvhdi-nixpkg.cachix.org-1:HvYHKZcfczn2nGfCmd7F21E/MDZrlaXtN3p9mWAZT/4=
 
       - name: Run flake checks
         run: nix flake check --no-build
+
+      - name: Validate libvhdi input
+        run: |
+          nix eval --raw .#packages.x86_64-linux.libvhdi.name
+          nix path-info .#libvhdi \
+            --option extra-substituters 'https://libvhdi-nixpkg.cachix.org' \
+            --option extra-trusted-public-keys 'libvhdi-nixpkg.cachix.org-1:HvYHKZcfczn2nGfCmd7F21E/MDZrlaXtN3p9mWAZT/4='
 
   tag-release:
     runs-on: ubuntu-latest

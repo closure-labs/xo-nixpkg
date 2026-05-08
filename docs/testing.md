@@ -7,9 +7,14 @@
 # Evaluate all outputs (no builds)
 nix flake check --all-systems --no-build
 
-# Build each package
+# Build the XO package
 nix build .#xen-orchestra-ce
-nix build .#libvhdi
+
+# Validate the pinned libvhdi package resolves through the published cache
+nix eval --raw .#packages.x86_64-linux.libvhdi.name
+nix path-info .#libvhdi \
+  --option extra-substituters 'https://libvhdi-nixpkg.cachix.org' \
+  --option extra-trusted-public-keys 'libvhdi-nixpkg.cachix.org-1:HvYHKZcfczn2nGfCmd7F21E/MDZrlaXtN3p9mWAZT/4='
 ```
 
 ## Runtime Smoke Tests
@@ -25,9 +30,10 @@ nix build .#xen-orchestra-ce
 ### libvhdi
 
 ```bash
-nix build .#libvhdi
-./result/bin/vhdiinfo -V
-./result/bin/vhdimount -V
+nix eval --raw .#packages.x86_64-linux.libvhdi.name
+nix path-info .#libvhdi \
+  --option extra-substituters 'https://libvhdi-nixpkg.cachix.org' \
+  --option extra-trusted-public-keys 'libvhdi-nixpkg.cachix.org-1:HvYHKZcfczn2nGfCmd7F21E/MDZrlaXtN3p9mWAZT/4='
 ```
 
 ## Submission-Oriented Checks
@@ -40,7 +46,9 @@ nix flake check --all-systems --no-build
 
 # Optional: dry-run package build planning
 nix build .#xen-orchestra-ce --dry-run
-nix build .#libvhdi --dry-run
+nix path-info .#libvhdi \
+  --option extra-substituters 'https://libvhdi-nixpkg.cachix.org' \
+  --option extra-trusted-public-keys 'libvhdi-nixpkg.cachix.org-1:HvYHKZcfczn2nGfCmd7F21E/MDZrlaXtN3p9mWAZT/4='
 ```
 
 ## Common Failures
@@ -74,6 +82,7 @@ preFixup = ''
 ## CI Coverage
 
 CI currently checks:
-- package builds for `xen-orchestra-ce` and `libvhdi`
+- package builds for `xen-orchestra-ce`
+- evaluation and cache path lookup for the pinned `libvhdi` input
 - `nix flake check`
 - basic binary execution smoke tests

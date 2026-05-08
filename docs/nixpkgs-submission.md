@@ -6,7 +6,7 @@ This guide covers submission prep for packages tracked from this repository.
 ## Current Scope
 
 - `xen-orchestra-ce`: maintained in this repo (`default.nix`)
-- `libvhdi`: currently consumed as a flake input from `NiXOA/libvhdi`; submit from that source tree or vendor its package definition into your nixpkgs branch.
+- `libvhdi`: consumed as a pinned release-tag flake input from `declarative-dale/libvhdi-nixpkg`; submit from that source tree or vendor its package definition into your nixpkgs branch.
 
 ## Prerequisites
 
@@ -71,7 +71,9 @@ git push origin xen-orchestra-ce-init
 
 ## libvhdi Submission Notes
 
-If `libvhdi` is not yet in nixpkgs, prepare it from the `NiXOA/libvhdi` package definition and submit as a separate package PR (or separate commit in the same PR if maintainers prefer bundling).
+If `libvhdi` is not yet in nixpkgs, prepare it from the
+`declarative-dale/libvhdi-nixpkg` package definition and submit as a separate
+package PR (or separate commit in the same PR if maintainers prefer bundling).
 
 ## References
 

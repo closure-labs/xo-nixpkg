@@ -7,18 +7,18 @@
         ]
       },
       "locked": {
-        "lastModified": 1772165901,
-        "narHash": "sha256-loQh3kK9QTFzfDDlGqYxrfproI9gDbogbrRzfI//9Z8=",
-        "ref": "refs/tags/latest",
-        "rev": "1ff75c6e494b403f43c421280d0bd25a53322cfa",
-        "revCount": 7,
+        "lastModified": 1778196189,
+        "narHash": "sha256-YnE+HrM3B91azKm2XeIvHrh03TKIaJwJFUvC9swckno=",
+        "ref": "refs/tags/20251119",
+        "rev": "7c5d0d002d88e9b14e62e8bd624cb6dea77d65a9",
+        "revCount": 17,
         "type": "git",
-        "url": "https://codeberg.org/NiXOA/libvhdi.git"
+        "url": "https://github.com/declarative-dale/libvhdi-nixpkg.git"
       },
       "original": {
-        "ref": "refs/tags/latest",
+        "ref": "refs/tags/20251119",
         "type": "git",
-        "url": "https://codeberg.org/NiXOA/libvhdi.git"
+        "url": "https://github.com/declarative-dale/libvhdi-nixpkg.git"
       }
     },
     "nixpkgs": {

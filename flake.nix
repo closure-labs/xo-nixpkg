@@ -1,10 +1,19 @@
 {
   description = "Xen Orchestra CE and libvhdi packages for NixOS";
 
+  nixConfig = {
+    extra-substituters = [
+      "https://libvhdi-nixpkg.cachix.org"
+    ];
+    extra-trusted-public-keys = [
+      "libvhdi-nixpkg.cachix.org-1:HvYHKZcfczn2nGfCmd7F21E/MDZrlaXtN3p9mWAZT/4="
+    ];
+  };
+
   inputs = {
     nixpkgs.url = "github:NixOS/nixpkgs/nixos-unstable";
     libvhdi = {
-      url = "git+https://codeberg.org/NiXOA/libvhdi.git?ref=refs/tags/latest";
+      url = "git+https://github.com/declarative-dale/libvhdi-nixpkg.git?ref=refs/tags/20251119";
       inputs.nixpkgs.follows = "nixpkgs";
     };
   };
@@ -58,7 +67,7 @@
               echo ""
               echo "Build packages:"
               echo "  nix build .#xen-orchestra-ce"
-              echo "  nix build .#libvhdi"
+              echo "  nix eval --raw .#packages.${system}.libvhdi.name"
               echo ""
               echo "Update xen-orchestra-ce release sources:"
               echo "  ./scripts/update.sh --release"
@@ -66,7 +75,8 @@
               echo "Update xen-orchestra-ce latest upstream sources:"
               echo "  ./scripts/update.sh --upstream"
               echo ""
-              echo "Update libvhdi input:"
+              echo "Bump libvhdi-nixpkg release tag:"
+              echo "  edit inputs.libvhdi.url in flake.nix"
               echo "  nix flake lock --update-input libvhdi"
             '';
           };

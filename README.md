@@ -1,7 +1,7 @@
 <!-- SPDX-License-Identifier: Apache-2.0 -->
 # xen-orchestra-ce-nix
 
-Nix packages for [Xen Orchestra Community Edition](https://xen-orchestra.com) and [libvhdi](https://codeberg.org/NiXOA/libvhdi), structured for eventual submission to nixpkgs.
+Nix packages for [Xen Orchestra Community Edition](https://xen-orchestra.com) and [libvhdi](https://github.com/declarative-dale/libvhdi-nixpkg), structured for eventual submission to nixpkgs.
 
 ## Packages
 
@@ -41,9 +41,14 @@ Nix packages for [Xen Orchestra Community Edition](https://xen-orchestra.com) an
 # Enter development shell
 nix develop
 
-# Build packages
+# Build the XO package
 nix build .#xen-orchestra-ce
-nix build .#libvhdi
+
+# Validate the published libvhdi input
+nix eval --raw .#packages.x86_64-linux.libvhdi.name
+nix path-info .#libvhdi \
+  --option extra-substituters 'https://libvhdi-nixpkg.cachix.org' \
+  --option extra-trusted-public-keys 'libvhdi-nixpkg.cachix.org-1:HvYHKZcfczn2nGfCmd7F21E/MDZrlaXtN3p9mWAZT/4='
 
 # Evaluate all outputs
 nix flake check --all-systems --no-build
@@ -56,6 +61,13 @@ GitHub Actions configures Cachix read-only before builds when
 workflow explicitly pushes only the `result` path after `nix build` succeeds.
 This avoids uploading fetched source tarballs or other incidental store paths
 created during evaluation or builds.
+
+The `libvhdi` input is consumed from
+[`declarative-dale/libvhdi-nixpkg`](https://github.com/declarative-dale/libvhdi-nixpkg)
+and should be substituted from its public Cachix cache:
+
+- substituter: `https://libvhdi-nixpkg.cachix.org`
+- trusted key: `libvhdi-nixpkg.cachix.org-1:HvYHKZcfczn2nGfCmd7F21E/MDZrlaXtN3p9mWAZT/4=`
 
 ## Updating Sources
 
@@ -73,10 +85,11 @@ created during evaluation or builds.
 nix flake check --all-systems --no-build
 ```
 
-### Update libvhdi input
+### Bump libvhdi-nixpkg release tag
 
 ```bash
-# Move libvhdi input to latest pinned revision/tag
+# Edit inputs.libvhdi.url in flake.nix to the new release tag, then refresh
+# the lock file.
 nix flake lock --update-input libvhdi
 
 # Validate evaluation
@@ -104,7 +117,7 @@ Apache-2.0 - See [LICENSE](LICENSE)
 
 - [NiXOA](https://codeberg.org/NiXOA) - Full NixOS deployment system for Xen Orchestra
 - [Xen Orchestra](https://github.com/vatesfr/xen-orchestra) - Upstream project
-- [libvhdi](https://codeberg.org/NiXOA/libvhdi) - Standalone libvhdi package repo
+- [libvhdi-nixpkg](https://github.com/declarative-dale/libvhdi-nixpkg) - Published libvhdi package flake
 
 ## Maintainers
 

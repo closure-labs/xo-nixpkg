@@ -12,9 +12,14 @@ nix develop
 ## Build and Evaluate
 
 ```bash
-# Build packages
+# Build the XO package
 nix build .#xen-orchestra-ce
-nix build .#libvhdi
+
+# Validate the published libvhdi input
+nix eval --raw .#packages.x86_64-linux.libvhdi.name
+nix path-info .#libvhdi \
+  --option extra-substituters 'https://libvhdi-nixpkg.cachix.org' \
+  --option extra-trusted-public-keys 'libvhdi-nixpkg.cachix.org-1:HvYHKZcfczn2nGfCmd7F21E/MDZrlaXtN3p9mWAZT/4='
 
 # Evaluate flake outputs on all declared systems
 nix flake check --all-systems --no-build
@@ -49,7 +54,9 @@ The `latest-upstream` tag workflow uses this mode for the source-head channel.
 
 ## Updating libvhdi Input
 
-`libvhdi` is consumed as a flake input from `NiXOA/libvhdi`.
+`libvhdi` is consumed as a pinned release-tag flake input from
+`declarative-dale/libvhdi-nixpkg`. Future upgrades should bump the explicit
+release tag in `flake.nix`, then refresh the lock file.
 
 ```bash
 nix flake lock --update-input libvhdi
@@ -63,9 +70,11 @@ nix flake check --all-systems --no-build
 nix build .#xen-orchestra-ce
 ./result/bin/xo-server --help
 
-# Smoke test libvhdi binary
-nix build .#libvhdi
-./result/bin/vhdiinfo -V
+# Validate libvhdi input and cache availability
+nix eval --raw .#packages.x86_64-linux.libvhdi.name
+nix path-info .#libvhdi \
+  --option extra-substituters 'https://libvhdi-nixpkg.cachix.org' \
+  --option extra-trusted-public-keys 'libvhdi-nixpkg.cachix.org-1:HvYHKZcfczn2nGfCmd7F21E/MDZrlaXtN3p9mWAZT/4='
 ```
 
 ## Syncing with NiXOA Core
