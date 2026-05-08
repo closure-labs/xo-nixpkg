@@ -8,9 +8,9 @@
   yarnBuildHook,
   writableTmpDirAsHomeHook,
   nodejs_22,
-  esbuild,
   git,
   python3,
+  node-gyp,
   pkg-config,
   makeWrapper,
   libpng,
@@ -19,6 +19,118 @@
 }:
 
 let
+  platformToolTarballs = {
+    x86_64-linux = {
+      esbuild = {
+        tarball = "_esbuild_linux_x64___linux_x64_0.25.12.tgz";
+        path = "package/bin/esbuild";
+      };
+      turbo = {
+        tarball = "_turbo_linux_64___linux_64_2.9.6.tgz";
+        path = "turbo-linux-x64/bin/turbo";
+      };
+      rollup = {
+        tarball = "_rollup_rollup_linux_x64_gnu___rollup_linux_x64_gnu_4.60.1.tgz";
+        path = "package/rollup.linux-x64-gnu.node";
+        packageBase = "linux-x64-gnu";
+      };
+    };
+    aarch64-linux = {
+      esbuild = {
+        tarball = "_esbuild_linux_arm64___linux_arm64_0.25.12.tgz";
+        path = "package/bin/esbuild";
+      };
+      turbo = {
+        tarball = "_turbo_linux_arm64___linux_arm64_2.9.6.tgz";
+        path = "turbo-linux-arm64/bin/turbo";
+      };
+      rollup = {
+        tarball = "_rollup_rollup_linux_arm64_gnu___rollup_linux_arm64_gnu_4.60.1.tgz";
+        path = "package/rollup.linux-arm64-gnu.node";
+        packageBase = "linux-arm64-gnu";
+      };
+    };
+  };
+  platformToolTarballsForHost = platformToolTarballs.${stdenv.hostPlatform.system} or null;
+
+  mkYarnCacheBinary =
+    yarnOfflineCache:
+    {
+      pname,
+      version,
+      tarball,
+      path,
+      binaryName,
+    }:
+    stdenv.mkDerivation {
+      inherit pname version;
+      src = "${yarnOfflineCache}/${tarball}";
+      dontUnpack = true;
+      installPhase = ''
+        runHook preInstall
+
+        mkdir -p "$out/bin"
+        tar -xzf "$src" -O "${path}" > "$out/bin/${binaryName}"
+        chmod +x "$out/bin/${binaryName}"
+
+        runHook postInstall
+      '';
+    };
+
+  mkYarnCacheFile =
+    yarnOfflineCache:
+    {
+      pname,
+      version,
+      tarball,
+      path,
+      fileName,
+    }:
+    stdenv.mkDerivation {
+      inherit pname version;
+      src = "${yarnOfflineCache}/${tarball}";
+      dontUnpack = true;
+      installPhase = ''
+        runHook preInstall
+
+        mkdir -p "$out"
+        tar -xzf "$src" -O "${path}" > "$out/${fileName}"
+
+        runHook postInstall
+      '';
+    };
+
+  mkPlatformTools =
+    yarnOfflineCache:
+    if platformToolTarballsForHost == null then
+      { }
+    else
+      let
+        mkBinary = mkYarnCacheBinary yarnOfflineCache;
+        mkFile = mkYarnCacheFile yarnOfflineCache;
+      in
+      rec {
+        esbuild = mkBinary {
+          pname = "esbuild-xen-orchestra";
+          version = "0.25.12";
+          binaryName = "esbuild";
+          inherit (platformToolTarballsForHost.esbuild) tarball path;
+        };
+        turbo = mkBinary {
+          pname = "turbo-xen-orchestra";
+          version = "2.9.6";
+          binaryName = "turbo";
+          inherit (platformToolTarballsForHost.turbo) tarball path;
+        };
+        rollupPackageBase = platformToolTarballsForHost.rollup.packageBase;
+        rollupNative = mkFile {
+          pname = "rollup-native-xen-orchestra";
+          version = "4.60.1";
+          fileName = "rollup.${rollupPackageBase}.node";
+          inherit (platformToolTarballsForHost.rollup) tarball path;
+        };
+      };
+
   fetchNormalizedYarnDeps = import ./nix/fetch-normalized-yarn-deps.nix {
     inherit fetchYarnDeps;
   };
@@ -36,206 +148,312 @@ let
     yarn = yarn';
   };
 in
-stdenv.mkDerivation (finalAttrs: {
-  pname = "xen-orchestra-ce";
-  version = "6.4.1";
+stdenv.mkDerivation (
+  finalAttrs:
+  let
+    platformTools = mkPlatformTools finalAttrs.yarnOfflineCache;
+  in
+  {
+    pname = "xen-orchestra-ce";
+    version = "6.4.1";
 
-  # Xen Orchestra doesn't use git tags for releases; versions are indicated
-  # in commit messages like "feat: release 6.3.3".
-  src = fetchFromGitHub {
-    owner = "vatesfr";
-    repo = "xen-orchestra";
-    rev = "7e144234b970b006f4d96ee82be271d1c16e0de5";
-    hash = "sha256-8coyJNLdte4e5DDP/+byFfag3ticALL0xmALhlrtPg8=";
-  };
+    # Xen Orchestra doesn't use git tags for releases; versions are indicated
+    # in commit messages like "feat: release 6.3.3".
+    src = fetchFromGitHub {
+      owner = "vatesfr";
+      repo = "xen-orchestra";
+      rev = "7e144234b970b006f4d96ee82be271d1c16e0de5";
+      hash = "sha256-8coyJNLdte4e5DDP/+byFfag3ticALL0xmALhlrtPg8=";
+    };
 
-  yarnOfflineCache = fetchNormalizedYarnDeps {
-    yarnLock = "${finalAttrs.src}/yarn.lock";
-    hash = "sha256-WMu6U3+8tHmw7Fz81MhieNcoojnSAccXIYLOQC7d4+o=";
-  };
+    yarnOfflineCache = fetchNormalizedYarnDeps {
+      yarnLock = "${finalAttrs.src}/yarn.lock";
+      hash = "sha256-WMu6U3+8tHmw7Fz81MhieNcoojnSAccXIYLOQC7d4+o=";
+    };
 
-  nativeBuildInputs = [
-    writableTmpDirAsHomeHook
-    yarn'
-    yarnConfigHook'
-    yarnBuildHook'
-    nodejs_22
-    esbuild
-    git
-    python3
-    pkg-config
-    makeWrapper
-  ];
-
-  buildInputs = [
-    # libfuse2 for fuse-native/@vates/fuse-vhd.
-    fuse
-    zlib
-    libpng
-    stdenv.cc.cc.lib
-  ];
-
-  env = {
-    HUSKY = "0";
-    CI = "1";
-    YARN_PRODUCTION = "false";
-    NPM_CONFIG_PRODUCTION = "false";
-    LD_LIBRARY_PATH = lib.makeLibraryPath [ fuse ];
-  };
-
-  yarnInstallFlags = [
-    "--offline"
-    "--frozen-lockfile"
-    "--non-interactive"
-    "--ignore-engines"
-    "--production=false"
-  ];
-
-  yarnFlags = finalAttrs.yarnInstallFlags;
-
-  postPatch = ''
-    # Keep yarnConfigHook's source/cache lockfile validation aligned with the
-    # normalized tarball checksums above.
-    cp ${finalAttrs.yarnOfflineCache}/yarn.lock yarn.lock
-
-    # Patch SMB handler to include missing createReadStream import
-    if [ -f packages/xo-server/src/xo-mixins/storage/smb.js ] \
-      && grep -q "const { join } = require('path')" packages/xo-server/src/xo-mixins/storage/smb.js; then
-      substituteInPlace packages/xo-server/src/xo-mixins/storage/smb.js \
-        --replace-fail "const { join } = require('path')" \
-                       "const { join } = require('path'); const { createReadStream } = require('fs')"
-    fi
-
-    # Fix missing createReadStream import in FS module
-    if [ -f @xen-orchestra/fs/src/index.js ] \
-      && grep -q "const { asyncIterableToStream }" @xen-orchestra/fs/src/index.js \
-      && ! grep -q "createReadStream" @xen-orchestra/fs/src/index.js; then
-      substituteInPlace @xen-orchestra/fs/src/index.js \
-        --replace-fail "const { asyncIterableToStream } = require('./_asyncIterableToStream')" \
-                       "const { createReadStream } = require('node:fs');\nconst { asyncIterableToStream } = require('./_asyncIterableToStream')"
-    fi
-
-    # TypeScript in newer toolchains infers `Object.entries()` values as unknown.
-    # Coerce labels to string for xo-server-openmetrics build compatibility.
-    if [ -f packages/xo-server-openmetrics/src/openmetric-formatter.mts ] \
-      && grep -q "labels\\[key\\] = value" packages/xo-server-openmetrics/src/openmetric-formatter.mts; then
-      substituteInPlace packages/xo-server-openmetrics/src/openmetric-formatter.mts \
-        --replace-fail "labels[key] = value" \
-                       "labels[key] = typeof value === 'string' ? value : String(value)"
-    fi
-
-    # Create minimal .git directory for git rev-parse during build
-    if [ ! -e .git ]; then
-      mkdir -p .git/objects .git/refs
-      cat > .git/config <<EOF
-    [core]
-        repositoryformatversion = 0
-        filemode = true
-        bare = false
-    EOF
-      echo "${finalAttrs.src.rev}" > .git/HEAD
-    fi
-  '';
-
-  preBuild = ''
-    set -euo pipefail
-
-    if [ -f node_modules/http-proxy/lib/http-proxy/index.js ] \
-      && grep -q "require('util')._extend" node_modules/http-proxy/lib/http-proxy/index.js; then
-      substituteInPlace node_modules/http-proxy/lib/http-proxy/index.js \
-        --replace-fail "extend    = require('util')._extend," \
-                       "extend    = Object.assign,"
-    fi
-
-    vite_target="$(readlink -f node_modules/.bin/vite 2>/dev/null || true)"
-    vue_tsc_target="$(readlink -f node_modules/.bin/vue-tsc 2>/dev/null || true)"
-
-    if [ -z "$vite_target" ]; then
-      echo "ERROR: Cannot find vite in node_modules/.bin" >&2
-      exit 1
-    fi
-    if [ -z "$vue_tsc_target" ]; then
-      echo "ERROR: Cannot find vue-tsc in node_modules/.bin" >&2
-      exit 1
-    fi
-
-    mkToolWrappers() {
-      local pkg="$1"
-      [ -d "$pkg" ] || return 0
-
-      mkdir -p "$pkg/node_modules/.bin"
-
-      cat > "$pkg/node_modules/.bin/vite" <<WRAPPER
-    #!${stdenv.shell}
-    exec ${nodejs_22}/bin/node "$vite_target" "\$@"
-    WRAPPER
-      chmod +x "$pkg/node_modules/.bin/vite"
-
-      cat > "$pkg/node_modules/.bin/vue-tsc" <<WRAPPER
-    #!${stdenv.shell}
-    exec ${nodejs_22}/bin/node "$vue_tsc_target" "\$@"
-    WRAPPER
-      chmod +x "$pkg/node_modules/.bin/vue-tsc"
-    }
-
-    mkToolWrappers "@xen-orchestra/web"
-    mkToolWrappers "packages/xo-web"
-    mkToolWrappers "xo-web"
-  '';
-
-  buildPhase = ''
-    runHook preBuild
-    TURBO_CONCURRENCY=1 yarn --offline run build
-    runHook postBuild
-  '';
-
-  installPhase = ''
-    runHook preInstall
-
-    mkdir -p $out/libexec/xen-orchestra
-    mkdir -p $out/bin
-
-    cp -a packages node_modules package.json yarn.lock $out/libexec/xen-orchestra/
-
-    for dir in @xen-orchestra @vates scripts; do
-      if [ -d "$dir" ]; then
-        cp -a "$dir" $out/libexec/xen-orchestra/
-      fi
-    done
-
-    makeWrapper ${nodejs_22}/bin/node $out/bin/xo-server \
-      --chdir $out/libexec/xen-orchestra \
-      --prefix LD_LIBRARY_PATH : ${lib.makeLibraryPath [ fuse ]} \
-      --add-flags "packages/xo-server/dist/cli.mjs"
-
-    runHook postInstall
-  '';
-
-  preFixup = ''
-    find "$out/libexec/xen-orchestra" -xtype l -delete || true
-  '';
-
-  passthru.updateScript = ./scripts/update.sh;
-
-  meta = {
-    description = "Web interface for Xen Orchestra - XenServer/XCP-ng management";
-    longDescription = ''
-      Xen Orchestra provides a web-based interface for managing XenServer and
-      XCP-ng infrastructure. It offers VM lifecycle management, backup solutions,
-      continuous replication, and disaster recovery features.
-
-      This package builds the Community Edition from source.
-    '';
-    homepage = "https://xen-orchestra.com";
-    changelog = "https://github.com/vatesfr/xen-orchestra/commits/master";
-    license = lib.licenses.agpl3Only;
-    maintainers = [
-      {
-        name = "Dale Morgan";
-        email = "mail@dalemorgan.us";
-      }
+    nativeBuildInputs = [
+      writableTmpDirAsHomeHook
+      yarn'
+      yarnConfigHook'
+      yarnBuildHook'
+      nodejs_22
+      git
+      python3
+      node-gyp
+      pkg-config
+      makeWrapper
+    ]
+    ++ lib.optionals (platformTools ? esbuild) [
+      platformTools.esbuild
+    ]
+    ++ lib.optionals (platformTools ? turbo) [
+      platformTools.turbo
     ];
-    platforms = lib.platforms.linux;
-    mainProgram = "xo-server";
-  };
-})
+
+    buildInputs = [
+      # libfuse2 for fuse-native/@vates/fuse-vhd.
+      fuse
+      zlib
+      libpng
+      stdenv.cc.cc.lib
+    ];
+
+    env = {
+      HUSKY = "0";
+      CI = "1";
+      DO_NOT_TRACK = "1";
+      SCARF_ANALYTICS = "false";
+      TURBO_TELEMETRY_DISABLED = "1";
+      YARN_PRODUCTION = "false";
+      NPM_CONFIG_PRODUCTION = "false";
+      npm_config_nodedir = "${nodejs_22}";
+      npm_config_node_gyp = "${node-gyp}/bin/node-gyp";
+      npm_config_python = "${python3}/bin/python3";
+      LD_LIBRARY_PATH = lib.makeLibraryPath [ fuse ];
+    }
+    // lib.optionalAttrs (platformTools ? esbuild) {
+      ESBUILD_BINARY_PATH = "${platformTools.esbuild}/bin/esbuild";
+    }
+    // lib.optionalAttrs (platformTools ? turbo) {
+      TURBO_BINARY_PATH = "${platformTools.turbo}/bin/turbo";
+    };
+
+    yarnInstallFlags = [
+      "--offline"
+      "--frozen-lockfile"
+      "--non-interactive"
+      "--ignore-engines"
+      "--production=false"
+    ];
+
+    yarnFlags = finalAttrs.yarnInstallFlags;
+
+    postPatch = ''
+      # Keep yarnConfigHook's source/cache lockfile validation aligned with the
+      # normalized tarball checksums above.
+      cp ${finalAttrs.yarnOfflineCache}/yarn.lock yarn.lock
+
+      # Patch SMB handler to include missing createReadStream import
+      if [ -f packages/xo-server/src/xo-mixins/storage/smb.js ] \
+        && grep -q "const { join } = require('path')" packages/xo-server/src/xo-mixins/storage/smb.js; then
+        substituteInPlace packages/xo-server/src/xo-mixins/storage/smb.js \
+          --replace-fail "const { join } = require('path')" \
+                         "const { join } = require('path'); const { createReadStream } = require('fs')"
+      fi
+
+      # Fix missing createReadStream import in FS module
+      if [ -f @xen-orchestra/fs/src/index.js ] \
+        && grep -q "const { asyncIterableToStream }" @xen-orchestra/fs/src/index.js \
+        && ! grep -q "createReadStream" @xen-orchestra/fs/src/index.js; then
+        substituteInPlace @xen-orchestra/fs/src/index.js \
+          --replace-fail "const { asyncIterableToStream } = require('./_asyncIterableToStream')" \
+                         "const { createReadStream } = require('node:fs');\nconst { asyncIterableToStream } = require('./_asyncIterableToStream')"
+      fi
+
+      # TypeScript in newer toolchains infers `Object.entries()` values as unknown.
+      # Coerce labels to string for xo-server-openmetrics build compatibility.
+      if [ -f packages/xo-server-openmetrics/src/openmetric-formatter.mts ] \
+        && grep -q "labels\\[key\\] = value" packages/xo-server-openmetrics/src/openmetric-formatter.mts; then
+        substituteInPlace packages/xo-server-openmetrics/src/openmetric-formatter.mts \
+          --replace-fail "labels[key] = value" \
+                         "labels[key] = typeof value === 'string' ? value : String(value)"
+      fi
+
+      # Create minimal .git directory for git rev-parse during build
+      if [ ! -e .git ]; then
+        mkdir -p .git/objects .git/refs
+        cat > .git/config <<EOF
+      [core]
+          repositoryformatversion = 0
+          filemode = true
+          bare = false
+      EOF
+        echo "${finalAttrs.src.rev}" > .git/HEAD
+      fi
+    '';
+
+    preBuild = ''
+              set -euo pipefail
+
+              patchShebangs node_modules
+
+          if [ -f node_modules/fuse-shared-library-linux/index.js ]; then
+            node -e '
+          const fs = require("node:fs")
+          const q = String.fromCharCode(39)
+
+          const file = "node_modules/fuse-shared-library-linux/index.js"
+          let source = fs.readFileSync(file, "utf8")
+
+          function replace(needle, replacement) {
+            if (!source.includes(needle)) {
+              throw new Error("cannot find expected fuse-shared-library-linux text: " + needle)
+            }
+            source = source.replace(needle, replacement)
+          }
+
+          replace(
+            "const FUSE = path.join(__dirname, " + q + "libfuse" + q + ")",
+            "const FUSE = " + q + "${lib.getBin fuse}" + q
+          )
+          replace(
+            "const lib = path.join(FUSE, " + q + "lib/libfuse.so" + q + ")",
+            "const lib = " + q + "${lib.getLib fuse}/lib/libfuse.so" + q
+          )
+          replace(
+            "const include = path.join(FUSE, " + q + "include" + q + ")",
+            "const include = " + q + "${fuse.dev}/include/fuse" + q
+          )
+
+          source = source.replace(
+            /function beforeMount \(cb\) {[\s\S]*?\n}\n\nfunction beforeUnmount/,
+            "function beforeMount (cb) {\n  if (!cb) cb = noop\n  process.nextTick(cb)\n}\n\nfunction beforeUnmount"
+          )
+          source = source.replace(
+            /function configure \(cb\) {[\s\S]*?\n}\n\nfunction isConfigured/,
+            "function configure (cb) {\n  if (!cb) cb = noop\n  process.nextTick(cb)\n}\n\nfunction isConfigured"
+          )
+          source = source.replace(
+            /function isConfigured \(cb\) {[\s\S]*?\n}\n\nfunction runAll/,
+            "function isConfigured (cb) {\n  process.nextTick(cb, null, true)\n}\n\nfunction runAll"
+          )
+
+          fs.writeFileSync(file, source)
+          '
+          fi
+
+              ${lib.optionalString (platformTools ? rollupNative) ''
+                if [ -d node_modules/rollup/dist ]; then
+                  cp ${platformTools.rollupNative}/rollup.${platformTools.rollupPackageBase}.node \
+                    node_modules/rollup/dist/
+                fi
+              ''}
+
+              node_gyp_build="$PWD/node_modules/.bin/node-gyp-build"
+              if [ ! -x "$node_gyp_build" ]; then
+                echo "ERROR: Cannot find node-gyp-build in node_modules/.bin" >&2
+                exit 1
+              fi
+
+              rebuildNodeModuleFromSource() {
+                local modulePath="$1"
+                [ -d "$modulePath" ] || return 0
+
+                echo "rebuilding $modulePath from source"
+                (
+                  cd "$modulePath"
+                  rm -rf build
+                  npm_config_build_from_source=true \
+                  npm_config_nodedir="${nodejs_22}" \
+                  npm_config_node_gyp="${node-gyp}/bin/node-gyp" \
+                  npm_config_python="${python3}/bin/python3" \
+                    "$node_gyp_build"
+                )
+              }
+
+              rebuildNodeModuleFromSource node_modules/fuse-native
+              rebuildNodeModuleFromSource node_modules/argon2
+              rebuildNodeModuleFromSource node_modules/leveldown
+
+      rm -rf \
+        node_modules/argon2/prebuilds \
+        node_modules/fuse-native/prebuilds \
+        node_modules/leveldown/prebuilds \
+        node_modules/fuse-shared-library-linux*/example/build \
+        node_modules/fuse-shared-library-linux*/libfuse
+
+              if [ -f node_modules/http-proxy/lib/http-proxy/index.js ] \
+                && grep -q "require('util')._extend" node_modules/http-proxy/lib/http-proxy/index.js; then
+                  substituteInPlace node_modules/http-proxy/lib/http-proxy/index.js \
+                    --replace-fail "extend    = require('util')._extend," \
+                                   "extend    = Object.assign,"
+                fi
+
+                vite_target="$(readlink -f node_modules/.bin/vite 2>/dev/null || true)"
+                vue_tsc_target="$(readlink -f node_modules/.bin/vue-tsc 2>/dev/null || true)"
+
+                if [ -z "$vite_target" ]; then
+                  echo "ERROR: Cannot find vite in node_modules/.bin" >&2
+                  exit 1
+                fi
+                if [ -z "$vue_tsc_target" ]; then
+                  echo "ERROR: Cannot find vue-tsc in node_modules/.bin" >&2
+                  exit 1
+                fi
+
+                mkToolWrappers() {
+                  local pkg="$1"
+          [ -d "$pkg" ] || return 0
+
+          mkdir -p "$pkg/node_modules/.bin"
+
+          makeWrapper ${nodejs_22}/bin/node "$pkg/node_modules/.bin/vite" \
+            --add-flags "$vite_target"
+
+          makeWrapper ${nodejs_22}/bin/node "$pkg/node_modules/.bin/vue-tsc" \
+            --add-flags "$vue_tsc_target"
+        }
+
+                mkToolWrappers "@xen-orchestra/web"
+                mkToolWrappers "packages/xo-web"
+                mkToolWrappers "xo-web"
+    '';
+
+    buildPhase = ''
+      runHook preBuild
+      TURBO_CONCURRENCY=1 yarn --offline run build
+      runHook postBuild
+    '';
+
+    installPhase = ''
+      runHook preInstall
+
+      mkdir -p $out/libexec/xen-orchestra
+      mkdir -p $out/bin
+
+      cp -a packages node_modules package.json yarn.lock $out/libexec/xen-orchestra/
+
+      for dir in @xen-orchestra @vates scripts; do
+        if [ -d "$dir" ]; then
+          cp -a "$dir" $out/libexec/xen-orchestra/
+        fi
+      done
+
+      makeWrapper ${nodejs_22}/bin/node $out/bin/xo-server \
+        --chdir $out/libexec/xen-orchestra \
+        --prefix LD_LIBRARY_PATH : ${lib.makeLibraryPath [ fuse ]} \
+        --prefix PATH : ${lib.makeBinPath [ (lib.getBin fuse) ]} \
+        --add-flags "packages/xo-server/dist/cli.mjs"
+
+      runHook postInstall
+    '';
+
+    preFixup = ''
+      find "$out/libexec/xen-orchestra" -xtype l -delete || true
+    '';
+
+    passthru.updateScript = ./scripts/update.sh;
+
+    meta = {
+      description = "Web interface for Xen Orchestra - XenServer/XCP-ng management";
+      longDescription = ''
+        Xen Orchestra provides a web-based interface for managing XenServer and
+        XCP-ng infrastructure. It offers VM lifecycle management, backup solutions,
+        continuous replication, and disaster recovery features.
+
+        This package builds the Community Edition from source.
+      '';
+      homepage = "https://xen-orchestra.com";
+      changelog = "https://github.com/vatesfr/xen-orchestra/commits/master";
+      license = lib.licenses.agpl3Only;
+      maintainers = [
+        {
+          name = "Dale Morgan";
+          email = "mail@dalemorgan.us";
+        }
+      ];
+      platforms = lib.platforms.linux;
+      mainProgram = "xo-server";
+    };
+  }
+)
