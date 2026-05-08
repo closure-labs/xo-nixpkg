@@ -137,12 +137,15 @@ stdenv.mkDerivation (finalAttrs: {
     fi
   '';
 
-  postConfigure = ''
-    patchShebangs node_modules
-  '';
-
   preBuild = ''
     set -euo pipefail
+
+    if [ -f node_modules/http-proxy/lib/http-proxy/index.js ] \
+      && grep -q "require('util')._extend" node_modules/http-proxy/lib/http-proxy/index.js; then
+      substituteInPlace node_modules/http-proxy/lib/http-proxy/index.js \
+        --replace-fail "extend    = require('util')._extend," \
+                       "extend    = Object.assign,"
+    fi
 
     vite_target="$(readlink -f node_modules/.bin/vite 2>/dev/null || true)"
     vue_tsc_target="$(readlink -f node_modules/.bin/vue-tsc 2>/dev/null || true)"
