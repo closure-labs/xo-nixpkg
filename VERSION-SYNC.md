@@ -55,6 +55,6 @@ When propagating standalone changes back to core:
 - [ ] Update yarn offline cache hash as needed
 - [ ] Run `nix flake check --all-systems --no-build`
 - [ ] Build and smoke test `xen-orchestra-ce`
-- [ ] Validate the pinned `libvhdi` input with `nix eval` and `nix path-info`
+- [ ] Validate the pinned `libvhdi` input with `nix eval` and `nix build --no-link --max-jobs 0`
 - [ ] Update `CHANGELOG.md`
 - [ ] Update `VERSION-SYNC.md`

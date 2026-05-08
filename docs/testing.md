@@ -12,7 +12,7 @@ nix build .#xen-orchestra-ce
 
 # Validate the pinned libvhdi package resolves through the published cache
 nix eval --raw .#packages.x86_64-linux.libvhdi.name
-nix path-info .#libvhdi \
+nix build --no-link --max-jobs 0 .#libvhdi \
   --option extra-substituters 'https://libvhdi-nixpkg.cachix.org' \
   --option extra-trusted-public-keys 'libvhdi-nixpkg.cachix.org-1:HvYHKZcfczn2nGfCmd7F21E/MDZrlaXtN3p9mWAZT/4='
 ```
@@ -31,7 +31,7 @@ nix build .#xen-orchestra-ce
 
 ```bash
 nix eval --raw .#packages.x86_64-linux.libvhdi.name
-nix path-info .#libvhdi \
+nix build --no-link --max-jobs 0 .#libvhdi \
   --option extra-substituters 'https://libvhdi-nixpkg.cachix.org' \
   --option extra-trusted-public-keys 'libvhdi-nixpkg.cachix.org-1:HvYHKZcfczn2nGfCmd7F21E/MDZrlaXtN3p9mWAZT/4='
 ```
@@ -46,7 +46,7 @@ nix flake check --all-systems --no-build
 
 # Optional: dry-run package build planning
 nix build .#xen-orchestra-ce --dry-run
-nix path-info .#libvhdi \
+nix build --no-link --max-jobs 0 .#libvhdi \
   --option extra-substituters 'https://libvhdi-nixpkg.cachix.org' \
   --option extra-trusted-public-keys 'libvhdi-nixpkg.cachix.org-1:HvYHKZcfczn2nGfCmd7F21E/MDZrlaXtN3p9mWAZT/4='
 ```
@@ -83,6 +83,6 @@ preFixup = ''
 
 CI currently checks:
 - package builds for `xen-orchestra-ce`
-- evaluation and cache path lookup for the pinned `libvhdi` input
+- evaluation and cache substitution for the pinned `libvhdi` input
 - `nix flake check`
 - basic binary execution smoke tests
