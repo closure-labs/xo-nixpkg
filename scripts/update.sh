@@ -54,10 +54,10 @@ fi
 
 cd "$repo_root"
 
-current_version=$(sed -n 's/.*version = "\([^"]*\)".*/\1/p' default.nix | head -n 1)
+current_version=$(nix eval --raw .#packages.x86_64-linux.xen-orchestra-ce.version)
 
 if [ -z "$current_version" ]; then
-    echo "Failed to extract current version from default.nix" >&2
+    echo "Failed to evaluate current xen-orchestra-ce version" >&2
     exit 1
 fi
 
@@ -66,8 +66,16 @@ if [ "$mode" = "release" ]; then
 
     # Get recent commits and find the latest version bump.
     version_info=$(curl -fsSL "https://api.github.com/repos/vatesfr/xen-orchestra/commits?per_page=100" | \
-        jq -r '.[] | select((.commit.message | split("\n")[0]) | test("^feat: release [0-9]+(\\.[0-9]+)+")) | {sha: .sha, message: .commit.message} | @json' | \
-        head -1)
+        jq -r '
+          .[]
+          | .commit.message as $message
+          | ($message | split("\n")[0]) as $subject
+          | ($subject | capture("^feat: release (?<version>[0-9]+(\\.[0-9]+)+)([[:space:]].*)?$")?) as $release
+          | select($release != null)
+          | {sha: .sha, subject: $subject, version: $release.version}
+          | @json
+        ' | \
+        head -n 1)
 
     if [ -z "$version_info" ] || [ "$version_info" = "null" ]; then
         echo "No version commit found in recent history" >&2
@@ -75,16 +83,15 @@ if [ "$mode" = "release" ]; then
     fi
 
     commit_sha=$(echo "$version_info" | jq -r '.sha')
-    commit_msg=$(echo "$version_info" | jq -r '.message')
-    commit_subject=$(printf '%s\n' "$commit_msg" | sed -n '1p')
-    new_version=$(printf '%s\n' "$commit_subject" | sed -nE 's/^feat: release ([0-9]+(\.[0-9]+)+).*/\1/p')
+    commit_subject=$(echo "$version_info" | jq -r '.subject')
+    new_version=$(echo "$version_info" | jq -r '.version')
 
     if [ -z "$new_version" ]; then
         echo "Failed to extract version from commit message: $commit_subject" >&2
         exit 1
     fi
 
-    echo "Found: $commit_msg"
+    echo "Found: $commit_subject"
     echo "Version: $new_version"
     echo "Commit: $commit_sha"
 else
@@ -144,7 +151,7 @@ fi
 
 new_yarn_hash=$(printf '%s\n' "$yarn_prefetch_output" | \
     sed -n 's/^[[:space:]]*got:[[:space:]]*\(sha256-[A-Za-z0-9+/=]*\).*/\1/p' | \
-    head -1)
+    head -n 1)
 
 if [ -z "$new_yarn_hash" ]; then
     echo "Failed to extract yarnOfflineCache hash from nix-build output" >&2
@@ -156,9 +163,9 @@ echo "New yarn hash: $new_yarn_hash"
 
 # Update default.nix
 if [ "$mode" = "release" ]; then
-    sed -i "s/version = \"[^\"]*\"/version = \"$new_version\"/" default.nix
+    sed -i "/pname = \"xen-orchestra-ce\";/,/src = fetchFromGitHub {/ s|^\([[:space:]]*version = \"\)[^\"]*\(\";\)$|\1$new_version\2|" default.nix
 fi
-sed -i "s/rev = \"[a-f0-9]*\"/rev = \"$commit_sha\"/" default.nix
+sed -i "/src = fetchFromGitHub {/,/};/ s|^\([[:space:]]*rev = \"\)[a-f0-9]*\(\";\)$|\1$commit_sha\2|" default.nix
 sed -i "/src = fetchFromGitHub {/,/};/ s|hash = \"[^\"]*\"|hash = \"$new_hash\"|" default.nix
 sed -i "/yarnOfflineCache = /,/};/ s|hash = \"[^\"]*\"|hash = \"$new_yarn_hash\"|" default.nix
 
