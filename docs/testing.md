@@ -12,6 +12,7 @@ nix build .#xen-orchestra-ce
 
 # Validate the pinned libvhdi package resolves through the published cache
 nix eval --raw .#packages.x86_64-linux.libvhdi.name
+nix eval --raw .#packages.x86_64-linux.libvhdi.fuseBackend
 nix build --no-link --max-jobs 0 .#libvhdi \
   --option extra-substituters 'https://libvhdi-nixpkg.cachix.org' \
   --option extra-trusted-public-keys 'libvhdi-nixpkg.cachix.org-1:HvYHKZcfczn2nGfCmd7F21E/MDZrlaXtN3p9mWAZT/4='
@@ -31,6 +32,7 @@ nix build .#xen-orchestra-ce
 
 ```bash
 nix eval --raw .#packages.x86_64-linux.libvhdi.name
+nix eval --raw .#packages.x86_64-linux.libvhdi.fuseBackend
 nix build --no-link --max-jobs 0 .#libvhdi \
   --option extra-substituters 'https://libvhdi-nixpkg.cachix.org' \
   --option extra-trusted-public-keys 'libvhdi-nixpkg.cachix.org-1:HvYHKZcfczn2nGfCmd7F21E/MDZrlaXtN3p9mWAZT/4='

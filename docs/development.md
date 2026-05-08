@@ -17,6 +17,7 @@ nix build .#xen-orchestra-ce
 
 # Validate the published libvhdi input
 nix eval --raw .#packages.x86_64-linux.libvhdi.name
+nix eval --raw .#packages.x86_64-linux.libvhdi.fuseBackend
 nix build --no-link --max-jobs 0 .#libvhdi \
   --option extra-substituters 'https://libvhdi-nixpkg.cachix.org' \
   --option extra-trusted-public-keys 'libvhdi-nixpkg.cachix.org-1:HvYHKZcfczn2nGfCmd7F21E/MDZrlaXtN3p9mWAZT/4='
@@ -72,6 +73,7 @@ nix build .#xen-orchestra-ce
 
 # Validate libvhdi input and cache availability
 nix eval --raw .#packages.x86_64-linux.libvhdi.name
+nix eval --raw .#packages.x86_64-linux.libvhdi.fuseBackend
 nix build --no-link --max-jobs 0 .#libvhdi \
   --option extra-substituters 'https://libvhdi-nixpkg.cachix.org' \
   --option extra-trusted-public-keys 'libvhdi-nixpkg.cachix.org-1:HvYHKZcfczn2nGfCmd7F21E/MDZrlaXtN3p9mWAZT/4='

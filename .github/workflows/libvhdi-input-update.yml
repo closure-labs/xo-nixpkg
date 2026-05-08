@@ -33,7 +33,7 @@ jobs:
           set -euo pipefail
 
           expected_ref="refs/tags/20251119"
-          expected_rev="7c5d0d002d88e9b14e62e8bd624cb6dea77d65a9"
+          expected_rev="c728fa206c74c8dd92cdcc4df2e545425cf148f2"
           locked_ref="$(jq -r '.nodes.libvhdi.locked.ref' flake.lock)"
           locked_rev="$(jq -r '.nodes.libvhdi.locked.rev' flake.lock)"
 
@@ -48,6 +48,7 @@ jobs:
           fi
 
           nix eval --raw .#packages.x86_64-linux.libvhdi.name
+          test "$(nix eval --raw .#packages.x86_64-linux.libvhdi.fuseBackend)" = fuse2
           nix build --no-link --max-jobs 0 .#libvhdi \
             --option extra-substituters 'https://libvhdi-nixpkg.cachix.org' \
             --option extra-trusted-public-keys 'libvhdi-nixpkg.cachix.org-1:HvYHKZcfczn2nGfCmd7F21E/MDZrlaXtN3p9mWAZT/4='

@@ -38,7 +38,7 @@
         in
         {
           xen-orchestra-ce = pkgs.callPackage ./default.nix { };
-          libvhdi = libvhdi.packages.${system}.libvhdi;
+          libvhdi = libvhdi.packages.${system}.libvhdi-fuse2;
           default = self.packages.${system}.xen-orchestra-ce;
         }
       );
