@@ -19,38 +19,7 @@
 }:
 
 let
-  platformToolTarballs = {
-    x86_64-linux = {
-      esbuild = {
-        tarball = "_esbuild_linux_x64___linux_x64_0.25.12.tgz";
-        path = "package/bin/esbuild";
-      };
-      turbo = {
-        tarball = "_turbo_linux_64___linux_64_2.9.6.tgz";
-        path = "turbo-linux-x64/bin/turbo";
-      };
-      rollup = {
-        tarball = "_rollup_rollup_linux_x64_gnu___rollup_linux_x64_gnu_4.60.1.tgz";
-        path = "package/rollup.linux-x64-gnu.node";
-        packageBase = "linux-x64-gnu";
-      };
-    };
-    aarch64-linux = {
-      esbuild = {
-        tarball = "_esbuild_linux_arm64___linux_arm64_0.25.12.tgz";
-        path = "package/bin/esbuild";
-      };
-      turbo = {
-        tarball = "_turbo_linux_arm64___linux_arm64_2.9.6.tgz";
-        path = "turbo-linux-arm64/bin/turbo";
-      };
-      rollup = {
-        tarball = "_rollup_rollup_linux_arm64_gnu___rollup_linux_arm64_gnu_4.60.1.tgz";
-        path = "package/rollup.linux-arm64-gnu.node";
-        packageBase = "linux-arm64-gnu";
-      };
-    };
-  };
+  platformToolTarballs = import ./nix/platform-tools.nix;
   platformToolTarballsForHost = platformToolTarballs.${stdenv.hostPlatform.system} or null;
 
   mkYarnCacheBinary =
@@ -109,27 +78,28 @@ let
         mkBinary = mkYarnCacheBinary yarnOfflineCache;
         mkFile = mkYarnCacheFile yarnOfflineCache;
       in
-      rec {
+      (lib.optionalAttrs ((platformToolTarballsForHost.esbuild or null) != null) {
         esbuild = mkBinary {
           pname = "esbuild-xen-orchestra";
-          version = "0.25.12";
           binaryName = "esbuild";
-          inherit (platformToolTarballsForHost.esbuild) tarball path;
+          inherit (platformToolTarballsForHost.esbuild) version tarball path;
         };
+      })
+      // (lib.optionalAttrs ((platformToolTarballsForHost.turbo or null) != null) {
         turbo = mkBinary {
           pname = "turbo-xen-orchestra";
-          version = "2.9.6";
           binaryName = "turbo";
-          inherit (platformToolTarballsForHost.turbo) tarball path;
+          inherit (platformToolTarballsForHost.turbo) version tarball path;
         };
+      })
+      // (lib.optionalAttrs ((platformToolTarballsForHost.rollup or null) != null) {
         rollupPackageBase = platformToolTarballsForHost.rollup.packageBase;
         rollupNative = mkFile {
           pname = "rollup-native-xen-orchestra";
-          version = "4.60.1";
-          fileName = "rollup.${rollupPackageBase}.node";
-          inherit (platformToolTarballsForHost.rollup) tarball path;
+          fileName = "rollup.${platformToolTarballsForHost.rollup.packageBase}.node";
+          inherit (platformToolTarballsForHost.rollup) version tarball path;
         };
-      };
+      });
 
   fetchNormalizedYarnDeps = import ./nix/fetch-normalized-yarn-deps.nix {
     inherit fetchYarnDeps;

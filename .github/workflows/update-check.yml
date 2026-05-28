@@ -54,8 +54,8 @@ jobs:
             exit 0
           fi
 
-          new_version=$(nix eval --raw .#packages.x86_64-linux.xen-orchestra-ce.version)
-          new_rev=$(nix eval --raw .#packages.x86_64-linux.xen-orchestra-ce.src.rev)
+          new_version=$(nix eval --accept-flake-config --raw .#packages.x86_64-linux.xen-orchestra-ce.version)
+          new_rev=$(nix eval --accept-flake-config --raw .#packages.x86_64-linux.xen-orchestra-ce.src.rev)
 
           if [ -z "$new_version" ] || [ -z "$new_rev" ]; then
             echo "Failed to evaluate updated version or source revision" >&2
@@ -83,7 +83,7 @@ jobs:
         if: steps.detect.outputs.update_available == 'true'
         run: |
           for attempt in 1 2 3; do
-            if nix build .#xen-orchestra-ce -L; then
+            if nix build --accept-flake-config .#xen-orchestra-ce -L; then
               exit 0
             fi
 
@@ -140,6 +140,7 @@ jobs:
             - `src.rev`
             - `src.hash`
             - `yarnOfflineCache.hash`
+            - native tool tarball metadata
 
             Upstream commit: vatesfr/xen-orchestra@${{ steps.detect.outputs.new_rev }}
 
@@ -149,6 +150,7 @@ jobs:
           branch: ${{ steps.detect.outputs.branch_name }}
           add-paths: |
             default.nix
+            nix/platform-tools.nix
           delete-branch: true
 
       - name: Report PR result

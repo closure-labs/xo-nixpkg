@@ -49,12 +49,12 @@ done
 
 if [ -z "${XO_NIXPKG_UPDATE_IN_DEV_SHELL:-}" ]; then
     export XO_NIXPKG_UPDATE_IN_DEV_SHELL=1
-    exec nix develop "$repo_root" --command bash "$script_dir/update.sh" "--$mode"
+    exec nix develop --accept-flake-config "$repo_root" --command bash "$script_dir/update.sh" "--$mode"
 fi
 
 cd "$repo_root"
 
-current_version=$(nix eval --raw .#packages.x86_64-linux.xen-orchestra-ce.version)
+current_version=$(nix eval --accept-flake-config --raw .#packages.x86_64-linux.xen-orchestra-ce.version)
 
 if [ -z "$current_version" ]; then
     echo "Failed to evaluate current xen-orchestra-ce version" >&2
@@ -115,10 +115,74 @@ new_hash=$(nix-prefetch-github vatesfr xen-orchestra --rev "$commit_sha" | jq -r
 
 echo "New source hash: $new_hash"
 
+yarn_lock_file=$(mktemp)
+trap 'rm -f "$yarn_lock_file"' EXIT
+curl -fsSL "https://raw.githubusercontent.com/vatesfr/xen-orchestra/$commit_sha/yarn.lock" -o "$yarn_lock_file"
+
+lock_version() {
+    local package="$1"
+
+    awk -v package="$package" '
+      index($0, "\"" package "@") == 1 { inEntry = 1; next }
+      inEntry && $1 == "version" {
+        gsub(/"/, "", $2)
+        print $2
+        exit
+      }
+      inEntry && /^$/ { inEntry = 0 }
+    ' "$yarn_lock_file"
+}
+
+tool_attr() {
+    local version="$1"
+    local tarball="$2"
+    local path="$3"
+    local package_base="${4:-}"
+
+    if [ -z "$version" ]; then
+        printf 'null'
+        return
+    fi
+
+    cat <<EOF
+{
+      version = "$version";
+      tarball = "$tarball";
+      path = "$path";
+$(if [ -n "$package_base" ]; then printf '      packageBase = "%s";\n' "$package_base"; fi)    }
+EOF
+}
+
+write_platform_tools_file() {
+    local esbuild_version="$1"
+    local turbo_version="$2"
+    local rollup_version="$3"
+
+    if [ -z "$turbo_version" ]; then
+        echo "Failed to find @turbo/linux-64 in upstream yarn.lock" >&2
+        exit 1
+    fi
+
+    cat > nix/platform-tools.nix <<EOF
+{
+  x86_64-linux = {
+    esbuild = $(tool_attr "$esbuild_version" "_esbuild_linux_x64___linux_x64_$esbuild_version.tgz" "package/bin/esbuild");
+    turbo = $(tool_attr "$turbo_version" "_turbo_linux_64___linux_64_$turbo_version.tgz" "turbo-linux-x64/bin/turbo");
+    rollup = $(tool_attr "$rollup_version" "_rollup_rollup_linux_x64_gnu___rollup_linux_x64_gnu_$rollup_version.tgz" "package/rollup.linux-x64-gnu.node" "linux-x64-gnu");
+  };
+  aarch64-linux = {
+    esbuild = $(tool_attr "$esbuild_version" "_esbuild_linux_arm64___linux_arm64_$esbuild_version.tgz" "package/bin/esbuild");
+    turbo = $(tool_attr "$turbo_version" "_turbo_linux_arm64___linux_arm64_$turbo_version.tgz" "turbo-linux-arm64/bin/turbo");
+    rollup = $(tool_attr "$rollup_version" "_rollup_rollup_linux_arm64_gnu___rollup_linux_arm64_gnu_$rollup_version.tgz" "package/rollup.linux-arm64-gnu.node" "linux-arm64-gnu");
+  };
+}
+EOF
+}
+
 # Get yarnOfflineCache hash from the new yarn.lock
 echo "Fetching yarnOfflineCache hash..."
 placeholder_hash="sha256-AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA="
-nixpkgs_path=$(nix eval --raw --impure --expr "(builtins.getFlake \"path:$repo_root\").inputs.nixpkgs.outPath")
+nixpkgs_path=$(nix eval --accept-flake-config --raw --impure --expr "(builtins.getFlake \"path:$repo_root\").inputs.nixpkgs.outPath")
 prefetch_expr=$(cat <<EOF
 let
   pkgs = import $nixpkgs_path {};
@@ -169,6 +233,11 @@ sed -i "/src = fetchFromGitHub {/,/};/ s|^\([[:space:]]*rev = \"\)[a-f0-9]*\(\";
 sed -i "/src = fetchFromGitHub {/,/};/ s|hash = \"[^\"]*\"|hash = \"$new_hash\"|" default.nix
 sed -i "/yarnOfflineCache = /,/};/ s|hash = \"[^\"]*\"|hash = \"$new_yarn_hash\"|" default.nix
 
+esbuild_version=$(lock_version "@esbuild/linux-x64")
+turbo_version=$(lock_version "@turbo/linux-64")
+rollup_version=$(lock_version "@rollup/rollup-linux-x64-gnu")
+write_platform_tools_file "$esbuild_version" "$turbo_version" "$rollup_version"
+
 echo ""
 if [ "$mode" = "release" ]; then
     echo "Updated default.nix to version $new_version"
@@ -178,3 +247,6 @@ else
 fi
 echo "  src.hash: $new_hash"
 echo "  yarnOfflineCache.hash: $new_yarn_hash"
+echo "  esbuild: ${esbuild_version:-not present in yarn.lock}"
+echo "  turbo: $turbo_version"
+echo "  rollup: ${rollup_version:-not present in yarn.lock}"
