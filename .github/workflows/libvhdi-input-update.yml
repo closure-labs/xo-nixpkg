@@ -50,3 +50,4 @@ jobs:
           nix eval --accept-flake-config --raw .#packages.x86_64-linux.libvhdi.name
           test "$(nix eval --accept-flake-config --raw .#packages.x86_64-linux.libvhdi.fuseBackend)" = fuse2
           nix build --accept-flake-config --no-link .#packages.x86_64-linux.libvhdi
+          nix build --accept-flake-config --no-link .#packages.x86_64-linux.libvhdi-fuse3

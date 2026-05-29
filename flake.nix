@@ -39,6 +39,8 @@
         {
           xen-orchestra-ce = pkgs.callPackage ./default.nix { };
           libvhdi = libvhdi.packages.${system}.libvhdi-fuse2;
+          libvhdi-fuse2 = libvhdi.packages.${system}.libvhdi-fuse2;
+          libvhdi-fuse3 = libvhdi.packages.${system}.libvhdi-fuse3;
           default = self.packages.${system}.xen-orchestra-ce;
         }
       );
@@ -85,6 +87,8 @@
       checks = forAllSystems (system: {
         xen-orchestra-ce = self.packages.${system}.xen-orchestra-ce;
         libvhdi = self.packages.${system}.libvhdi;
+        libvhdi-fuse2 = self.packages.${system}.libvhdi-fuse2;
+        libvhdi-fuse3 = self.packages.${system}.libvhdi-fuse3;
       });
     };
 }

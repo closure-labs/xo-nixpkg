@@ -29,10 +29,9 @@ jobs:
             extra-trusted-public-keys = libvhdi-nixpkg.cachix.org-1:HvYHKZcfczn2nGfCmd7F21E/MDZrlaXtN3p9mWAZT/4=
 
       - name: Setup Cachix (optional)
-        if: vars.CACHIX_CACHE_NAME != ''
         uses: cachix/cachix-action@v17
         with:
-          name: ${{ vars.CACHIX_CACHE_NAME }}
+          name: ${{ vars.CACHIX_CACHE_NAME || 'xen-orchestra-ce' }}
           authToken: ${{ secrets.CACHIX_AUTH_TOKEN }}
           skipPush: true
         continue-on-error: true
@@ -40,7 +39,7 @@ jobs:
       - name: Build ${{ matrix.package }}
         run: |
           for attempt in 1 2 3; do
-            if nix build .#xen-orchestra-ce -L; then
+            if nix build .#xen-orchestra-ce -o result-xen-orchestra-ce -L; then
               exit 0
             fi
 
@@ -53,9 +52,15 @@ jobs:
             sleep $((attempt * 15))
           done
 
+      - name: Build libvhdi input packages
+        run: |
+          nix build .#libvhdi-fuse2 -o result-libvhdi-fuse2 -L
+          nix build .#libvhdi-fuse3 -o result-libvhdi-fuse3 -L
+
       - name: Push ${{ matrix.package }} result to Cachix
         if: vars.CACHIX_CACHE_NAME != ''
         env:
+          CACHE_NAME: ${{ vars.CACHIX_CACHE_NAME }}
           CACHIX_AUTH_TOKEN: ${{ secrets.CACHIX_AUTH_TOKEN }}
         run: |
           set -euo pipefail
@@ -65,13 +70,31 @@ jobs:
             exit 0
           fi
 
-          out_path=$(readlink -f result)
+          out_path=$(readlink -f result-xen-orchestra-ce)
           echo "Pushing built package output: $out_path"
-          printf '%s\n' "$out_path" | cachix push "${{ vars.CACHIX_CACHE_NAME }}"
+          printf '%s\n' "$out_path" | cachix push "$CACHE_NAME"
+
+      - name: Push libvhdi input results to Cachix
+        if: vars.CACHIX_CACHE_NAME != ''
+        env:
+          CACHE_NAME: ${{ vars.CACHIX_CACHE_NAME }}
+          CACHIX_AUTH_TOKEN: ${{ secrets.CACHIX_AUTH_TOKEN }}
+        run: |
+          set -euo pipefail
+
+          if [ -z "${CACHIX_AUTH_TOKEN:-}" ]; then
+            echo "CACHIX_AUTH_TOKEN is not configured; skipping libvhdi Cachix push."
+            exit 0
+          fi
+
+          out_paths=$(readlink -f result-libvhdi-fuse2 result-libvhdi-fuse3)
+          echo "Pushing libvhdi input package outputs:"
+          printf '%s\n' "$out_paths"
+          printf '%s\n' "$out_paths" | cachix push "$CACHE_NAME"
 
       - name: Test binary execution
         run: |
-          ./result/bin/xo-server --help || echo "xo-server help output (may require runtime config)"
+          ./result-xen-orchestra-ce/bin/xo-server --help || echo "xo-server help output (may require runtime config)"
 
   checks:
     runs-on: ubuntu-latest
@@ -96,6 +119,7 @@ jobs:
           nix eval --accept-flake-config --raw .#packages.x86_64-linux.libvhdi.name
           test "$(nix eval --accept-flake-config --raw .#packages.x86_64-linux.libvhdi.fuseBackend)" = fuse2
           nix build --accept-flake-config --no-link .#packages.x86_64-linux.libvhdi
+          nix build --accept-flake-config --no-link .#packages.x86_64-linux.libvhdi-fuse3
 
   tag-release:
     runs-on: ubuntu-latest
