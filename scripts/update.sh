@@ -26,6 +26,26 @@ Modes:
 EOF
 }
 
+retry() {
+    local max_attempts="$1"
+    shift
+
+    local attempt
+    for attempt in $(seq 1 "$max_attempts"); do
+        if "$@"; then
+            return 0
+        fi
+
+        if [ "$attempt" -eq "$max_attempts" ]; then
+            echo "Command failed after $attempt attempts: $*" >&2
+            return 1
+        fi
+
+        echo "Retrying after transient failure (attempt $attempt failed): $*" >&2
+        sleep $((attempt * 15))
+    done
+}
+
 while [ "$#" -gt 0 ]; do
     case "$1" in
         --release)
@@ -65,7 +85,7 @@ if [ "$mode" = "release" ]; then
     echo "Searching for latest version commit in xen-orchestra..."
 
     # Get recent commits and find the latest version bump.
-    version_info=$(curl -fsSL "https://api.github.com/repos/vatesfr/xen-orchestra/commits?per_page=100" | \
+    version_info=$(retry 3 curl -fsSL "https://api.github.com/repos/vatesfr/xen-orchestra/commits?per_page=100" | \
         jq -r '
           .[]
           | .commit.message as $message
@@ -97,7 +117,7 @@ if [ "$mode" = "release" ]; then
 else
     echo "Resolving latest upstream source commit from $upstream_remote $upstream_ref..."
 
-    commit_sha=$(git ls-remote "$upstream_remote" "$upstream_ref" | awk 'NR == 1 { print $1 }')
+    commit_sha=$(retry 3 git ls-remote "$upstream_remote" "$upstream_ref" | awk 'NR == 1 { print $1 }')
     new_version="$current_version"
 
     if [ -z "$commit_sha" ]; then
@@ -111,13 +131,13 @@ fi
 
 # Get the new source hash
 echo "Fetching source hash..."
-new_hash=$(nix-prefetch-github vatesfr xen-orchestra --rev "$commit_sha" | jq -r '.hash')
+new_hash=$(retry 3 nix-prefetch-github vatesfr xen-orchestra --rev "$commit_sha" | jq -r '.hash')
 
 echo "New source hash: $new_hash"
 
 yarn_lock_file=$(mktemp)
 trap 'rm -f "$yarn_lock_file"' EXIT
-curl -fsSL "https://raw.githubusercontent.com/vatesfr/xen-orchestra/$commit_sha/yarn.lock" -o "$yarn_lock_file"
+retry 3 curl -fsSL "https://raw.githubusercontent.com/vatesfr/xen-orchestra/$commit_sha/yarn.lock" -o "$yarn_lock_file"
 
 lock_version() {
     local package="$1"
