@@ -6,7 +6,22 @@
 ```bash
 git clone ssh://git@codeberg.org/NiXOA/xen-orchestra-ce.git
 cd xen-orchestra-ce
-nix develop
+nix develop --accept-flake-config --impure
+```
+
+This repository uses `devenv` through the flake `devShells` output. The shell
+includes Node.js 22, Yarn classic, TypeScript tooling, Nix tooling, native Node
+build helpers, and a Valkey-backed Redis-compatible service.
+
+```bash
+# Start configured services, including Valkey on 127.0.0.1
+devenv up
+
+# Shell-provided helper scripts
+build-xo
+check-eval
+update-release
+update-upstream
 ```
 
 ## Build and Evaluate
@@ -23,7 +38,7 @@ nix build --no-link --max-jobs 0 .#libvhdi \
   --option extra-trusted-public-keys 'libvhdi-nixpkg.cachix.org-1:HvYHKZcfczn2nGfCmd7F21E/MDZrlaXtN3p9mWAZT/4='
 
 # Evaluate flake outputs on all declared systems
-nix flake check --all-systems --no-build
+nix flake check --accept-flake-config --all-systems --no-build --impure
 ```
 
 ## Updating xen-orchestra-ce
@@ -35,7 +50,7 @@ latest upstream release commit.
 ./scripts/update.sh --release
 
 # Validate after update
-nix flake check --all-systems --no-build
+nix flake check --accept-flake-config --all-systems --no-build --impure
 ```
 
 The script updates:
@@ -61,7 +76,7 @@ release tag in `flake.nix`, then refresh the lock file.
 
 ```bash
 nix flake lock --update-input libvhdi
-nix flake check --all-systems --no-build
+nix flake check --accept-flake-config --all-systems --no-build --impure
 ```
 
 ## Testing
@@ -100,6 +115,6 @@ Then:
 ## Release Workflow
 
 1. Update `CHANGELOG.md`.
-2. Confirm `nix flake check --all-systems --no-build` passes.
+2. Confirm `nix flake check --accept-flake-config --all-systems --no-build --impure` passes.
 3. Commit and push.
 4. Tag release if needed.

@@ -3,15 +3,18 @@
 
   nixConfig = {
     extra-substituters = [
+      "https://devenv.cachix.org"
       "https://libvhdi-nixpkg.cachix.org"
     ];
     extra-trusted-public-keys = [
+      "devenv.cachix.org-1:w1cLUi8dv3hnoSPGAuibQv+f9TZLr6cv/Hm9XgU50cw="
       "libvhdi-nixpkg.cachix.org-1:HvYHKZcfczn2nGfCmd7F21E/MDZrlaXtN3p9mWAZT/4="
     ];
   };
 
   inputs = {
     nixpkgs.url = "github:NixOS/nixpkgs/nixos-unstable";
+    devenv.url = "github:cachix/devenv";
     libvhdi = {
       url = "git+https://github.com/declarative-dale/libvhdi-nixpkg.git?ref=refs/tags/20251119";
       inputs.nixpkgs.follows = "nixpkgs";
@@ -22,13 +25,22 @@
     {
       self,
       nixpkgs,
+      devenv,
       libvhdi,
-    }:
+      ...
+    }@inputs:
     let
       supportedSystems = [
         "x86_64-linux"
       ];
+      devShellSystems = [
+        "x86_64-linux"
+        "aarch64-linux"
+        "x86_64-darwin"
+        "aarch64-darwin"
+      ];
       forAllSystems = nixpkgs.lib.genAttrs supportedSystems;
+      forAllDevShellSystems = nixpkgs.lib.genAttrs devShellSystems;
     in
     {
       packages = forAllSystems (
@@ -45,44 +57,13 @@
         }
       );
 
-      devShells = forAllSystems (
-        system:
-        let
+      devShells = forAllDevShellSystems (system: {
+        default = devenv.lib.mkShell {
+          inherit inputs;
           pkgs = nixpkgs.legacyPackages.${system};
-        in
-        {
-          default = pkgs.mkShell {
-            name = "xen-orchestra-ce-dev";
-            packages = with pkgs; [
-              curl
-              gnused
-              nix-prefetch-github
-              nix-prefetch
-              nixfmt
-              nix-update
-              git
-              jq
-            ];
-            shellHook = ''
-              echo "Xen Orchestra CE development shell"
-              echo ""
-              echo "Build packages:"
-              echo "  nix build .#xen-orchestra-ce"
-              echo "  nix eval --raw .#packages.${system}.libvhdi.name"
-              echo ""
-              echo "Update xen-orchestra-ce release sources:"
-              echo "  ./scripts/update.sh --release"
-              echo ""
-              echo "Update xen-orchestra-ce latest upstream sources:"
-              echo "  ./scripts/update.sh --upstream"
-              echo ""
-              echo "Bump libvhdi-nixpkg release tag:"
-              echo "  edit inputs.libvhdi.url in flake.nix"
-              echo "  nix flake lock --update-input libvhdi"
-            '';
-          };
-        }
-      );
+          modules = [ ./devenv.nix ];
+        };
+      });
 
       checks = forAllSystems (system: {
         xen-orchestra-ce = self.packages.${system}.xen-orchestra-ce;
