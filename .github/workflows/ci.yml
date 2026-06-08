@@ -112,7 +112,7 @@ jobs:
             extra-trusted-public-keys = libvhdi-nixpkg.cachix.org-1:HvYHKZcfczn2nGfCmd7F21E/MDZrlaXtN3p9mWAZT/4=
 
       - name: Run flake checks
-        run: nix flake check --accept-flake-config --no-build
+        run: nix flake check --accept-flake-config --no-build --impure
 
       - name: Validate libvhdi input
         run: |
