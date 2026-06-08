@@ -111,6 +111,9 @@ jobs:
             extra-substituters = https://libvhdi-nixpkg.cachix.org
             extra-trusted-public-keys = libvhdi-nixpkg.cachix.org-1:HvYHKZcfczn2nGfCmd7F21E/MDZrlaXtN3p9mWAZT/4=
 
+      - name: Realize dev shell inputs
+        run: nix develop --accept-flake-config --impure . --command true
+
       - name: Run flake checks
         run: nix flake check --accept-flake-config --no-build --impure
 
