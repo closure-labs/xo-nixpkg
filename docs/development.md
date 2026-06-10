@@ -24,6 +24,11 @@ update-release
 update-upstream
 ```
 
+The interactive `devenv` shell uses the live checkout as `DEVENV_ROOT`, so
+commands that evaluate that shell need `--impure`. CI and updater automation do
+not use `devenv`; the update script enters the pure `.#updater` shell
+automatically.
+
 ## Build and Evaluate
 
 ```bash
@@ -39,12 +44,16 @@ nix build --no-link --max-jobs 0 .#libvhdi \
 
 # Evaluate flake outputs on all declared systems
 nix flake check --accept-flake-config --all-systems --no-build --impure
+
+# Pure CI-style evaluation without the interactive devenv shell
+nix eval --accept-flake-config --json .#checks.x86_64-linux --apply builtins.attrNames
 ```
 
 ## Updating xen-orchestra-ce
 
 Use the updater script to refresh version and hashes in `default.nix` from the
-latest upstream release commit.
+latest upstream release commit. The script enters the pure `.#updater` shell
+when needed.
 
 ```bash
 ./scripts/update.sh --release

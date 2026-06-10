@@ -57,13 +57,36 @@
         }
       );
 
-      devShells = forAllDevShellSystems (system: {
-        default = devenv.lib.mkShell {
-          inherit inputs;
+      devShells = forAllDevShellSystems (
+        system:
+        let
           pkgs = nixpkgs.legacyPackages.${system};
-          modules = [ ./devenv.nix ];
-        };
-      });
+        in
+        {
+          default = devenv.lib.mkShell {
+            inherit inputs pkgs;
+            modules = [ ./devenv.nix ];
+          };
+
+          updater = pkgs.mkShellNoCC {
+            packages = with pkgs; [
+              coreutils
+              curl
+              gawk
+              git
+              gnugrep
+              gnused
+              jq
+              nix-prefetch
+              nix-prefetch-github
+              nix-update
+            ];
+
+            XO_NIXPKG_NIXPKGS_PATH = nixpkgs.outPath;
+            XO_NIXPKG_UPDATE_IN_DEV_SHELL = "1";
+          };
+        }
+      );
 
       checks = forAllSystems (system: {
         xen-orchestra-ce = self.packages.${system}.xen-orchestra-ce;

@@ -111,11 +111,12 @@ jobs:
             extra-substituters = https://libvhdi-nixpkg.cachix.org
             extra-trusted-public-keys = libvhdi-nixpkg.cachix.org-1:HvYHKZcfczn2nGfCmd7F21E/MDZrlaXtN3p9mWAZT/4=
 
-      - name: Realize dev shell inputs
-        run: nix develop --accept-flake-config --impure . --command true
-
-      - name: Run flake checks
-        run: nix flake check --accept-flake-config --no-build --impure
+      - name: Evaluate package and check outputs
+        run: |
+          nix eval --accept-flake-config --json .#checks.x86_64-linux --apply builtins.attrNames
+          nix eval --accept-flake-config --raw .#packages.x86_64-linux.xen-orchestra-ce.name
+          nix eval --accept-flake-config --raw .#packages.x86_64-linux.libvhdi.name
+          nix eval --accept-flake-config --raw .#packages.x86_64-linux.libvhdi-fuse3.name
 
       - name: Validate libvhdi input
         run: |

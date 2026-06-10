@@ -69,7 +69,7 @@ done
 
 if [ -z "${XO_NIXPKG_UPDATE_IN_DEV_SHELL:-}" ]; then
     export XO_NIXPKG_UPDATE_IN_DEV_SHELL=1
-    exec nix develop --accept-flake-config --impure "$repo_root" --command bash "$script_dir/update.sh" "--$mode"
+    exec nix develop --accept-flake-config "$repo_root#updater" --command bash "$script_dir/update.sh" "--$mode"
 fi
 
 cd "$repo_root"
@@ -202,7 +202,11 @@ EOF
 # Get yarnOfflineCache hash from the new yarn.lock
 echo "Fetching yarnOfflineCache hash..."
 placeholder_hash="sha256-AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA="
-nixpkgs_path=$(nix eval --accept-flake-config --raw --impure --expr "(builtins.getFlake \"path:$repo_root\").inputs.nixpkgs.outPath")
+if [ -z "${XO_NIXPKG_NIXPKGS_PATH:-}" ]; then
+    echo "XO_NIXPKG_NIXPKGS_PATH is not set; run this script through the .#updater shell" >&2
+    exit 1
+fi
+nixpkgs_path="$XO_NIXPKG_NIXPKGS_PATH"
 prefetch_expr=$(cat <<EOF
 let
   pkgs = import $nixpkgs_path {};
