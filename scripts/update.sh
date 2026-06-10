@@ -69,7 +69,7 @@ done
 
 if [ -z "${XO_NIXPKG_UPDATE_IN_DEV_SHELL:-}" ]; then
     export XO_NIXPKG_UPDATE_IN_DEV_SHELL=1
-    exec nix develop --accept-flake-config "$repo_root" --command bash "$script_dir/update.sh" "--$mode"
+    exec nix develop --accept-flake-config --impure "$repo_root" --command bash "$script_dir/update.sh" "--$mode"
 fi
 
 cd "$repo_root"
