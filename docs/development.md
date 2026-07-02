@@ -54,6 +54,9 @@ nix eval --accept-flake-config --json .#checks.x86_64-linux --apply builtins.att
 Use the updater script to refresh version and hashes in `default.nix` from the
 latest upstream release commit. The script enters the pure `.#updater` shell
 when needed.
+Release discovery scans paginated upstream commit history and stops early when
+the package already points at the latest release commit. Set
+`XO_NIXPKG_RELEASE_SCAN_PAGES` to override the default scan depth.
 
 ```bash
 ./scripts/update.sh --release

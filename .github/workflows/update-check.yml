@@ -40,6 +40,8 @@ jobs:
         continue-on-error: true
 
       - name: Run updater script
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
         run: |
           chmod +x ./scripts/update.sh
           ./scripts/update.sh --release
