@@ -88,11 +88,21 @@
         }
       );
 
-      checks = forAllSystems (system: {
-        xen-orchestra-ce = self.packages.${system}.xen-orchestra-ce;
-        libvhdi = self.packages.${system}.libvhdi;
-        libvhdi-fuse2 = self.packages.${system}.libvhdi-fuse2;
-        libvhdi-fuse3 = self.packages.${system}.libvhdi-fuse3;
-      });
+      checks = forAllSystems (
+        system:
+        let
+          pkgs = nixpkgs.legacyPackages.${system};
+        in
+        {
+          xen-orchestra-ce = self.packages.${system}.xen-orchestra-ce;
+          xo-server-service = import ./nix/tests/xo-server-service.nix {
+            inherit pkgs;
+            xen-orchestra-ce = self.packages.${system}.xen-orchestra-ce;
+          };
+          libvhdi = self.packages.${system}.libvhdi;
+          libvhdi-fuse2 = self.packages.${system}.libvhdi-fuse2;
+          libvhdi-fuse3 = self.packages.${system}.libvhdi-fuse3;
+        }
+      );
     };
 }

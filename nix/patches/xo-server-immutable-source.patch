@@ -1,0 +1,21 @@
+diff --git a/packages/xo-server/src/index.mjs b/packages/xo-server/src/index.mjs
+--- a/packages/xo-server/src/index.mjs
++++ b/packages/xo-server/src/index.mjs
+@@ -28 +27,0 @@
+-import { execFile } from 'node:child_process'
+@@ -950,15 +948,0 @@
+-  try {
+-    const actual = (
+-      await fromCallback(execFile, 'git', ['rev-parse', '--short', 'HEAD'], {
+-        cwd: new URL('.', import.meta.url),
+-      })
+-    )
+-      .toString()
+-      .trim()
+-    const expected = __GIT_COMMIT__
+-    if (actual !== expected) {
+-      log.warn('build is outdated, source has changed since last build, please rebuild', { actual, expected })
+-    }
+-  } catch (error) {
+-    log.warn('could not detect current commit', { error })
+-  }

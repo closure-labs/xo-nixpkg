@@ -5,10 +5,8 @@
   fetchYarnDeps,
   yarn,
   yarnConfigHook,
-  yarnBuildHook,
   writableTmpDirAsHomeHook,
   nodejs_22,
-  git,
   python3,
   node-gyp,
   pkg-config,
@@ -113,10 +111,6 @@ let
     nodejs = nodejs_22;
     yarn = yarn';
   };
-  yarnBuildHook' = yarnBuildHook.override {
-    nodejs = nodejs_22;
-    yarn = yarn';
-  };
 in
 stdenv.mkDerivation (
   finalAttrs:
@@ -146,13 +140,13 @@ stdenv.mkDerivation (
       hash = "sha256-v5h1lb7zlW926EKpjK+c5CTtqczvgMDZhyQzkWdattE=";
     };
 
+    patches = [ ./nix/patches/xo-server-immutable-source.patch ];
+
     nativeBuildInputs = [
       writableTmpDirAsHomeHook
       yarn'
       yarnConfigHook'
-      yarnBuildHook'
       nodejs_22
-      git
       python3
       node-gyp
       pkg-config
@@ -193,16 +187,6 @@ stdenv.mkDerivation (
       TURBO_BINARY_PATH = "${platformTools.turbo}/bin/turbo";
     };
 
-    yarnInstallFlags = [
-      "--offline"
-      "--frozen-lockfile"
-      "--non-interactive"
-      "--ignore-engines"
-      "--production=false"
-    ];
-
-    yarnFlags = finalAttrs.yarnInstallFlags;
-
     postPatch = ''
       # Keep yarnConfigHook's source/cache lockfile validation aligned with the
       # normalized tarball checksums above.
@@ -214,22 +198,15 @@ stdenv.mkDerivation (
       substituteInPlace package.json \
         --replace-fail " && yarn build:doc" ""
 
-      # Patch SMB handler to include missing createReadStream import
-      if [ -f packages/xo-server/src/xo-mixins/storage/smb.js ] \
-        && grep -q "const { join } = require('path')" packages/xo-server/src/xo-mixins/storage/smb.js; then
-        substituteInPlace packages/xo-server/src/xo-mixins/storage/smb.js \
-          --replace-fail "const { join } = require('path')" \
-                         "const { join } = require('path'); const { createReadStream } = require('fs')"
-      fi
-
-      # Fix missing createReadStream import in FS module
-      if [ -f @xen-orchestra/fs/src/index.js ] \
-        && grep -q "const { asyncIterableToStream }" @xen-orchestra/fs/src/index.js \
-        && ! grep -q "createReadStream" @xen-orchestra/fs/src/index.js; then
-        substituteInPlace @xen-orchestra/fs/src/index.js \
-          --replace-fail "const { asyncIterableToStream } = require('./_asyncIterableToStream')" \
-                         "const { createReadStream } = require('node:fs');\nconst { asyncIterableToStream } = require('./_asyncIterableToStream')"
-      fi
+      # Provide the immutable source revision without synthesizing a partial
+      # Git repository for xo-web's build script.
+      substituteInPlace packages/xo-web/package.json \
+        --replace-fail 'GIT_HEAD=$(git rev-parse HEAD)' \
+                       'GIT_HEAD=${finalAttrs.src.rev}'
+      substituteInPlace packages/xo-server/.babelrc.cjs \
+        --replace-fail "const { execFileSync } = require('node:child_process')" "" \
+        --replace-fail "execFileSync('git', ['rev-parse', '--short', 'HEAD']).toString().trim()" \
+                       "'${builtins.substring 0 7 finalAttrs.src.rev}'"
 
       # TypeScript in newer toolchains infers `Object.entries()` values as unknown.
       # Coerce labels to string for xo-server-openmetrics build compatibility.
@@ -240,23 +217,10 @@ stdenv.mkDerivation (
                          "labels[key] = typeof value === 'string' ? value : String(value)"
       fi
 
-      # Create minimal .git directory for git rev-parse during build
-      if [ ! -e .git ]; then
-        mkdir -p .git/objects .git/refs
-        cat > .git/config <<EOF
-      [core]
-          repositoryformatversion = 0
-          filemode = true
-          bare = false
-      EOF
-        echo "${finalAttrs.src.rev}" > .git/HEAD
-      fi
     '';
 
     preBuild = ''
               set -euo pipefail
-
-              patchShebangs node_modules
 
               vue_tsc_target="$(readlink -f node_modules/.bin/vue-tsc 2>/dev/null || true)"
               if [ -z "$vue_tsc_target" ]; then

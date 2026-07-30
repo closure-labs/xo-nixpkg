@@ -79,9 +79,8 @@ jobs:
           printf '%s\n' "$out_paths"
           printf '%s\n' "$out_paths" | cachix push "$CACHE_NAME"
 
-      - name: Test binary execution
-        run: |
-          ./result-xen-orchestra-ce/bin/xo-server --help || echo "xo-server help output (may require runtime config)"
+      - name: Smoke test xo-server systemd service
+        run: nix build --accept-flake-config .#checks.x86_64-linux.xo-server-service -L
 
   checks:
     runs-on: ubuntu-latest
