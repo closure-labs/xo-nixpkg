@@ -48,18 +48,11 @@ jobs:
           skipPush: true
         continue-on-error: true
 
-      - name: Select latest-upstream base
+      - name: Configure updater commit
         if: steps.app_token.outcome == 'success'
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-
-          if git ls-remote --exit-code --tags origin latest-upstream >/dev/null 2>&1; then
-            git fetch --force origin refs/tags/latest-upstream:refs/tags/latest-upstream
-            git switch -c latest-upstream-work refs/tags/latest-upstream
-          else
-            git switch -c latest-upstream-work
-          fi
 
       - name: Update package to upstream HEAD
         if: steps.app_token.outcome == 'success'
@@ -73,7 +66,7 @@ jobs:
           tag_commit=$(git rev-parse -q --verify refs/tags/latest-upstream 2>/dev/null || true)
           head_commit=$(git rev-parse HEAD)
 
-          if git diff --quiet -- default.nix; then
+          if git diff --quiet -- default.nix nix/platform-tools.nix; then
             changed=false
           else
             changed=true
@@ -94,20 +87,7 @@ jobs:
 
       - name: Validate latest upstream package
         if: steps.app_token.outcome == 'success' && steps.update.outputs.update_needed == 'true'
-        run: |
-          for attempt in 1 2 3; do
-            if nix build .#xen-orchestra-ce -L; then
-              exit 0
-            fi
-
-            if [ "$attempt" -eq 3 ]; then
-              echo "xen-orchestra-ce upstream build failed after $attempt attempts" >&2
-              exit 1
-            fi
-
-            echo "Retrying xen-orchestra-ce upstream build after transient failure (attempt $attempt failed)..." >&2
-            sleep $((attempt * 15))
-          done
+        run: nix build --accept-flake-config .#xen-orchestra-ce -L
 
       - name: Push latest upstream result to Cachix
         if: steps.app_token.outcome == 'success' && steps.update.outputs.update_needed == 'true' && vars.CACHIX_CACHE_NAME != ''
@@ -129,7 +109,7 @@ jobs:
         if: steps.app_token.outcome == 'success' && steps.update.outputs.update_needed == 'true'
         run: |
           if [ "${{ steps.update.outputs.changed }}" = "true" ]; then
-            git add default.nix
+            git add default.nix nix/platform-tools.nix
             git commit -m "xen-orchestra-ce: track upstream ${{ steps.update.outputs.short_rev }}"
           fi
 

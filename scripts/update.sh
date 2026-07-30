@@ -283,13 +283,31 @@ fetchNormalizedYarnDeps {
 EOF
 )
 
+docs_prefetch_expr=$(cat <<EOF
+let
+  pkgs = import $nixpkgs_path {};
+  src = pkgs.fetchFromGitHub {
+    owner = "vatesfr";
+    repo = "xen-orchestra";
+    rev = "$commit_sha";
+    hash = "$new_hash";
+  };
+in
+pkgs.fetchYarnDeps {
+  yarnLock = src + "/docs/yarn.lock";
+  hash = "$placeholder_hash";
+}
+EOF
+)
+
 prefetch_yarn_hash() {
+    local expression="$1"
     local yarn_prefetch_output
     local yarn_prefetch_status
     local yarn_hash
 
     set +e
-    yarn_prefetch_output=$(nix-build --no-out-link -E "$prefetch_expr" 2>&1)
+    yarn_prefetch_output=$(nix-build --no-out-link -E "$expression" 2>&1)
     yarn_prefetch_status=$?
     set -e
 
@@ -312,9 +330,11 @@ prefetch_yarn_hash() {
     return 1
 }
 
-new_yarn_hash=$(retry 5 prefetch_yarn_hash)
+new_yarn_hash=$(retry 5 prefetch_yarn_hash "$prefetch_expr")
+new_docs_yarn_hash=$(retry 5 prefetch_yarn_hash "$docs_prefetch_expr")
 
 echo "New yarn hash: $new_yarn_hash"
+echo "New docs yarn hash: $new_docs_yarn_hash"
 
 # Update default.nix
 if [ "$mode" = "release" ]; then
@@ -323,6 +343,7 @@ fi
 sed -i "/src = fetchFromGitHub {/,/};/ s|^\([[:space:]]*rev = \"\)[a-f0-9]*\(\";\)$|\1$commit_sha\2|" default.nix
 sed -i "/src = fetchFromGitHub {/,/};/ s|hash = \"[^\"]*\"|hash = \"$new_hash\"|" default.nix
 sed -i "/yarnOfflineCache = /,/};/ s|hash = \"[^\"]*\"|hash = \"$new_yarn_hash\"|" default.nix
+sed -i "/docsYarnOfflineCache = /,/};/ s|hash = \"[^\"]*\"|hash = \"$new_docs_yarn_hash\"|" default.nix
 
 esbuild_version=$(lock_version "@esbuild/linux-x64")
 turbo_version=$(lock_version "@turbo/linux-64")
@@ -338,6 +359,7 @@ else
 fi
 echo "  src.hash: $new_hash"
 echo "  yarnOfflineCache.hash: $new_yarn_hash"
+echo "  docsYarnOfflineCache.hash: $new_docs_yarn_hash"
 echo "  esbuild: ${esbuild_version:-not present in yarn.lock}"
 echo "  turbo: $turbo_version"
 echo "  rollup: ${rollup_version:-not present in yarn.lock}"

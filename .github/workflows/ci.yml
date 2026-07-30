@@ -37,20 +37,7 @@ jobs:
         continue-on-error: true
 
       - name: Build ${{ matrix.package }}
-        run: |
-          for attempt in 1 2 3; do
-            if nix build .#xen-orchestra-ce -o result-xen-orchestra-ce -L; then
-              exit 0
-            fi
-
-            if [ "$attempt" -eq 3 ]; then
-              echo "xen-orchestra-ce build failed after $attempt attempts" >&2
-              exit 1
-            fi
-
-            echo "Retrying xen-orchestra-ce build after transient failure (attempt $attempt failed)..." >&2
-            sleep $((attempt * 15))
-          done
+        run: nix build --accept-flake-config .#xen-orchestra-ce -o result-xen-orchestra-ce -L
 
       - name: Build libvhdi input packages
         run: |

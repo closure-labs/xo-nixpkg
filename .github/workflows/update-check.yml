@@ -51,7 +51,7 @@ jobs:
         run: |
           set -euo pipefail
 
-          if git diff --quiet -- default.nix; then
+          if git diff --quiet -- default.nix nix/platform-tools.nix; then
             echo "update_available=false" >> "$GITHUB_OUTPUT"
             exit 0
           fi
@@ -83,20 +83,7 @@ jobs:
 
       - name: Validate updated package
         if: steps.detect.outputs.update_available == 'true'
-        run: |
-          for attempt in 1 2 3; do
-            if nix build --accept-flake-config .#xen-orchestra-ce -L; then
-              exit 0
-            fi
-
-            if [ "$attempt" -eq 3 ]; then
-              echo "xen-orchestra-ce update validation failed after $attempt attempts" >&2
-              exit 1
-            fi
-
-            echo "Retrying xen-orchestra-ce update validation after transient failure (attempt $attempt failed)..." >&2
-            sleep $((attempt * 15))
-          done
+        run: nix build --accept-flake-config .#xen-orchestra-ce -L
 
       - name: Push validated package result to Cachix
         if: steps.detect.outputs.update_available == 'true' && (github.event_name != 'workflow_dispatch' || github.event.inputs.dry_run != 'true') && vars.CACHIX_CACHE_NAME != ''

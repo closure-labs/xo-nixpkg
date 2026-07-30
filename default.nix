@@ -125,20 +125,25 @@ stdenv.mkDerivation (
   in
   {
     pname = "xen-orchestra-ce";
-    version = "6.6.2";
+    version = "6.7.0";
 
     # Xen Orchestra doesn't use git tags for releases; versions are indicated
     # in commit messages like "feat: release 6.3.3".
     src = fetchFromGitHub {
       owner = "vatesfr";
       repo = "xen-orchestra";
-      rev = "1d82c373dadcdb11b779ff85eea700d678429511";
-      hash = "sha256-4EWNtiPQTkBkpjGIUvXgCQcli4XLi9hHWHvkLKKjj7s=";
+      rev = "1a795970f9c60396967d9510e3d2a29b56f2da1d";
+      hash = "sha256-myMFRgZeZCXcyQHYcoucEFSOuCNzHXiWua3ciuH5jds=";
     };
 
     yarnOfflineCache = fetchNormalizedYarnDeps {
       yarnLock = "${finalAttrs.src}/yarn.lock";
-      hash = "sha256-CwAA0XmHclUWPFwJSHlqNLTKH2wWYNS8xcKTXvs1Rlc=";
+      hash = "sha256-8qv/ak3fYY2ODpWN3WZO5wrXokiK6CH8vGq49cmZlvA=";
+    };
+
+    docsYarnOfflineCache = fetchYarnDeps {
+      yarnLock = "${finalAttrs.src}/docs/yarn.lock";
+      hash = "sha256-v5h1lb7zlW926EKpjK+c5CTtqczvgMDZhyQzkWdattE=";
     };
 
     nativeBuildInputs = [
@@ -202,6 +207,12 @@ stdenv.mkDerivation (
       # Keep yarnConfigHook's source/cache lockfile validation aligned with the
       # normalized tarball checksums above.
       cp ${finalAttrs.yarnOfflineCache}/yarn.lock yarn.lock
+      cp ${finalAttrs.docsYarnOfflineCache}/yarn.lock docs/yarn.lock
+
+      # Build the root workspaces and documentation from their independent
+      # Yarn lockfiles/caches.
+      substituteInPlace package.json \
+        --replace-fail " && yarn build:doc" ""
 
       # Patch SMB handler to include missing createReadStream import
       if [ -f packages/xo-server/src/xo-mixins/storage/smb.js ] \
@@ -246,6 +257,17 @@ stdenv.mkDerivation (
               set -euo pipefail
 
               patchShebangs node_modules
+
+              vue_tsc_target="$(readlink -f node_modules/.bin/vue-tsc 2>/dev/null || true)"
+              if [ -z "$vue_tsc_target" ]; then
+                echo "ERROR: Cannot find vue-tsc in node_modules/.bin" >&2
+                exit 1
+              fi
+
+              mkdir -p @xen-orchestra/web/node_modules/.bin
+              rm -f @xen-orchestra/web/node_modules/.bin/vue-tsc
+              makeWrapper ${nodejs_22}/bin/node @xen-orchestra/web/node_modules/.bin/vue-tsc \
+                --add-flags "$vue_tsc_target"
 
           if [ -f node_modules/fuse-shared-library-linux/index.js ]; then
             node -e '
@@ -339,39 +361,31 @@ stdenv.mkDerivation (
                                    "extend    = Object.assign,"
                 fi
 
-                vite_target="$(readlink -f node_modules/.bin/vite 2>/dev/null || true)"
-                vue_tsc_target="$(readlink -f node_modules/.bin/vue-tsc 2>/dev/null || true)"
-
-                if [ -z "$vite_target" ]; then
-                  echo "ERROR: Cannot find vite in node_modules/.bin" >&2
-                  exit 1
-                fi
-                if [ -z "$vue_tsc_target" ]; then
-                  echo "ERROR: Cannot find vue-tsc in node_modules/.bin" >&2
-                  exit 1
-                fi
-
-                mkToolWrappers() {
-                  local pkg="$1"
-          [ -d "$pkg" ] || return 0
-
-          mkdir -p "$pkg/node_modules/.bin"
-
-          makeWrapper ${nodejs_22}/bin/node "$pkg/node_modules/.bin/vite" \
-            --add-flags "$vite_target"
-
-          makeWrapper ${nodejs_22}/bin/node "$pkg/node_modules/.bin/vue-tsc" \
-            --add-flags "$vue_tsc_target"
-        }
-
-                mkToolWrappers "@xen-orchestra/web"
-                mkToolWrappers "packages/xo-web"
-                mkToolWrappers "xo-web"
     '';
 
     buildPhase = ''
       runHook preBuild
       TURBO_CONCURRENCY=1 yarn --offline run build
+
+      (
+        cd docs
+        export HOME="$(mktemp -d)"
+        yarn config --offline set yarn-offline-mirror "${finalAttrs.docsYarnOfflineCache}"
+        fixup-yarn-lock yarn.lock
+        yarn install \
+          --frozen-lockfile \
+          --force \
+          --production=false \
+          --ignore-engines \
+          --ignore-platform \
+          --ignore-scripts \
+          --no-progress \
+          --non-interactive \
+          --offline
+        patchShebangs node_modules
+        yarn --offline run build:xo-server
+      )
+
       runHook postBuild
     '';
 
@@ -388,6 +402,9 @@ stdenv.mkDerivation (
           cp -a "$dir" $out/libexec/xen-orchestra/
         fi
       done
+
+      mkdir -p $out/libexec/xen-orchestra/docs
+      cp -a docs/build-embed $out/libexec/xen-orchestra/docs/
 
       makeWrapper ${nodejs_22}/bin/node $out/bin/xo-server \
         --chdir $out/libexec/xen-orchestra \
