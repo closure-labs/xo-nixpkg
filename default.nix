@@ -126,18 +126,18 @@ stdenv.mkDerivation (
     src = fetchFromGitHub {
       owner = "vatesfr";
       repo = "xen-orchestra";
-      rev = "40dede9e11c90562df5cb46c6a83a9d91efedae1";
-      hash = "sha256-hVQvMFLeBWrxQNQwjEVuvmO5sMIMCIgSq/BxVmAz2gI=";
+      rev = "4235644950555ed5637f2352b684aaba398e61de";
+      hash = "sha256-6xz2eskDpIwI+8mJsNZ+39tY/bT/ILbDtz9DEfjz+sQ=";
     };
 
     yarnOfflineCache = fetchNormalizedYarnDeps {
       yarnLock = "${finalAttrs.src}/yarn.lock";
-      hash = "sha256-8qv/ak3fYY2ODpWN3WZO5wrXokiK6CH8vGq49cmZlvA=";
+      hash = "sha256-EXfNtQuQZWknIBwaXyrZjxOoNq6e8/wRk678tBm5pwQ=";
     };
 
     docsYarnOfflineCache = fetchYarnDeps {
       yarnLock = "${finalAttrs.src}/docs/yarn.lock";
-      hash = "sha256-v5h1lb7zlW926EKpjK+c5CTtqczvgMDZhyQzkWdattE=";
+      hash = "sha256-g/rB7fqBHgv94XI3OakCIaebzNe6pyK6Wmlx0cLWNSk=";
     };
 
     patches = [ ./nix/patches/xo-server-immutable-source.patch ];
