@@ -36,7 +36,6 @@ let
     gnused
     jq
     nix
-    nix-prefetch-github
   ];
 in
 rec {

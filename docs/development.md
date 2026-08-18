@@ -39,11 +39,11 @@ nix eval --accept-flake-config --json .#checks.x86_64-linux --apply builtins.att
 
 ## Updating xen-orchestra-ce
 
-Use the flake updater application to refresh version and hashes in `default.nix`
+Use the flake updater application to refresh the declarative XO source lock
 from the latest upstream release commit. Nix supplies every updater dependency.
-Release discovery scans paginated upstream commit history and stops early when
-the package already points at the latest release commit. Set
-`XO_NIXPKG_RELEASE_SCAN_PAGES` to override the default scan depth.
+Discovery searches commits that changed upstream's root `CHANGELOG.md` and
+accepts only unscoped `feat: release VERSION` markers. Scoped `feat(lite):`
+commits and XO Lite tags belong to a separate upstream product and are ignored.
 
 ```bash
 nix run .#update-xo-release
@@ -52,14 +52,12 @@ nix run .#update-xo-release
 nix run .#ci
 ```
 
-The script updates:
-- `version`
-- `src.rev`
-- `src.hash`
-- `yarnOfflineCache.hash`
+The script atomically updates `nix/sources/xen-orchestra.json`. One native Nix
+prefetch supplies both the source hash and source tree. Existing Yarn dependency
+hashes are reused when their lock files did not change.
 
-To refresh only `src.rev`, `src.hash`, and `yarnOfflineCache.hash` to the
-latest upstream source commit without changing `version`, run:
+To refresh the source revision and affected hashes to upstream HEAD without
+changing the packaged version, run:
 
 ```bash
 nix run .#update-xo-upstream
@@ -69,9 +67,11 @@ The `latest-upstream` tag workflow uses this mode for the source-head channel.
 
 ## Updating libvhdi
 
-`libvhdi` is built from an npins format-8 URL pin to upstream's official
-release asset. The updater includes GitHub prereleases, accepts only numeric
-date versions, requires the matching tarball, and refuses downgrades.
+`libvhdi` is built from the compact `nix/sources/libvhdi.json` lock for
+upstream's official release asset. The updater includes GitHub prereleases,
+accepts only numeric date versions, requires the matching tarball, and refuses
+downgrades. A flake input is deliberately not used because the asset URL embeds
+its release version and therefore cannot discover its successor.
 
 ```bash
 nix run --accept-flake-config .#update-libvhdi

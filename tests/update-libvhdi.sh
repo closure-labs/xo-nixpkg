@@ -10,9 +10,9 @@ trap 'rm -rf "$temporary"' EXIT
 write_pin() {
   local version=$1
   jq --arg version "$version" '
-    .pins.libvhdi.version = $version |
-    .pins.libvhdi.url = "https://github.com/libyal/libvhdi/releases/download/" + $version + "/libvhdi-alpha-" + $version + ".tar.gz"
-  ' "$root/npins/sources.json" >"$temporary/sources.json"
+    .version = $version |
+    .url = "https://github.com/libyal/libvhdi/releases/download/" + $version + "/libvhdi-alpha-" + $version + ".tar.gz"
+  ' "$root/nix/sources/libvhdi.json" >"$temporary/sources.json"
 }
 
 cat >"$temporary/releases.json" <<'JSON'
@@ -44,10 +44,10 @@ LIBVHDI_RELEASES_JSON="$temporary/releases.json" \
 LIBVHDI_PREFETCH_JSON="$temporary/prefetch.json" \
   bash "$root/scripts/update-libvhdi.sh"
 jq -e '
-  .pins.libvhdi.version == "20261231" and
-  .pins.libvhdi.hash == "sha256-BBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBB=" and
-  .pins.libvhdi.type == "Url" and
-  .pins.libvhdi.unpack == true
+  .version == "20261231" and
+  .hash == "sha256-BBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBB=" and
+  .type == "Url" and
+  .unpack == true
 ' "$temporary/sources.json" >/dev/null
 
 write_pin 20270101
@@ -56,6 +56,16 @@ if LIBVHDI_PIN_FILE="$temporary/sources.json" \
   LIBVHDI_PREFETCH_JSON="$temporary/prefetch.json" \
   bash "$root/scripts/update-libvhdi.sh" >/dev/null 2>&1; then
   echo 'Older libvhdi release was not rejected' >&2
+  exit 1
+fi
+
+jq '.[0].assets += [.[0].assets[0]]' "$temporary/releases.json" >"$temporary/duplicate.json"
+write_pin 20251119
+if LIBVHDI_PIN_FILE="$temporary/sources.json" \
+  LIBVHDI_RELEASES_JSON="$temporary/duplicate.json" \
+  LIBVHDI_PREFETCH_JSON="$temporary/prefetch.json" \
+  bash "$root/scripts/update-libvhdi.sh" >/dev/null 2>&1; then
+  echo 'Release with duplicate matching assets was not rejected' >&2
   exit 1
 fi
 

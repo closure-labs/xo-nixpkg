@@ -14,11 +14,11 @@
   libpng,
   zlib,
   fuse,
+  sourcePin,
 }:
 
 let
-  platformToolTarballs = import ./nix/platform-tools.nix;
-  platformToolTarballsForHost = platformToolTarballs.${stdenv.hostPlatform.system} or null;
+  platformToolTarballsForHost = sourcePin.platformTools.${stdenv.hostPlatform.system} or null;
 
   mkYarnCacheBinary =
     yarnOfflineCache:
@@ -118,25 +118,27 @@ stdenv.mkDerivation (
   in
   {
     pname = "xen-orchestra-ce";
-    version = "6.7.1";
+    version = sourcePin.version;
 
     # Xen Orchestra doesn't use git tags for releases; versions are indicated
     # in commit messages like "feat: release 6.3.3".
     src = fetchFromGitHub {
-      owner = "vatesfr";
-      repo = "xen-orchestra";
-      rev = "40dede9e11c90562df5cb46c6a83a9d91efedae1";
-      hash = "sha256-hVQvMFLeBWrxQNQwjEVuvmO5sMIMCIgSq/BxVmAz2gI=";
+      inherit (sourcePin)
+        owner
+        repo
+        rev
+        hash
+        ;
     };
 
     yarnOfflineCache = fetchNormalizedYarnDeps {
       yarnLock = "${finalAttrs.src}/yarn.lock";
-      hash = "sha256-8qv/ak3fYY2ODpWN3WZO5wrXokiK6CH8vGq49cmZlvA=";
+      hash = sourcePin.yarnHash;
     };
 
     docsYarnOfflineCache = fetchYarnDeps {
       yarnLock = "${finalAttrs.src}/docs/yarn.lock";
-      hash = "sha256-v5h1lb7zlW926EKpjK+c5CTtqczvgMDZhyQzkWdattE=";
+      hash = sourcePin.docsYarnHash;
     };
 
     patches = [ ./nix/patches/xo-server-immutable-source.patch ];

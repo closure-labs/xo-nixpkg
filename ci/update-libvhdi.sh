@@ -8,12 +8,19 @@ if (( $# > 1 )); then
   exit 2
 fi
 
-"${XO_NIXPKG_SOURCE_ROOT:-$PWD}/scripts/update-libvhdi.sh"
-nix build --accept-flake-config --no-write-lock-file .#libvhdi -L
-version=$(jq -er .pins.libvhdi.version npins/sources.json)
+pin_file=${LIBVHDI_PIN_FILE:-${XO_NIXPKG_SOURCE_ROOT:-$PWD}/nix/sources/libvhdi.json}
+before=$(sha256sum "$pin_file" | cut -d ' ' -f 1)
+bash "${XO_NIXPKG_SOURCE_ROOT:-$PWD}/scripts/update-libvhdi.sh"
+after=$(sha256sum "$pin_file" | cut -d ' ' -f 1)
+changed=false
+if [[ $before != "$after" ]]; then
+  changed=true
+  nix build --accept-flake-config --no-write-lock-file .#libvhdi -L
+fi
+version=$(jq -er .version "$pin_file")
 
 if (( $# == 1 )); then
-  printf 'version=%s\n' "$version" >>"$1"
+  printf 'changed=%s\nversion=%s\n' "$changed" "$version" >>"$1"
 else
-  printf 'version=%s\n' "$version"
+  printf 'changed=%s\nversion=%s\n' "$changed" "$version"
 fi

@@ -4,21 +4,21 @@
 set -euo pipefail
 
 repository_root=${LIBVHDI_REPOSITORY_ROOT:-$PWD}
-pin_file=${LIBVHDI_PIN_FILE:-$repository_root/npins/sources.json}
+pin_file=${LIBVHDI_PIN_FILE:-$repository_root/nix/sources/libvhdi.json}
 releases_file=${LIBVHDI_RELEASES_JSON:-}
 prefetch_file=${LIBVHDI_PREFETCH_JSON:-}
 
 if [[ ! -f $pin_file ]]; then
-  printf 'libvhdi npins lock does not exist: %s\n' "$pin_file" >&2
+  printf 'libvhdi source lock does not exist: %s\n' "$pin_file" >&2
   exit 1
 fi
 
-if [[ $(jq -er .version "$pin_file") != 8 ]]; then
-  printf 'Expected npins format 8 in %s\n' "$pin_file" >&2
+if [[ $(jq -er .schemaVersion "$pin_file") != 1 ]]; then
+  printf 'Expected libvhdi source-lock schema 1 in %s\n' "$pin_file" >&2
   exit 1
 fi
 
-current_version=$(jq -er '.pins.libvhdi.version | select(test("^[0-9]{8}$"))' "$pin_file")
+current_version=$(jq -er '.version | select(test("^[0-9]{8}$"))' "$pin_file")
 
 temporary_releases=
 cleanup() {
@@ -87,15 +87,13 @@ jq \
   --arg hash "$new_hash" \
   --arg url "$asset_url" \
   --arg version "$latest_version" '
-    .pins.libvhdi = {
-      type: "Url",
-      url: $url,
-      unpack: true,
-      version: $version,
-      hash: $hash
-    }
+    .type = "Url" |
+    .url = $url |
+    .unpack = true |
+    .version = $version |
+    .hash = $hash
   ' "$pin_file" >"$temporary_pin"
-jq -e '.version == 8 and (.pins.libvhdi.version | test("^[0-9]{8}$"))' "$temporary_pin" >/dev/null
+jq -e '.schemaVersion == 1 and (.version | test("^[0-9]{8}$"))' "$temporary_pin" >/dev/null
 mv "$temporary_pin" "$pin_file"
 trap cleanup EXIT
 

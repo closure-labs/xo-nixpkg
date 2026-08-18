@@ -7,8 +7,8 @@ set -euo pipefail
 mode=${1:?usage: forgejo-update.sh xo|libvhdi}
 case "$mode" in
   xo)
-    "${XO_NIXPKG_SOURCE_ROOT:-$PWD}/ci/update-xo.sh" --release
-    changed_paths=(default.nix nix/platform-tools.nix)
+    bash "${XO_NIXPKG_SOURCE_ROOT:-$PWD}/ci/update-xo.sh" --release
+    changed_paths=(nix/sources/xen-orchestra.json)
     version=$(nix eval --accept-flake-config --raw .#xen-orchestra-ce.version)
     rev=$(nix eval --accept-flake-config --raw .#xen-orchestra-ce.src.rev)
     branch="update/xen-orchestra-ce-$version"
@@ -16,12 +16,12 @@ case "$mode" in
     body="Automated update to vatesfr/xen-orchestra@$rev. Validated with nix run .#update-xo-release."
     ;;
   libvhdi)
-    "${XO_NIXPKG_SOURCE_ROOT:-$PWD}/ci/update-libvhdi.sh"
-    changed_paths=(npins/sources.json)
-    version=$(jq -er .pins.libvhdi.version npins/sources.json)
+    bash "${XO_NIXPKG_SOURCE_ROOT:-$PWD}/ci/update-libvhdi.sh"
+    changed_paths=(nix/sources/libvhdi.json)
+    version=$(jq -er .version nix/sources/libvhdi.json)
     branch="update/libvhdi-$version"
     title="libvhdi: update to $version"
-    body='Automated npins refresh to the official libvhdi release asset. Validated with nix run .#update-libvhdi.'
+    body='Automated source-lock refresh to the official libvhdi release asset. Validated with nix run .#update-libvhdi.'
     ;;
   *)
     echo "Unsupported update mode: $mode" >&2

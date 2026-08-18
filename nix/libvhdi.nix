@@ -5,13 +5,14 @@
   lib,
   pkg-config,
   source,
+  version,
   stdenv,
   zlib,
 }:
 
 stdenv.mkDerivation {
   pname = "libvhdi";
-  version = source.version;
+  inherit version;
   src = source;
 
   nativeBuildInputs = [

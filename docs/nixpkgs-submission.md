@@ -6,7 +6,7 @@ This guide covers submission prep for packages tracked from this repository.
 ## Current Scope
 
 - `xen-orchestra-ce`: maintained in this repo (`default.nix`)
-- `libvhdi`: maintained in this repo at `nix/libvhdi.nix` from an npins-pinned official release asset.
+- `libvhdi`: maintained in this repo at `nix/libvhdi.nix` from a locked official release asset.
 
 ## Prerequisites
 

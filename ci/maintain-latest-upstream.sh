@@ -6,12 +6,12 @@ set -euo pipefail
 : "${APP_TOKEN:?APP_TOKEN must be set}"
 : "${GITHUB_REPOSITORY:?GITHUB_REPOSITORY must be set}"
 
-"${XO_NIXPKG_SOURCE_ROOT:-$PWD}/ci/update-xo.sh" --upstream
+bash "${XO_NIXPKG_SOURCE_ROOT:-$PWD}/ci/update-xo.sh" --upstream
 
 git config user.name 'github-actions[bot]'
 git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-if ! git diff --quiet -- default.nix nix/platform-tools.nix; then
-  git add default.nix nix/platform-tools.nix
+if ! git diff --quiet -- nix/sources/xen-orchestra.json; then
+  git add nix/sources/xen-orchestra.json
   rev=$(nix eval --accept-flake-config --raw .#xen-orchestra-ce.src.rev)
   git commit -m "xen-orchestra-ce: track upstream ${rev:0:12}"
 fi

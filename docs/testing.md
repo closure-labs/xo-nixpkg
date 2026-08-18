@@ -10,7 +10,7 @@ nix flake check --all-systems --no-build
 # Build the XO package
 nix build .#xen-orchestra-ce
 
-# Validate the npins-backed libvhdi package and FUSE3 linkage
+# Validate the source-locked libvhdi package and FUSE3 linkage
 nix eval --raw .#packages.x86_64-linux.libvhdi.name
 nix eval --raw .#packages.x86_64-linux.libvhdi.fuseBackend
 nix build --no-link .#libvhdi
@@ -64,10 +64,10 @@ If `yarnOfflineCache` hash mismatches:
 
 ### Source Hash Mismatch
 
-If `src.hash` mismatches for xen-orchestra-ce:
+If the XO source hash needs refreshing:
 
 ```bash
-nix-prefetch-github vatesfr xen-orchestra --rev <commit-sha>
+nix run .#update-xo-release
 ```
 
 ### Broken Symlinks in Output

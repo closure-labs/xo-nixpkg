@@ -46,6 +46,29 @@ trusted key. Pass `--accept-flake-config` when consuming it interactively. A
 NixOS host can instead declare the same substituter and key in its trusted Nix
 configuration.
 
+GitHub Actions additionally uses Magic Nix Cache as a runner-local cache proxy.
+It configures itself through the pinned action and is not part of the flake's
+public substituter graph. No Determinate or FlakeHub substituter is required for
+package evaluation; keeping runner-local caches out of `nixConfig` avoids
+duplicating or leaking CI-specific cache policy to downstream users.
+
+NiXOA Core separately retains `https://install.determinate.systems` for users
+loading its flake from an existing vanilla-nixpkgs NixOS VM. That consumer
+cache avoids compiling Determinate Nix and is not duplicated here because
+xo-nixpkg does not build Core's Determinate input.
+
+## Inspect source locks
+
+Both upstream pins are exposed as pure flake data:
+
+```bash
+nix eval --json .#lib.sourcePins
+```
+
+The XO lock records its selected normal-release commit and dependency hashes.
+The libvhdi lock records the exact official release tarball. XO Lite releases
+are intentionally not represented.
+
 ## Reuse the CI plan contract
 
 Downstream flakes can declare their own pure target plans with the exported

@@ -8,6 +8,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## Unreleased
 
+### Changed
+
+- Replace mutable XO package fields and the single-purpose npins loader with
+  pure flake-visible, atomically updated source locks.
+- Detect normal XO releases through root-changelog commits, explicitly exclude
+  XO Lite releases, and reuse unchanged Yarn dependency hashes during updates.
+- Split repository policy and fixture validation into independently buildable
+  flake checks with Nix-provided dependencies.
+- Use native Nix source prefetching and skip package builds and update pull
+  requests when scheduled discovery finds no source change.
+- Keep the public Cachix graph declaration while isolating Magic Nix Cache as
+  idempotent, runner-local GitHub Actions configuration.
+
 ## [0.8.0] - 2026-08-18
 
 ### Added

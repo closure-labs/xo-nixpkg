@@ -35,5 +35,5 @@ while IFS= read -r pull_request; do
   EXPECTED_TITLE=$(jq -er .title <<<"$pull_request")
   EXPECTED_AUTHOR=$(jq -er .author <<<"$pull_request")
   EXPECTED_HEAD_SHA=$(jq -er .sha <<<"$pull_request")
-  "${XO_NIXPKG_SOURCE_ROOT:-$PWD}/ci/trusted-update.sh"
+  bash "${XO_NIXPKG_SOURCE_ROOT:-$PWD}/ci/trusted-update.sh"
 done

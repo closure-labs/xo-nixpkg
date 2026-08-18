@@ -24,10 +24,18 @@
       ];
       forAllSystems = nixpkgs.lib.genAttrs supportedSystems;
       ciLib = import ./nix/ci-plan.nix { lib = nixpkgs.lib; };
+      sourcePins = import ./nix/source-pins.nix { lib = nixpkgs.lib; };
+      repositoryCheckNames = [
+        "repository-policy"
+        "source-update-fixtures"
+        "automation-fixtures"
+        "attribute-validator-fixtures"
+      ];
     in
     {
       lib = ciLib // {
         projectVersion = nixpkgs.lib.removeSuffix "\n" (builtins.readFile ./VERSION);
+        inherit sourcePins;
         ciPlans = forAllSystems (system: {
           validation = ciLib.mkFlakeAttributePlan {
             name = "xo-nixpkg-validation";
@@ -36,8 +44,8 @@
               "checks.${system}.xo-fuse-linkage"
               "checks.${system}.xo-server-service"
               "checks.${system}.libvhdi"
-              "checks.${system}.repository"
-            ];
+            ]
+            ++ map (name: "checks.${system}.${name}") repositoryCheckNames;
           };
         });
       };
@@ -46,12 +54,17 @@
         system:
         let
           pkgs = nixpkgs.legacyPackages.${system};
-          sources = import ./npins;
         in
         {
-          xen-orchestra-ce = pkgs.callPackage ./default.nix { };
+          xen-orchestra-ce = pkgs.callPackage ./default.nix {
+            sourcePin = sourcePins.xenOrchestra;
+          };
           libvhdi = pkgs.callPackage ./nix/libvhdi.nix {
-            source = sources.libvhdi { inherit pkgs; };
+            inherit (sourcePins.libvhdi) version;
+            source = pkgs.fetchzip {
+              inherit (sourcePins.libvhdi) url hash;
+              extension = "tar";
+            };
           };
           flake-attribute-validator = pkgs.callPackage ./nix/flake-attribute-validator.nix { };
           default = self.packages.${system}.xen-orchestra-ce;
@@ -78,7 +91,6 @@
               pkgs.nixfmt
               pkgs.node-gyp
               pkgs.nodejs_22
-              pkgs.npins
               pkgs.pkg-config
               pkgs.python3
               pkgs.shellcheck
@@ -107,9 +119,7 @@
               pkgs.jq
               pkgs.nix
               pkgs.nix-prefetch
-              pkgs.nix-prefetch-github
               pkgs.nix-update
-              pkgs.npins
             ];
 
             XO_NIXPKG_NIXPKGS_PATH = nixpkgs.outPath;
@@ -154,8 +164,12 @@
         system:
         let
           pkgs = nixpkgs.legacyPackages.${system};
+          repositoryChecks = import ./nix/repository-checks.nix {
+            inherit pkgs self;
+          };
         in
-        {
+        repositoryChecks
+        // {
           xen-orchestra-ce = self.packages.${system}.xen-orchestra-ce;
           xo-fuse-linkage = self.packages.${system}.xen-orchestra-ce;
           xo-server-service = import ./nix/tests/xo-server-service.nix {
@@ -163,30 +177,6 @@
             xen-orchestra-ce = self.packages.${system}.xen-orchestra-ce;
           };
           libvhdi = self.packages.${system}.libvhdi;
-          repository =
-            pkgs.runCommandLocal "xo-nixpkg-repository-checks"
-              {
-                nativeBuildInputs = [
-                  pkgs.actionlint
-                  pkgs.coreutils
-                  pkgs.findutils
-                  pkgs.git
-                  pkgs.jq
-                  pkgs.ripgrep
-                  pkgs.shellcheck
-                  pkgs.zizmor
-                ];
-              }
-              ''
-                cp -R ${self} source
-                chmod -R u+w source
-                cd source
-                actionlint .github/workflows/*.yml
-                zizmor .github
-                shellcheck ci/*.sh scripts/*.sh tests/*.sh
-                bash tests/run.sh
-                touch "$out"
-              '';
         }
       );
     };

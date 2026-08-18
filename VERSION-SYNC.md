@@ -61,6 +61,6 @@ When propagating standalone changes back to core:
 - [ ] Update yarn offline cache hash as needed
 - [ ] Run `nix flake check --all-systems --no-build`
 - [ ] Build and smoke test `xen-orchestra-ce`
-- [ ] Validate the npins-backed `libvhdi` package and exclusive FUSE3 linkage
+- [ ] Validate the source-locked `libvhdi` package and exclusive FUSE3 linkage
 - [ ] Update `CHANGELOG.md`
 - [ ] Update `VERSION-SYNC.md`

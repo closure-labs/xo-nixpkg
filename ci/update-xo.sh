@@ -14,8 +14,15 @@ if (( $# > 1 )); then
   exit 2
 fi
 
-"${XO_NIXPKG_SOURCE_ROOT:-$PWD}/scripts/update.sh" "$mode"
-nix build --accept-flake-config --no-write-lock-file .#xen-orchestra-ce -L
+pin_file=${XO_NIXPKG_XO_PIN_FILE:-${XO_NIXPKG_SOURCE_ROOT:-$PWD}/nix/sources/xen-orchestra.json}
+before=$(sha256sum "$pin_file" | cut -d ' ' -f 1)
+bash "${XO_NIXPKG_SOURCE_ROOT:-$PWD}/scripts/update.sh" "$mode"
+after=$(sha256sum "$pin_file" | cut -d ' ' -f 1)
+changed=false
+if [[ $before != "$after" ]]; then
+  changed=true
+  nix build --accept-flake-config --no-write-lock-file .#xen-orchestra-ce -L
+fi
 
 version=$(nix eval --accept-flake-config --raw .#xen-orchestra-ce.version)
 rev=$(nix eval --accept-flake-config --raw .#xen-orchestra-ce.src.rev)
@@ -23,7 +30,7 @@ rev=$(nix eval --accept-flake-config --raw .#xen-orchestra-ce.src.rev)
 [[ $rev =~ ^[a-f0-9]{40}$ ]]
 
 if (( $# == 1 )); then
-  printf 'version=%s\nrev=%s\n' "$version" "$rev" >>"$1"
+  printf 'changed=%s\nversion=%s\nrev=%s\n' "$changed" "$version" "$rev" >>"$1"
 else
-  printf 'version=%s\nrev=%s\n' "$version" "$rev"
+  printf 'changed=%s\nversion=%s\nrev=%s\n' "$changed" "$version" "$rev"
 fi
