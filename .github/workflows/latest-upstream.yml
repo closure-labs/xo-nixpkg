@@ -1,133 +1,47 @@
+# SPDX-License-Identifier: Apache-2.0
 name: Maintain latest upstream tag
 
 on:
   schedule:
-    - cron: '40 6 * * *'
+    - cron: "40 6 * * *"
   workflow_dispatch:
 
-jobs:
-  update-latest-upstream:
-    runs-on: ubuntu-latest
-    permissions:
-      contents: write
+concurrency:
+  group: latest-upstream
+  cancel-in-progress: true
 
+permissions:
+  contents: read
+
+jobs:
+  update:
+    name: Validate and tag upstream HEAD
+    runs-on: ubuntu-24.04
+    timeout-minutes: 120
     steps:
       - name: Create GitHub App token
-        id: app_token
-        continue-on-error: true
-        uses: actions/create-github-app-token@v3
+        id: app-token
+        uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1 # v3.2.0
         with:
-          client-id: ${{ vars.UPDATE_GITHUB_APP_CLIENT_ID }}
+          app-id: ${{ vars.UPDATE_GITHUB_APP_ID }}
           private-key: ${{ secrets.UPDATE_GITHUB_APP_PRIVATE_KEY }}
           permission-contents: write
-          permission-workflows: write
 
-      - name: Checkout repository
-        if: steps.app_token.outcome == 'success'
-        uses: actions/checkout@v5
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          token: ${{ steps.app_token.outputs.token }}
           fetch-depth: 0
           fetch-tags: true
+          persist-credentials: false
 
-      - name: Install Nix
-        if: steps.app_token.outcome == 'success'
-        uses: cachix/install-nix-action@v31
+      - name: Set up Nix
+        uses: ./.github/actions/setup-nix
         with:
-          nix_path: nixpkgs=channel:nixos-unstable
-          extra_nix_config: |
-            extra-substituters = https://libvhdi-nixpkg.cachix.org
-            extra-trusted-public-keys = libvhdi-nixpkg.cachix.org-1:HvYHKZcfczn2nGfCmd7F21E/MDZrlaXtN3p9mWAZT/4=
+          github-token: ${{ github.token }}
+          magic-cache: "false"
 
-      - name: Setup Cachix
-        if: steps.app_token.outcome == 'success' && vars.CACHIX_CACHE_NAME != ''
-        uses: cachix/cachix-action@v17
-        with:
-          name: ${{ vars.CACHIX_CACHE_NAME }}
-          authToken: ${{ secrets.CACHIX_AUTH_TOKEN }}
-          skipPush: true
-        continue-on-error: true
-
-      - name: Configure updater commit
-        if: steps.app_token.outcome == 'success'
-        run: |
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-
-      - name: Update package to upstream HEAD
-        if: steps.app_token.outcome == 'success'
-        id: update
-        run: |
-          chmod +x ./scripts/update.sh
-          ./scripts/update.sh --upstream
-
-          new_rev=$(sed -n 's/.*rev = "\([a-f0-9]\{40\}\)".*/\1/p' default.nix | head -n 1)
-          short_rev=$(printf '%.12s' "$new_rev")
-          tag_commit=$(git rev-parse -q --verify refs/tags/latest-upstream 2>/dev/null || true)
-          head_commit=$(git rev-parse HEAD)
-
-          if git diff --quiet -- default.nix nix/platform-tools.nix; then
-            changed=false
-          else
-            changed=true
-          fi
-
-          if [ "$changed" = "false" ] && [ -n "$tag_commit" ] && [ "$tag_commit" = "$head_commit" ]; then
-            update_needed=false
-          else
-            update_needed=true
-          fi
-
-          {
-            echo "changed=$changed"
-            echo "new_rev=$new_rev"
-            echo "short_rev=$short_rev"
-            echo "update_needed=$update_needed"
-          } >> "$GITHUB_OUTPUT"
-
-      - name: Validate latest upstream package
-        if: steps.app_token.outcome == 'success' && steps.update.outputs.update_needed == 'true'
-        run: nix build --accept-flake-config .#xen-orchestra-ce -L
-
-      - name: Push latest upstream result to Cachix
-        if: steps.app_token.outcome == 'success' && steps.update.outputs.update_needed == 'true' && vars.CACHIX_CACHE_NAME != ''
+      - name: Update, validate, commit, and tag upstream HEAD
         env:
-          CACHIX_AUTH_TOKEN: ${{ secrets.CACHIX_AUTH_TOKEN }}
-        run: |
-          set -euo pipefail
-
-          if [ -z "${CACHIX_AUTH_TOKEN:-}" ]; then
-            echo "CACHIX_AUTH_TOKEN is not configured; skipping Cachix push."
-            exit 0
-          fi
-
-          out_path=$(readlink -f result)
-          echo "Pushing built package output: $out_path"
-          printf '%s\n' "$out_path" | cachix push "${{ vars.CACHIX_CACHE_NAME }}"
-
-      - name: Update latest-upstream tag
-        if: steps.app_token.outcome == 'success' && steps.update.outputs.update_needed == 'true'
-        run: |
-          if [ "${{ steps.update.outputs.changed }}" = "true" ]; then
-            git add default.nix nix/platform-tools.nix
-            git commit -m "xen-orchestra-ce: track upstream ${{ steps.update.outputs.short_rev }}"
-          fi
-
-          git tag -f latest-upstream HEAD
-          git push --force origin refs/tags/latest-upstream
-
-      - name: Summarize latest-upstream result
-        run: |
-          if [ "${{ steps.app_token.outcome }}" != "success" ]; then
-            {
-              echo "latest-upstream maintenance skipped because GitHub App token creation failed."
-              echo ""
-              echo "Configure the GitHub App credentials before rerunning this workflow:"
-              echo "- Variable: \`UPDATE_GITHUB_APP_CLIENT_ID\`"
-              echo "- Secret: \`UPDATE_GITHUB_APP_PRIVATE_KEY\`"
-            } >> "$GITHUB_STEP_SUMMARY"
-          elif [ "${{ steps.update.outputs.update_needed }}" = "true" ]; then
-            echo "Updated \`latest-upstream\` for vatesfr/xen-orchestra@${{ steps.update.outputs.new_rev }}." >> "$GITHUB_STEP_SUMMARY"
-          else
-            echo "\`latest-upstream\` already tracks vatesfr/xen-orchestra@${{ steps.update.outputs.new_rev }}." >> "$GITHUB_STEP_SUMMARY"
-          fi
+          APP_TOKEN: ${{ steps.app-token.outputs.token }}
+          GITHUB_TOKEN: ${{ github.token }}
+        run: nix run .#maintain-latest-upstream

@@ -1,188 +1,64 @@
+# SPDX-License-Identifier: Apache-2.0
 name: Check for XO release updates
 
 on:
   schedule:
-    - cron: '0 6 * * *'
+    - cron: "0 6 * * *"
   workflow_dispatch:
-    inputs:
-      dry_run:
-        description: "Run update detection and validation without creating a pull request"
-        required: false
-        default: false
-        type: boolean
+
+concurrency:
+  group: xo-release-update
+  cancel-in-progress: true
+
+permissions:
+  contents: read
 
 jobs:
-  check-update:
-    runs-on: ubuntu-latest
-    permissions:
-      contents: write
-      pull-requests: write
-
+  update:
+    name: Refresh Xen Orchestra release
+    runs-on: ubuntu-24.04
+    timeout-minutes: 120
     steps:
-      - name: Checkout repository
-        uses: actions/checkout@v5
-
-      - name: Install Nix
-        uses: cachix/install-nix-action@v31
-        with:
-          nix_path: nixpkgs=channel:nixos-unstable
-          extra_nix_config: |
-            extra-substituters = https://libvhdi-nixpkg.cachix.org
-            extra-trusted-public-keys = libvhdi-nixpkg.cachix.org-1:HvYHKZcfczn2nGfCmd7F21E/MDZrlaXtN3p9mWAZT/4=
-
-      - name: Setup Cachix (optional)
-        if: vars.CACHIX_CACHE_NAME != ''
-        uses: cachix/cachix-action@v17
-        with:
-          name: ${{ vars.CACHIX_CACHE_NAME }}
-          authToken: ${{ secrets.CACHIX_AUTH_TOKEN }}
-          skipPush: true
-        continue-on-error: true
-
-      - name: Run updater script
-        env:
-          GITHUB_TOKEN: ${{ github.token }}
-        run: |
-          chmod +x ./scripts/update.sh
-          ./scripts/update.sh --release
-
-      - name: Detect changes
-        id: detect
-        run: |
-          set -euo pipefail
-
-          if git diff --quiet -- default.nix nix/platform-tools.nix; then
-            echo "update_available=false" >> "$GITHUB_OUTPUT"
-            exit 0
-          fi
-
-          new_version=$(nix eval --accept-flake-config --raw .#packages.x86_64-linux.xen-orchestra-ce.version)
-          new_rev=$(nix eval --accept-flake-config --raw .#packages.x86_64-linux.xen-orchestra-ce.src.rev)
-
-          if [ -z "$new_version" ] || [ -z "$new_rev" ]; then
-            echo "Failed to evaluate updated version or source revision" >&2
-            exit 1
-          fi
-
-          if ! printf '%s\n' "$new_version" | grep -Eq '^[0-9]+(\.[0-9]+)+$'; then
-            echo "Expected release version from nix eval, got: $new_version" >&2
-            exit 1
-          fi
-
-          if ! printf '%s\n' "$new_rev" | grep -Eq '^[a-f0-9]{40}$'; then
-            echo "Expected source revision from nix eval, got: $new_rev" >&2
-            exit 1
-          fi
-
-          {
-            echo "update_available=true"
-            echo "new_version=$new_version"
-            echo "new_rev=$new_rev"
-            echo "branch_name=update/xen-orchestra-ce-$new_version"
-          } >> "$GITHUB_OUTPUT"
-
-      - name: Validate updated package
-        if: steps.detect.outputs.update_available == 'true'
-        run: nix build --accept-flake-config .#xen-orchestra-ce -L
-
-      - name: Push validated package result to Cachix
-        if: steps.detect.outputs.update_available == 'true' && (github.event_name != 'workflow_dispatch' || github.event.inputs.dry_run != 'true') && vars.CACHIX_CACHE_NAME != ''
-        env:
-          CACHIX_AUTH_TOKEN: ${{ secrets.CACHIX_AUTH_TOKEN }}
-        run: |
-          set -euo pipefail
-
-          if [ -z "${CACHIX_AUTH_TOKEN:-}" ]; then
-            echo "CACHIX_AUTH_TOKEN is not configured; skipping Cachix push."
-            exit 0
-          fi
-
-          out_path=$(readlink -f result)
-          echo "Pushing built package output: $out_path"
-          printf '%s\n' "$out_path" | cachix push "${{ vars.CACHIX_CACHE_NAME }}"
-
       - name: Create GitHub App token
-        id: app_token
-        if: steps.detect.outputs.update_available == 'true' && (github.event_name != 'workflow_dispatch' || github.event.inputs.dry_run != 'true')
-        continue-on-error: true
-        uses: actions/create-github-app-token@v3
+        id: app-token
+        uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1 # v3.2.0
         with:
-          client-id: ${{ vars.UPDATE_GITHUB_APP_CLIENT_ID }}
+          app-id: ${{ vars.UPDATE_GITHUB_APP_ID }}
           private-key: ${{ secrets.UPDATE_GITHUB_APP_PRIVATE_KEY }}
           permission-contents: write
           permission-pull-requests: write
 
-      - name: Create Pull Request
-        id: create_pr
-        if: steps.detect.outputs.update_available == 'true' && (github.event_name != 'workflow_dispatch' || github.event.inputs.dry_run != 'true') && steps.app_token.outcome == 'success'
-        continue-on-error: true
-        uses: peter-evans/create-pull-request@v8
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          token: ${{ steps.app_token.outputs.token }}
-          commit-message: "xen-orchestra-ce: update to ${{ steps.detect.outputs.new_version }}"
-          title: "xen-orchestra-ce: update to ${{ steps.detect.outputs.new_version }}"
-          body: |
-            Automated update to xen-orchestra-ce ${{ steps.detect.outputs.new_version }}.
+          persist-credentials: false
 
-            Changes include:
-            - `version`
-            - `src.rev`
-            - `src.hash`
-            - `yarnOfflineCache.hash`
-            - native tool tarball metadata
+      - name: Set up Nix
+        uses: ./.github/actions/setup-nix
+        with:
+          github-token: ${{ github.token }}
+          magic-cache: "false"
 
-            Upstream commit: vatesfr/xen-orchestra@${{ steps.detect.outputs.new_rev }}
+      - name: Update and validate the selected release
+        id: release
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: nix run .#update-xo-release -- "$GITHUB_OUTPUT"
 
-            Validation:
-            - `nix build .#xen-orchestra-ce -L`
-            - the validated `result` output is pushed to Cachix when `CACHIX_CACHE_NAME` and `CACHIX_AUTH_TOKEN` are configured
-          branch: ${{ steps.detect.outputs.branch_name }}
+      - name: Open the update pull request
+        uses: peter-evans/create-pull-request@5f6978faf089d4d20b00c7766989d076bb2fc7f1 # v8
+        with:
+          token: ${{ steps.app-token.outputs.token }}
+          branch: update/xen-orchestra-ce-${{ steps.release.outputs.version }}
+          delete-branch: true
           add-paths: |
             default.nix
             nix/platform-tools.nix
-          delete-branch: true
+          commit-message: "xen-orchestra-ce: update to ${{ steps.release.outputs.version }}"
+          title: "xen-orchestra-ce: update to ${{ steps.release.outputs.version }}"
+          body: |
+            Automated update to Xen Orchestra ${{ steps.release.outputs.version }}.
 
-      - name: Report PR result
-        if: steps.detect.outputs.update_available == 'true' && (github.event_name != 'workflow_dispatch' || github.event.inputs.dry_run != 'true')
-        run: |
-          branch_name="${{ steps.detect.outputs.branch_name }}"
-          compare_url="https://github.com/${{ github.repository }}/compare/main...${branch_name}?expand=1"
-          pull_url="https://github.com/${{ github.repository }}/pull/new/${branch_name}"
+            Upstream commit: `vatesfr/xen-orchestra@${{ steps.release.outputs.rev }}`
 
-          if [ "${{ steps.app_token.outcome }}" != "success" ]; then
-            {
-              echo "GitHub App token creation failed."
-              echo ""
-              echo "Configure the GitHub App credentials before rerunning this workflow:"
-              echo "- Variable: \`UPDATE_GITHUB_APP_CLIENT_ID\`"
-              echo "- Secret: \`UPDATE_GITHUB_APP_PRIVATE_KEY\`"
-            } >> "$GITHUB_STEP_SUMMARY"
-            echo "::warning::GitHub App token creation failed. Verify UPDATE_GITHUB_APP_CLIENT_ID, UPDATE_GITHUB_APP_PRIVATE_KEY, and the app installation."
-          elif [ "${{ steps.create_pr.outcome }}" = "success" ]; then
-            echo "Automated pull request step succeeded." >> "$GITHUB_STEP_SUMMARY"
-            if [ -n "${{ steps.create_pr.outputs.pull-request-url }}" ]; then
-              {
-                echo ""
-                echo "Pull request: ${{ steps.create_pr.outputs.pull-request-url }}"
-              } >> "$GITHUB_STEP_SUMMARY"
-            fi
-          else
-            {
-              echo "Automated pull request creation is not permitted in this repository."
-              echo ""
-              echo "The update branch was pushed successfully and is ready for manual review."
-              echo ""
-              echo "- Branch: \`${branch_name}\`"
-              echo "- Open PR: ${pull_url}"
-              echo "- Compare diff: ${compare_url}"
-            } >> "$GITHUB_STEP_SUMMARY"
-            echo "::warning::Automatic pull request creation was blocked. Open a PR manually from ${pull_url}"
-          fi
-
-      - name: Report dry run result
-        if: steps.detect.outputs.update_available == 'true' && github.event_name == 'workflow_dispatch' && github.event.inputs.dry_run == 'true'
-        run: |
-          echo "Dry run detected an available xen-orchestra-ce update to ${{
-            steps.detect.outputs.new_version
-          }}."
-          echo "Validation succeeded and no pull request was created."
+            Validation: `nix run .#update-xo-release`

@@ -108,7 +108,6 @@ let
     nodejs = nodejs_22;
   };
   yarnConfigHook' = yarnConfigHook.override {
-    nodejs = nodejs_22;
     yarn = yarn';
   };
 in
@@ -313,10 +312,14 @@ stdenv.mkDerivation (
 
       rm -rf \
         node_modules/argon2/prebuilds \
+        node_modules/fuse-native/build/Release/.deps \
+        node_modules/fuse-native/build/Release/build \
+        node_modules/fuse-native/build/Release/obj.target \
         node_modules/fuse-native/prebuilds \
         node_modules/leveldown/prebuilds \
         node_modules/fuse-shared-library-linux*/example/build \
         node_modules/fuse-shared-library-linux*/libfuse
+      rm -f node_modules/fuse-native/build/Release/libfuse.so
 
               if [ -f node_modules/http-proxy/lib/http-proxy/index.js ] \
                 && grep -q "require('util')._extend" node_modules/http-proxy/lib/http-proxy/index.js; then
@@ -377,6 +380,50 @@ stdenv.mkDerivation (
         --add-flags "packages/xo-server/dist/cli.mjs"
 
       runHook postInstall
+    '';
+
+    doInstallCheck = true;
+    installCheckPhase = ''
+      runHook preInstallCheck
+
+      xo_root="$out/libexec/xen-orchestra"
+      fuse_native_root="$xo_root/node_modules/fuse-native"
+      test -d "$fuse_native_root"
+
+      mapfile -t fuse_addons < <(
+        find "$fuse_native_root/build/Release" -maxdepth 1 -type f -name '*.node' -print
+      )
+      if [ "''${#fuse_addons[@]}" -ne 1 ]; then
+        printf 'Expected exactly one rebuilt fuse-native addon, found %s\n' "''${#fuse_addons[@]}" >&2
+        printf '%s\n' "''${fuse_addons[@]}" >&2
+        exit 1
+      fi
+
+      addon_deps="$(ldd "''${fuse_addons[0]}")"
+      printf '%s\n' "$addon_deps"
+      printf '%s\n' "$addon_deps" | grep -q 'libfuse\.so\.2'
+      if printf '%s\n' "$addon_deps" | grep -q 'libfuse3\.so'; then
+        echo 'fuse-native unexpectedly links libfuse3' >&2
+        exit 1
+      fi
+
+      if find "$fuse_native_root" -path '*/prebuilds/*' -print -quit | grep -q .; then
+        echo 'fuse-native binary prebuilds remain in the package output' >&2
+        exit 1
+      fi
+      if find "$fuse_native_root" \( -type f -o -type l \) \
+        -name 'libfuse*.so*' -print -quit | grep -q .; then
+        echo 'fuse-native bundled libfuse remains in the package output' >&2
+        exit 1
+      fi
+      if find "$xo_root/node_modules" \
+        -path '*/fuse-shared-library-linux*/libfuse/*' \
+        -print -quit | grep -q .; then
+        echo 'bundled npm libfuse files remain in the package output' >&2
+        exit 1
+      fi
+
+      runHook postInstallCheck
     '';
 
     preFixup = ''

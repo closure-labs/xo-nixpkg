@@ -3,230 +3,109 @@ name: CI
 
 on:
   push:
-    branches: [ main, master, beta ]
+    branches: [main]
   pull_request:
-    branches: [ main, master, beta ]
   workflow_dispatch:
 
+concurrency:
+  group: ci-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+permissions:
+  contents: read
+
 jobs:
-  build:
-    runs-on: ubuntu-latest
-    strategy:
-      matrix:
-        package:
-          - xen-orchestra-ce
-
-    steps:
-      - name: Checkout repository
-        uses: actions/checkout@v5
-
-      - name: Install Nix
-        uses: cachix/install-nix-action@v31
-        with:
-          nix_path: nixpkgs=channel:nixos-unstable
-          extra_nix_config: |
-            extra-substituters = https://libvhdi-nixpkg.cachix.org
-            extra-trusted-public-keys = libvhdi-nixpkg.cachix.org-1:HvYHKZcfczn2nGfCmd7F21E/MDZrlaXtN3p9mWAZT/4=
-
-      - name: Setup Cachix (optional)
-        uses: cachix/cachix-action@v17
-        with:
-          name: ${{ vars.CACHIX_CACHE_NAME || 'xen-orchestra-ce' }}
-          authToken: ${{ secrets.CACHIX_AUTH_TOKEN }}
-          skipPush: true
-        continue-on-error: true
-
-      - name: Build ${{ matrix.package }}
-        run: nix build --accept-flake-config .#xen-orchestra-ce -o result-xen-orchestra-ce -L
-
-      - name: Build libvhdi input packages
-        run: |
-          nix build .#libvhdi-fuse2 -o result-libvhdi-fuse2 -L
-          nix build .#libvhdi-fuse3 -o result-libvhdi-fuse3 -L
-
-      - name: Push ${{ matrix.package }} result to Cachix
-        if: vars.CACHIX_CACHE_NAME != ''
-        env:
-          CACHE_NAME: ${{ vars.CACHIX_CACHE_NAME }}
-          CACHIX_AUTH_TOKEN: ${{ secrets.CACHIX_AUTH_TOKEN }}
-        run: |
-          set -euo pipefail
-
-          if [ -z "${CACHIX_AUTH_TOKEN:-}" ]; then
-            echo "CACHIX_AUTH_TOKEN is not configured; skipping Cachix push."
-            exit 0
-          fi
-
-          out_path=$(readlink -f result-xen-orchestra-ce)
-          echo "Pushing built package output: $out_path"
-          printf '%s\n' "$out_path" | cachix push "$CACHE_NAME"
-
-      - name: Push libvhdi input results to Cachix
-        if: vars.CACHIX_CACHE_NAME != ''
-        env:
-          CACHE_NAME: ${{ vars.CACHIX_CACHE_NAME }}
-          CACHIX_AUTH_TOKEN: ${{ secrets.CACHIX_AUTH_TOKEN }}
-        run: |
-          set -euo pipefail
-
-          if [ -z "${CACHIX_AUTH_TOKEN:-}" ]; then
-            echo "CACHIX_AUTH_TOKEN is not configured; skipping libvhdi Cachix push."
-            exit 0
-          fi
-
-          out_paths=$(readlink -f result-libvhdi-fuse2 result-libvhdi-fuse3)
-          echo "Pushing libvhdi input package outputs:"
-          printf '%s\n' "$out_paths"
-          printf '%s\n' "$out_paths" | cachix push "$CACHE_NAME"
-
-      - name: Smoke test xo-server systemd service
-        run: nix build --accept-flake-config .#checks.x86_64-linux.xo-server-service -L
-
-  checks:
-    runs-on: ubuntu-latest
-
-    steps:
-      - name: Checkout repository
-        uses: actions/checkout@v5
-
-      - name: Install Nix
-        uses: cachix/install-nix-action@v31
-        with:
-          nix_path: nixpkgs=channel:nixos-unstable
-          extra_nix_config: |
-            extra-substituters = https://libvhdi-nixpkg.cachix.org
-            extra-trusted-public-keys = libvhdi-nixpkg.cachix.org-1:HvYHKZcfczn2nGfCmd7F21E/MDZrlaXtN3p9mWAZT/4=
-
-      - name: Evaluate package and check outputs
-        run: |
-          nix eval --accept-flake-config --json .#checks.x86_64-linux --apply builtins.attrNames
-          nix eval --accept-flake-config --raw .#packages.x86_64-linux.xen-orchestra-ce.name
-          nix eval --accept-flake-config --raw .#packages.x86_64-linux.libvhdi.name
-          nix eval --accept-flake-config --raw .#packages.x86_64-linux.libvhdi-fuse3.name
-
-      - name: Validate libvhdi input
-        run: |
-          nix eval --accept-flake-config --raw .#packages.x86_64-linux.libvhdi.name
-          test "$(nix eval --accept-flake-config --raw .#packages.x86_64-linux.libvhdi.fuseBackend)" = fuse2
-          nix build --accept-flake-config --no-link .#packages.x86_64-linux.libvhdi
-          nix build --accept-flake-config --no-link .#packages.x86_64-linux.libvhdi-fuse3
-
-  tag-release:
-    runs-on: ubuntu-latest
-    needs:
-      - build
-      - checks
-    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+  validate:
+    name: Flake-defined validation
+    runs-on: ubuntu-24.04
+    timeout-minutes: 180
     permissions:
-      contents: write
+      contents: read
+      id-token: write
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
 
+      - name: Set up Nix and cache
+        uses: ./.github/actions/setup-nix
+        with:
+          github-token: ${{ github.token }}
+
+      - name: Run the complete flake-defined pipeline
+        run: nix run .#ci
+
+  gate:
+    name: CI gate
+    if: always()
+    needs: validate
+    runs-on: ubuntu-slim
+    timeout-minutes: 5
+    steps:
+      - name: Require validation success
+        env:
+          VALIDATE_RESULT: ${{ needs.validate.result }}
+        run: test "$VALIDATE_RESULT" = success
+
+  publish:
+    name: Publish protected-main package closures
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    needs: gate
+    runs-on: ubuntu-24.04
+    timeout-minutes: 120
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Set up Nix
+        uses: ./.github/actions/setup-nix
+        with:
+          github-token: ${{ github.token }}
+          magic-cache: "false"
+
+      - name: Publish the flake's final closures
+        env:
+          CACHIX_AUTH_TOKEN: ${{ secrets.CACHIX_AUTH_TOKEN }}
+        run: nix run .#publish
+
+  tag:
+    name: Tag gated main release and aliases
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    needs: [gate, publish]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    permissions:
+      contents: read
     steps:
       - name: Create GitHub App token
-        id: app_token
-        continue-on-error: true
-        uses: actions/create-github-app-token@v3
+        id: app-token
+        uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1 # v3.2.0
         with:
-          client-id: ${{ vars.UPDATE_GITHUB_APP_CLIENT_ID }}
+          app-id: ${{ vars.UPDATE_GITHUB_APP_ID }}
           private-key: ${{ secrets.UPDATE_GITHUB_APP_PRIVATE_KEY }}
           permission-contents: write
-          permission-workflows: write
 
-      - name: Checkout repository
-        if: steps.app_token.outcome == 'success'
-        uses: actions/checkout@v5
+      - name: Checkout the gated commit and tags
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          token: ${{ steps.app_token.outputs.token }}
+          token: ${{ steps.app-token.outputs.token }}
           fetch-depth: 0
           fetch-tags: true
+          persist-credentials: false
 
-      - name: Install Nix
-        if: steps.app_token.outcome == 'success'
-        uses: cachix/install-nix-action@v31
+      - name: Set up Nix
+        uses: ./.github/actions/setup-nix
         with:
-          nix_path: nixpkgs=channel:nixos-unstable
-          extra_nix_config: |
-            extra-substituters = https://libvhdi-nixpkg.cachix.org
-            extra-trusted-public-keys = libvhdi-nixpkg.cachix.org-1:HvYHKZcfczn2nGfCmd7F21E/MDZrlaXtN3p9mWAZT/4=
+          github-token: ${{ github.token }}
+          magic-cache: "false"
 
-      - name: Detect version tag target
-        if: steps.app_token.outcome == 'success'
-        id: detect_tag
+      - name: Create tags from the gated SHA
         env:
-          BEFORE_SHA: ${{ github.event.before }}
-          AFTER_SHA: ${{ github.sha }}
-        run: |
-          write_output() {
-            printf '%s\n' "$@" >> "$GITHUB_OUTPUT"
-          }
-
-          if [ "$BEFORE_SHA" = "0000000000000000000000000000000000000000" ]; then
-            write_output "create_tag=false"
-            exit 0
-          fi
-
-          if ! git diff --name-only "$BEFORE_SHA" "$AFTER_SHA" | grep -qx 'default.nix'; then
-            write_output "create_tag=false"
-            exit 0
-          fi
-
-          old_version=$(nix eval --raw "git+file://$PWD?rev=$BEFORE_SHA#packages.x86_64-linux.xen-orchestra-ce.version")
-          new_version=$(nix eval --raw .#packages.x86_64-linux.xen-orchestra-ce.version)
-
-          if [ -z "$new_version" ]; then
-            echo "Failed to evaluate version at $AFTER_SHA" >&2
-            exit 1
-          fi
-
-          if ! printf '%s\n' "$new_version" | grep -Eq '^[0-9]+(\.[0-9]+)+$'; then
-            echo "Expected release version from nix eval, got: $new_version" >&2
-            exit 1
-          fi
-
-          if [ "$old_version" = "$new_version" ]; then
-            write_output "create_tag=false"
-            exit 0
-          fi
-
-          tag_name="v$new_version"
-          if git rev-parse -q --verify "refs/tags/$tag_name" >/dev/null; then
-            existing_commit=$(git rev-list -n 1 "$tag_name")
-            if [ "$existing_commit" != "$AFTER_SHA" ]; then
-              echo "Tag $tag_name already exists at $existing_commit, expected $AFTER_SHA" >&2
-              exit 1
-            fi
-
-            write_output "create_tag=false"
-            exit 0
-          fi
-
-          write_output \
-            "create_tag=true" \
-            "tag_name=$tag_name" \
-            "version=$new_version"
-
-      - name: Create release tag
-        if: steps.detect_tag.outputs.create_tag == 'true'
-        env:
-          TAG_NAME: ${{ steps.detect_tag.outputs.tag_name }}
-          TARGET_COMMIT: ${{ github.sha }}
-        run: |
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git tag "$TAG_NAME" "$TARGET_COMMIT"
-          git push origin "refs/tags/$TAG_NAME"
-
-      - name: Summarize tagging result
-        run: |
-          if [ "${{ steps.app_token.outcome }}" != "success" ]; then
-            {
-              echo "Automatic release tagging skipped because GitHub App token creation failed."
-              echo ""
-              echo "Configure the GitHub App credentials before rerunning this workflow:"
-              echo "- Variable: \`UPDATE_GITHUB_APP_CLIENT_ID\`"
-              echo "- Secret: \`UPDATE_GITHUB_APP_PRIVATE_KEY\`"
-            } >> "$GITHUB_STEP_SUMMARY"
-          elif [ "${{ steps.detect_tag.outputs.create_tag }}" = "true" ]; then
-            echo "Created release tag \`${{ steps.detect_tag.outputs.tag_name }}\` for commit \`${{ github.sha }}\`." >> "$GITHUB_STEP_SUMMARY"
-          else
-            echo "No new xen-orchestra-ce version tag was needed for this push." >> "$GITHUB_STEP_SUMMARY"
-          fi
+          APP_TOKEN: ${{ steps.app-token.outputs.token }}
+          GATED_SHA: ${{ github.sha }}
+        run: nix run .#tag-release

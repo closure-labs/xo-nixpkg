@@ -1,0 +1,42 @@
+# SPDX-License-Identifier: Apache-2.0
+name: Refresh flake inputs
+
+on:
+  schedule:
+    - cron: "23 9 * * 0"
+  workflow_dispatch:
+
+concurrency:
+  group: weekly-flake-input-refresh
+  cancel-in-progress: true
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  update:
+    name: Refresh Nixpkgs
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Set up Nix
+        uses: ./.github/actions/setup-nix
+        with:
+          github-token: ${{ github.token }}
+          magic-cache: "false"
+
+      - name: Refresh Nixpkgs and open a pull request
+        uses: DeterminateSystems/update-flake-lock@834c491b2ece4de0bbd00d85214bb5e83b4da5c6 # v28
+        with:
+          inputs: nixpkgs
+          base: main
+          branch: automation/weekly-flake-input-refresh
+          commit-msg: "flake.lock: refresh nixpkgs"
+          pr-title: "flake.lock: refresh nixpkgs"
+          pr-body: Automated weekly refresh of the Nixpkgs flake input.

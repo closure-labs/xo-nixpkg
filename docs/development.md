@@ -6,28 +6,18 @@
 ```bash
 git clone ssh://git@codeberg.org/NiXOA/xen-orchestra-ce.git
 cd xen-orchestra-ce
-nix develop --accept-flake-config --impure
+nix develop --accept-flake-config
 ```
 
-This repository uses `devenv` through the flake `devShells` output. The shell
-includes Node.js 22, Yarn classic, TypeScript tooling, Nix tooling, native Node
-build helpers, and a Valkey-backed Redis-compatible service.
+The plain `mkShellNoCC` toolchain includes Node.js 22, Yarn classic, Valkey,
+native Node build helpers, update tools, Nix linters, actionlint, ShellCheck,
+and zizmor. Evaluation is pure.
 
 ```bash
-# Start configured services, including Valkey on 127.0.0.1
-devenv up
-
-# Shell-provided helper scripts
-build-xo
-check-eval
-update-release
-update-upstream
+valkey-server --bind 127.0.0.1
 ```
 
-The interactive `devenv` shell uses the live checkout as `DEVENV_ROOT`, so
-commands that evaluate that shell need `--impure`. CI and updater automation do
-not use `devenv`; the update script enters the pure `.#updater` shell
-automatically.
+The XO updater enters the pure `.#updater` shell automatically when needed.
 
 ## Build and Evaluate
 
@@ -35,34 +25,31 @@ automatically.
 # Build the XO package
 nix build .#xen-orchestra-ce
 
-# Validate the published libvhdi input
+# Validate the in-repository FUSE3 libvhdi package
 nix eval --raw .#packages.x86_64-linux.libvhdi.name
 nix eval --raw .#packages.x86_64-linux.libvhdi.fuseBackend
-nix build --no-link --max-jobs 0 .#libvhdi \
-  --option extra-substituters 'https://libvhdi-nixpkg.cachix.org' \
-  --option extra-trusted-public-keys 'libvhdi-nixpkg.cachix.org-1:HvYHKZcfczn2nGfCmd7F21E/MDZrlaXtN3p9mWAZT/4='
+nix build --no-link .#libvhdi
 
-# Evaluate flake outputs on all declared systems
-nix flake check --accept-flake-config --all-systems --no-build --impure
+# Execute the full repository pipeline used by CI
+nix run .#ci
 
-# Pure CI-style evaluation without the interactive devenv shell
+# Pure CI-style evaluation
 nix eval --accept-flake-config --json .#checks.x86_64-linux --apply builtins.attrNames
 ```
 
 ## Updating xen-orchestra-ce
 
-Use the updater script to refresh version and hashes in `default.nix` from the
-latest upstream release commit. The script enters the pure `.#updater` shell
-when needed.
+Use the flake updater application to refresh version and hashes in `default.nix`
+from the latest upstream release commit. Nix supplies every updater dependency.
 Release discovery scans paginated upstream commit history and stops early when
 the package already points at the latest release commit. Set
 `XO_NIXPKG_RELEASE_SCAN_PAGES` to override the default scan depth.
 
 ```bash
-./scripts/update.sh --release
+nix run .#update-xo-release
 
 # Validate after update
-nix flake check --accept-flake-config --all-systems --no-build --impure
+nix run .#ci
 ```
 
 The script updates:
@@ -75,20 +62,20 @@ To refresh only `src.rev`, `src.hash`, and `yarnOfflineCache.hash` to the
 latest upstream source commit without changing `version`, run:
 
 ```bash
-./scripts/update.sh --upstream
+nix run .#update-xo-upstream
 ```
 
 The `latest-upstream` tag workflow uses this mode for the source-head channel.
 
-## Updating libvhdi Input
+## Updating libvhdi
 
-`libvhdi` is consumed as a pinned release-tag flake input from
-`declarative-dale/libvhdi-nixpkg`. Future upgrades should bump the explicit
-release tag in `flake.nix`, then refresh the lock file.
+`libvhdi` is built from an npins format-8 URL pin to upstream's official
+release asset. The updater includes GitHub prereleases, accepts only numeric
+date versions, requires the matching tarball, and refuses downgrades.
 
 ```bash
-nix flake lock --update-input libvhdi
-nix flake check --accept-flake-config --all-systems --no-build --impure
+nix run --accept-flake-config .#update-libvhdi
+nix build --accept-flake-config --no-link .#libvhdi
 ```
 
 ## Testing
@@ -98,12 +85,10 @@ nix flake check --accept-flake-config --all-systems --no-build --impure
 nix build .#xen-orchestra-ce
 ./result/bin/xo-server --help
 
-# Validate libvhdi input and cache availability
+# Validate libvhdi and its FUSE3 linkage
 nix eval --raw .#packages.x86_64-linux.libvhdi.name
 nix eval --raw .#packages.x86_64-linux.libvhdi.fuseBackend
-nix build --no-link --max-jobs 0 .#libvhdi \
-  --option extra-substituters 'https://libvhdi-nixpkg.cachix.org' \
-  --option extra-trusted-public-keys 'libvhdi-nixpkg.cachix.org-1:HvYHKZcfczn2nGfCmd7F21E/MDZrlaXtN3p9mWAZT/4='
+nix build --no-link .#libvhdi
 ```
 
 ## Syncing with NiXOA Core
@@ -127,6 +112,6 @@ Then:
 ## Release Workflow
 
 1. Update `CHANGELOG.md`.
-2. Confirm `nix flake check --accept-flake-config --all-systems --no-build --impure` passes.
+2. Confirm `nix run .#ci` passes.
 3. Commit and push.
 4. Tag release if needed.

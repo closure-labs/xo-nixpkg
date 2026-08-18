@@ -10,12 +10,10 @@ nix flake check --all-systems --no-build
 # Build the XO package
 nix build .#xen-orchestra-ce
 
-# Validate the pinned libvhdi package resolves through the published cache
+# Validate the npins-backed libvhdi package and FUSE3 linkage
 nix eval --raw .#packages.x86_64-linux.libvhdi.name
 nix eval --raw .#packages.x86_64-linux.libvhdi.fuseBackend
-nix build --no-link --max-jobs 0 .#libvhdi \
-  --option extra-substituters 'https://libvhdi-nixpkg.cachix.org' \
-  --option extra-trusted-public-keys 'libvhdi-nixpkg.cachix.org-1:HvYHKZcfczn2nGfCmd7F21E/MDZrlaXtN3p9mWAZT/4='
+nix build --no-link .#libvhdi
 ```
 
 ## Runtime Smoke Tests
@@ -33,9 +31,7 @@ nix build .#xen-orchestra-ce
 ```bash
 nix eval --raw .#packages.x86_64-linux.libvhdi.name
 nix eval --raw .#packages.x86_64-linux.libvhdi.fuseBackend
-nix build --no-link --max-jobs 0 .#libvhdi \
-  --option extra-substituters 'https://libvhdi-nixpkg.cachix.org' \
-  --option extra-trusted-public-keys 'libvhdi-nixpkg.cachix.org-1:HvYHKZcfczn2nGfCmd7F21E/MDZrlaXtN3p9mWAZT/4='
+nix build --no-link .#libvhdi
 ```
 
 ## Submission-Oriented Checks
@@ -48,9 +44,7 @@ nix flake check --all-systems --no-build
 
 # Optional: dry-run package build planning
 nix build .#xen-orchestra-ce --dry-run
-nix build --no-link --max-jobs 0 .#libvhdi \
-  --option extra-substituters 'https://libvhdi-nixpkg.cachix.org' \
-  --option extra-trusted-public-keys 'libvhdi-nixpkg.cachix.org-1:HvYHKZcfczn2nGfCmd7F21E/MDZrlaXtN3p9mWAZT/4='
+nix build --no-link .#libvhdi
 ```
 
 ## Common Failures
@@ -83,8 +77,10 @@ preFixup = ''
 
 ## CI Coverage
 
-CI currently checks:
+`nix run .#ci` is the canonical local and hosted pipeline. CI currently checks:
 - package builds for `xen-orchestra-ce`
-- evaluation and cache substitution for the pinned `libvhdi` input
+- upstream/install checks and exclusive FUSE3 linkage for `libvhdi`
+- XO `fuse-native` libfuse2 linkage and absence of bundled/prebuilt FUSE files
+- updater, trusted-queue, workflow, shell, and ruleset fixtures
 - `nix flake check`
 - basic binary execution smoke tests

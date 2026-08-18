@@ -1,63 +1,49 @@
-name: Check for XO release updates
+# SPDX-License-Identifier: Apache-2.0
+name: Check upstream updates
 
 on:
   schedule:
-    - cron: '0 6 * * *'
+    - cron: "0 6 * * *"
   workflow_dispatch:
 
-jobs:
-  check-update:
-    runs-on: ubuntu-latest
+permissions:
+  contents: read
 
+jobs:
+  xo:
+    name: Check Xen Orchestra releases
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
     steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
+      - name: Checkout
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: false
 
       - name: Install Nix
-        uses: cachix/install-nix-action@v27
+        uses: cachix/install-nix-action@13d8dd58da0234aa297dedd986986ccb8e7f3e24 # v31
+
+      - name: Update, validate, and open the pull request
+        env:
+          FORGEJO_TOKEN: ${{ secrets.FORGEJO_TOKEN }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: nix run .#forgejo-update -- xo
+
+  libvhdi:
+    name: Check libvhdi releases
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - name: Checkout
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
         with:
-          nix_path: nixpkgs=channel:nixos-unstable
+          persist-credentials: false
 
-      - name: Run updater script
-        run: |
-          chmod +x ./scripts/update.sh
-          ./scripts/update.sh --release
+      - name: Install Nix
+        uses: cachix/install-nix-action@13d8dd58da0234aa297dedd986986ccb8e7f3e24 # v31
 
-      - name: Detect changes
-        id: detect
-        run: |
-          if git diff --quiet -- default.nix; then
-            echo "update_available=false" >> "$GITHUB_OUTPUT"
-            exit 0
-          fi
-
-          new_version=$(grep 'version = ' default.nix | sed 's/.*version = "\([^"]*\)".*/\1/')
-          new_rev=$(grep 'rev = ' default.nix | sed 's/.*rev = "\([a-f0-9]*\)".*/\1/')
-
-          echo "update_available=true" >> "$GITHUB_OUTPUT"
-          echo "new_version=$new_version" >> "$GITHUB_OUTPUT"
-          echo "new_rev=$new_rev" >> "$GITHUB_OUTPUT"
-
-      - name: Create Pull Request
-        if: steps.detect.outputs.update_available == 'true'
-        run: |
-          git config user.name "Forgejo Actions"
-          git config user.email "actions@codeberg.org"
-
-          BRANCH="update/xen-orchestra-ce-${{ steps.detect.outputs.new_version }}"
-
-          git checkout -b "$BRANCH"
-          git add default.nix
-          git commit -m "xen-orchestra-ce: update to ${{ steps.detect.outputs.new_version }}"
-          git push origin "$BRANCH"
-
-          curl -X POST \
-            -H "Authorization: token ${{ secrets.FORGEJO_TOKEN }}" \
-            -H "Content-Type: application/json" \
-            "https://codeberg.org/api/v1/repos/NiXOA/xen-orchestra-ce/pulls" \
-            -d '{
-              "title": "xen-orchestra-ce: update to ${{ steps.detect.outputs.new_version }}",
-              "body": "Automated update to xen-orchestra-ce ${{ steps.detect.outputs.new_version }}.\\n\\nUpstream commit: vatesfr/xen-orchestra@${{ steps.detect.outputs.new_rev }}\\n\\nIncludes updates for version, src hash, and yarn offline cache hash.",
-              "head": "'"$BRANCH"'",
-              "base": "main"
-            }'
+      - name: Update, validate, and open the pull request
+        env:
+          FORGEJO_TOKEN: ${{ secrets.FORGEJO_TOKEN }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: nix run .#forgejo-update -- libvhdi

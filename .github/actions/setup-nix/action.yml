@@ -1,0 +1,28 @@
+# SPDX-License-Identifier: Apache-2.0
+name: Set up Nix
+description: Install pinned Nix and optionally enable the GitHub-backed binary cache
+
+inputs:
+  github-token:
+    description: GitHub token used by Nix fetchers
+    required: true
+  magic-cache:
+    description: Whether to enable Magic Nix Cache
+    required: false
+    default: "true"
+
+runs:
+  using: composite
+  steps:
+    - name: Install Determinate Nix
+      uses: DeterminateSystems/determinate-nix-action@61cbfe2efc2d4e7a8a6d56967c3c1058e846c858 # v3.21.9
+      with:
+        extra-conf: |
+          access-tokens = github.com=${{ inputs.github-token }}
+
+    - name: Enable the GitHub-backed Nix cache
+      if: inputs.magic-cache == 'true'
+      uses: DeterminateSystems/magic-nix-cache-action@908b263ff629f4cc17666315b7fd3ec127c6244d # v14
+      with:
+        use-gha-cache: enabled
+        use-flakehub: disabled

@@ -1,12 +1,12 @@
 <!-- SPDX-License-Identifier: Apache-2.0 -->
 # xen-orchestra-ce-nix
 
-Nix packages for [Xen Orchestra Community Edition](https://xen-orchestra.com) and [libvhdi](https://github.com/declarative-dale/libvhdi-nixpkg), structured for eventual submission to nixpkgs.
+Nix packages for [Xen Orchestra Community Edition](https://xen-orchestra.com) and [libvhdi](https://github.com/libyal/libvhdi), structured for eventual submission to nixpkgs.
 
 ## Packages
 
 - **xen-orchestra-ce**: Full web-based management interface for XCP-ng/XenServer
-- **libvhdi**: Library and tools to access VHD/VHDX image formats (provided via pinned flake input)
+- **libvhdi**: FUSE3 library and tools to access VHD/VHDX image formats, built from an npins-pinned official release asset
 
 ## Usage
 
@@ -44,31 +44,26 @@ nix develop
 # Build the XO package
 nix build .#xen-orchestra-ce
 
-# Validate the published libvhdi input
+# Build libvhdi and run its upstream/install/linkage checks
 nix eval --raw .#packages.x86_64-linux.libvhdi.name
 nix eval --raw .#packages.x86_64-linux.libvhdi.fuseBackend
-nix build --no-link --max-jobs 0 .#libvhdi \
-  --option extra-substituters 'https://libvhdi-nixpkg.cachix.org' \
-  --option extra-trusted-public-keys 'libvhdi-nixpkg.cachix.org-1:HvYHKZcfczn2nGfCmd7F21E/MDZrlaXtN3p9mWAZT/4='
+nix build --no-link .#libvhdi
 
-# Evaluate all outputs
-nix flake check --all-systems --no-build
+# Run the same complete, flake-defined pipeline as CI
+nix run .#ci
 ```
 
 ## CI Binary Cache
 
-GitHub Actions configures Cachix read-only before builds when
-`CACHIX_CACHE_NAME` is set. If `CACHIX_AUTH_TOKEN` is also configured, each
-workflow explicitly pushes only the `result` path after `nix build` succeeds.
+The workflow YAML delegates validation, publication, tagging, update discovery,
+and trusted automation to flake applications. GitHub Actions installs
+Determinate Nix and configures the public
+`xen-orchestra-ce` Cachix cache read-only before builds. On `main`,
+`CACHIX_AUTH_TOKEN` is required and the CI workflow explicitly pushes only the
+realized Xen Orchestra and libvhdi closures after the stable `CI gate` succeeds.
 This avoids uploading fetched source tarballs or other incidental store paths
-created during evaluation or builds.
-
-The `libvhdi` input is consumed from
-[`declarative-dale/libvhdi-nixpkg`](https://github.com/declarative-dale/libvhdi-nixpkg)
-and should be substituted from its public Cachix cache:
-
-- substituter: `https://libvhdi-nixpkg.cachix.org`
-- trusted key: `libvhdi-nixpkg.cachix.org-1:HvYHKZcfczn2nGfCmd7F21E/MDZrlaXtN3p9mWAZT/4=`
+created during evaluation or builds while keeping the final package closure
+available to NiXOA core.
 
 ## Updating Sources
 
@@ -77,24 +72,24 @@ and should be substituted from its public Cachix cache:
 ```bash
 # Automatically updates version, src.hash, and yarnOfflineCache.hash
 # from the latest upstream release commit.
-./scripts/update.sh --release
+nix run .#update-xo-release
 
 # Track upstream source HEAD without changing version.
-./scripts/update.sh --upstream
+nix run .#update-xo-upstream
 
 # Validate evaluation
-nix flake check --all-systems --no-build
+nix run .#ci
 ```
 
-### Bump libvhdi-nixpkg release tag
+### Update libvhdi
 
 ```bash
-# Edit inputs.libvhdi.url in flake.nix to the new release tag, then refresh
-# the lock file.
-nix flake lock --update-input libvhdi
+# Discover numeric-date releases (including prereleases), pin the matching
+# official release asset atomically, and reject downgrades or malformed assets.
+nix run --accept-flake-config .#update-libvhdi
 
-# Validate evaluation
-nix flake check --all-systems --no-build
+# Validate the package and exclusive libfuse3 linkage
+nix build --accept-flake-config --no-link .#libvhdi
 ```
 
 ## Nixpkgs Submission
@@ -118,7 +113,7 @@ Apache-2.0 - See [LICENSE](LICENSE)
 
 - [NiXOA](https://codeberg.org/NiXOA) - Full NixOS deployment system for Xen Orchestra
 - [Xen Orchestra](https://github.com/vatesfr/xen-orchestra) - Upstream project
-- [libvhdi-nixpkg](https://github.com/declarative-dale/libvhdi-nixpkg) - Published libvhdi package flake
+- [libvhdi](https://github.com/libyal/libvhdi) - Upstream VHD/VHDX library
 
 ## Maintainers
 

@@ -6,6 +6,29 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## Unreleased
+
+### Changed
+
+- Package libvhdi directly from an npins format-8 pin to its official release
+  asset, with FUSE3 as its only FUSE backend and upstream/install checks.
+- Replace devenv with a pure `mkShellNoCC` toolchain and remove the external
+  libvhdi flake, compatibility outputs, lock graph, and dedicated cache.
+- Require a stable, up-to-date `CI gate`; pin actions; use job-local GitHub Nix
+  caching; and publish only final XO/libvhdi closures from protected `main`.
+- Add trusted update queues, weekly grouped dependency/input updates, a checked
+  in main ruleset, and shared GitHub/Forgejo libvhdi update automation.
+- Move validation, publication, tagging, release discovery, and trusted queue
+  policy behind Nix-provided flake apps, leaving workflow YAML as thin host
+  orchestration.
+
+### Fixed
+
+- Pass the GitHub App ID expected by `actions/create-github-app-token@v3` in
+  release and update workflows.
+- Verify XO's rebuilt `fuse-native` addon links libfuse2 while libvhdi's
+  `vhdimount` links only libfuse3, with bundled/prebuilt npm FUSE files absent.
+
 ## [v6.3.3] - 2026-04-14
 
 <img id="latest" src="https://badgen.net/badge/channel/latest/yellow" alt="Channel: latest" />
