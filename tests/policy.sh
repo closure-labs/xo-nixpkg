@@ -43,6 +43,7 @@ jq -e '
 for application in \
   ci \
   publish \
+  publish-release \
   tag-release \
   queue-automation \
   update-xo-release \

@@ -128,3 +128,6 @@ To prepare a project release:
 After the gated main build succeeds, automation creates the immutable project
 tag, advances `latest`, and points `stable` at the preceding project release.
 The first independent project release initializes `stable` to that release.
+The same gated job idempotently publishes the semantic-version tag as a GitHub
+Release using only that tagged commit's matching changelog section. Re-running
+the workflow never rewrites an existing tag or duplicates a published release.

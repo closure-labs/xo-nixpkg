@@ -20,6 +20,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   requests when scheduled discovery finds no source change.
 - Keep the public Cachix graph declaration while isolating Magic Nix Cache as
   idempotent, runner-local GitHub Actions configuration.
+- Publish immutable semantic-version tags as idempotent GitHub Releases using
+  the matching changelog section stored in the gated tagged commit.
 
 ## [0.8.0] - 2026-08-18
 

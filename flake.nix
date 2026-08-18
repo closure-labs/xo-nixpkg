@@ -149,6 +149,7 @@
             mkApp self.packages.${system}.flake-attribute-validator
               "Validate and build a pure flake attribute plan";
           publish = mkApp applications.publish "Publish final package closures to Cachix";
+          publish-release = mkApp applications.publishRelease "Publish the immutable project tag as a GitHub release";
           tag-release = mkApp applications.tagRelease "Tag a successfully gated main release";
           trusted-update = mkApp applications.trustedUpdate "Validate and merge one trusted update";
           queue-automation = mkApp applications.queueAutomation "Queue trusted automation updates";

@@ -65,6 +65,17 @@ rec {
     ];
   };
 
+  publishRelease = mkRepositoryApplication {
+    name = "xo-nixpkg-publish-release";
+    script = "ci/publish-release.sh";
+    runtimeInputs = with pkgs; [
+      coreutils
+      gawk
+      gh
+      git
+    ];
+  };
+
   tagRelease = mkRepositoryApplication {
     name = "xo-nixpkg-tag-release";
     script = "ci/tag-release.sh";

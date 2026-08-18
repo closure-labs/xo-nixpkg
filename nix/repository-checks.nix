@@ -64,6 +64,7 @@ let
         ''
           bash source/tests/trusted-update.sh
           bash source/tests/tag-release.sh
+          bash source/tests/publish-release.sh
         '';
 
     attribute-validator-fixtures =

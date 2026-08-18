@@ -109,3 +109,9 @@ jobs:
           APP_TOKEN: ${{ steps.app-token.outputs.token }}
           GATED_SHA: ${{ github.sha }}
         run: nix run .#tag-release
+
+      - name: Publish the immutable GitHub release
+        env:
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
+        run: nix run .#publish-release
