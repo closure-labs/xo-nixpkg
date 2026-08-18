@@ -23,8 +23,24 @@
         "x86_64-linux"
       ];
       forAllSystems = nixpkgs.lib.genAttrs supportedSystems;
+      ciLib = import ./nix/ci-plan.nix { lib = nixpkgs.lib; };
     in
     {
+      lib = ciLib // {
+        ciPlans = forAllSystems (system: {
+          validation = ciLib.mkFlakeAttributePlan {
+            name = "xo-nixpkg-validation";
+            targets = [
+              "checks.${system}.xen-orchestra-ce"
+              "checks.${system}.xo-fuse-linkage"
+              "checks.${system}.xo-server-service"
+              "checks.${system}.libvhdi"
+              "checks.${system}.repository"
+            ];
+          };
+        });
+      };
+
       packages = forAllSystems (
         system:
         let
@@ -36,6 +52,7 @@
           libvhdi = pkgs.callPackage ./nix/libvhdi.nix {
             source = sources.libvhdi { inherit pkgs; };
           };
+          flake-attribute-validator = pkgs.callPackage ./nix/flake-attribute-validator.nix { };
           default = self.packages.${system}.xen-orchestra-ce;
         }
       );
@@ -107,6 +124,7 @@
           applications = import ./nix/applications.nix {
             inherit pkgs;
             nixpkgsPath = nixpkgs.outPath;
+            attributeValidator = self.packages.${system}.flake-attribute-validator;
           };
           mkApp = package: description: {
             type = "app";
@@ -116,6 +134,9 @@
         in
         {
           ci = mkApp applications.ci "Run the complete repository validation pipeline";
+          validate-ci-plan =
+            mkApp self.packages.${system}.flake-attribute-validator
+              "Validate and build a pure flake attribute plan";
           publish = mkApp applications.publish "Publish final package closures to Cachix";
           tag-release = mkApp applications.tagRelease "Tag a successfully gated main release";
           trusted-update = mkApp applications.trustedUpdate "Validate and merge one trusted update";

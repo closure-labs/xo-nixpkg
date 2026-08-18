@@ -51,6 +51,11 @@ nix build --no-link .#libvhdi
 
 # Run the same complete, flake-defined pipeline as CI
 nix run .#ci
+
+# Evaluate the versioned pure target plan, or execute it independently
+nix eval --json .#lib.ciPlans.x86_64-linux.validation
+nix run .#validate-ci-plan -- \
+  --plan lib.ciPlans.x86_64-linux.validation
 ```
 
 ## CI Binary Cache
@@ -64,6 +69,13 @@ realized Xen Orchestra and libvhdi closures after the stable `CI gate` succeeds.
 This avoids uploading fetched source tarballs or other incidental store paths
 created during evaluation or builds while keeping the final package closure
 available to NiXOA core.
+
+The validation target list is a versioned pure value under
+`lib.ciPlans.x86_64-linux.validation`. The shared
+`flake-attribute-validator` checks that JSON contract before starting builds,
+runs every declared flake attribute in a fresh child process, and reports all
+failures together. Downstream flakes can reuse `lib.mkFlakeAttributePlan` and
+the validator package without copying its shell implementation.
 
 ## Updating Sources
 

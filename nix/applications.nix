@@ -1,6 +1,7 @@
 {
   pkgs,
   nixpkgsPath,
+  attributeValidator,
 }:
 
 let
@@ -42,11 +43,17 @@ rec {
   ci = mkRepositoryApplication {
     name = "xo-nixpkg-ci";
     script = "ci/run.sh";
-    runtimeInputs = with pkgs; [
-      coreutils
-      git
-      nix
-    ];
+    runtimeInputs =
+      with pkgs;
+      [
+        coreutils
+        git
+        nix
+      ]
+      ++ [ attributeValidator ];
+    environment = ''
+      export XO_NIXPKG_CI_PLAN=lib.ciPlans.${pkgs.stdenv.hostPlatform.system}.validation
+    '';
   };
 
   publish = mkRepositoryApplication {

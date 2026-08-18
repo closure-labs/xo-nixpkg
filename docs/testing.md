@@ -14,6 +14,11 @@ nix build .#xen-orchestra-ce
 nix eval --raw .#packages.x86_64-linux.libvhdi.name
 nix eval --raw .#packages.x86_64-linux.libvhdi.fuseBackend
 nix build --no-link .#libvhdi
+
+# Inspect or run the exact independent attribute-build plan used by CI
+nix eval --json .#lib.ciPlans.x86_64-linux.validation
+nix run .#validate-ci-plan -- \
+  --plan lib.ciPlans.x86_64-linux.validation
 ```
 
 ## Runtime Smoke Tests
@@ -77,7 +82,10 @@ preFixup = ''
 
 ## CI Coverage
 
-`nix run .#ci` is the canonical local and hosted pipeline. CI currently checks:
+`nix run .#ci` is the canonical local and hosted pipeline. It first evaluates
+the complete flake without building, then validates the versioned pure
+`lib.ciPlans.x86_64-linux.validation` contract and builds each declared
+attribute in an independent process so every failure is collected. CI checks:
 - package builds for `xen-orchestra-ce`
 - upstream/install checks and exclusive FUSE3 linkage for `libvhdi`
 - XO `fuse-native` libfuse2 linkage and absence of bundled/prebuilt FUSE files

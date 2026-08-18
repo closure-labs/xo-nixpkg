@@ -4,10 +4,16 @@
 set -euo pipefail
 
 repo_root=${XO_NIXPKG_SOURCE_ROOT:-$PWD}
+flake_ref="git+file://$repo_root"
 
-exec nix flake check \
+nix flake check \
   --accept-flake-config \
+  --no-build \
   --no-write-lock-file \
   --print-build-logs \
-  "git+file://$repo_root" \
+  "$flake_ref" \
   "$@"
+
+exec flake-attribute-validator \
+  --flake "$flake_ref" \
+  --plan "${XO_NIXPKG_CI_PLAN:?XO_NIXPKG_CI_PLAN must be set}"

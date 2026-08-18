@@ -21,6 +21,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Move validation, publication, tagging, release discovery, and trusted queue
   policy behind Nix-provided flake apps, leaving workflow YAML as thin host
   orchestration.
+- Export a reusable pure flake-attribute CI planner and one Nix-wrapped
+  validator that rejects malformed plans, isolates target builds, and collects
+  all failures before returning.
 
 ### Fixed
 

@@ -28,6 +28,7 @@ jq -e '
 bash "$root/tests/update-libvhdi.sh"
 bash "$root/tests/trusted-update.sh"
 bash "$root/tests/tag-release.sh"
+bash "$root/tests/flake-attribute-validator.sh"
 
 for application in \
   ci \
@@ -40,6 +41,10 @@ for application in \
   forgejo-update; do
   rg -F "nix run .#$application" "$root/.github/workflows" "$root/.forgejo/workflows" >/dev/null
 done
+
+rg -F 'lib.ciPlans.${pkgs.stdenv.hostPlatform.system}.validation' \
+  "$root/nix/applications.nix" >/dev/null
+rg -F 'flake-attribute-validator' "$root/ci/run.sh" >/dev/null
 
 if rg 'run:.*(\./ci/|\./scripts/)' "$root/.github/workflows" "$root/.forgejo/workflows"; then
   echo 'Workflows must invoke repository automation through flake apps' >&2
