@@ -19,9 +19,6 @@ jobs:
     name: Flake-defined validation
     runs-on: ubuntu-24.04
     timeout-minutes: 180
-    permissions:
-      contents: read
-      id-token: write
     steps:
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -36,6 +33,12 @@ jobs:
       - name: Run the complete flake-defined pipeline
         run: nix run .#ci
 
+      - name: Publish protected-main package closures
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        env:
+          CACHIX_AUTH_TOKEN: ${{ secrets.CACHIX_AUTH_TOKEN }}
+        run: nix run .#publish
+
   gate:
     name: CI gate
     if: always()
@@ -48,37 +51,13 @@ jobs:
           VALIDATE_RESULT: ${{ needs.validate.result }}
         run: test "$VALIDATE_RESULT" = success
 
-  publish:
-    name: Publish protected-main package closures
-    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
-    needs: gate
-    runs-on: ubuntu-24.04
-    timeout-minutes: 120
-    permissions:
-      contents: read
-    steps:
-      - name: Checkout
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          persist-credentials: false
-
-      - name: Set up Nix
-        uses: ./.github/actions/setup-nix
-        with:
-          github-token: ${{ github.token }}
-          magic-cache: "false"
-
-      - name: Publish the flake's final closures
-        env:
-          CACHIX_AUTH_TOKEN: ${{ secrets.CACHIX_AUTH_TOKEN }}
-        run: nix run .#publish
-
   tag:
     name: Tag gated main release and aliases
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
-    needs: [gate, publish]
+    needs: gate
     runs-on: ubuntu-24.04
     timeout-minutes: 15
+    environment: release
     permissions:
       contents: read
     steps:
@@ -86,7 +65,7 @@ jobs:
         id: app-token
         uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1 # v3.2.0
         with:
-          app-id: ${{ vars.UPDATE_GITHUB_APP_ID }}
+          client-id: ${{ vars.UPDATE_GITHUB_APP_CLIENT_ID }}
           private-key: ${{ secrets.UPDATE_GITHUB_APP_PRIVATE_KEY }}
           permission-contents: write
 
@@ -102,7 +81,6 @@ jobs:
         uses: ./.github/actions/setup-nix
         with:
           github-token: ${{ github.token }}
-          magic-cache: "false"
 
       - name: Create tags from the gated SHA
         env:

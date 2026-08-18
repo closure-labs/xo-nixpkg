@@ -30,7 +30,6 @@ jobs:
         uses: ./.github/actions/setup-nix
         with:
           github-token: ${{ github.token }}
-          magic-cache: "false"
 
       - name: Verify author, repository, branch, title, and SHA before auto-merge
         env:

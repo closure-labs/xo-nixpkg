@@ -4,16 +4,12 @@
 set -euo pipefail
 
 : "${CACHIX_AUTH_TOKEN:?CACHIX_AUTH_TOKEN must be set}"
+: "${XO_NIXPKG_PUBLISH_PLAN:?XO_NIXPKG_PUBLISH_PLAN must be set}"
 
-mapfile -t package_paths < <(
-  nix build \
-    --accept-flake-config \
-    --no-write-lock-file \
-    --no-link \
-    --print-out-paths \
-    .#xen-orchestra-ce \
-    .#libvhdi
-)
+manifest=$(mktemp)
+trap 'rm -f -- "$manifest"' EXIT
+flake-plan-runner --flake . --plan "$XO_NIXPKG_PUBLISH_PLAN" --manifest "$manifest"
+mapfile -t package_paths < <(jq -er '.results[].outputs[]' "$manifest")
 
 if [[ ${#package_paths[@]} -ne 2 ]]; then
   printf 'Expected two final package paths, found %s\n' "${#package_paths[@]}" >&2

@@ -13,13 +13,11 @@ cat >>"$temporary/bin/gh" <<'EOF'
 set -euo pipefail
 if [[ "$1 $2" == 'pr view' ]]; then
   jq -n \
-    --arg author "${FAKE_AUTHOR:-github-actions[bot]}" \
+    --arg author "${FAKE_AUTHOR:-app/nixoa-updater}" \
     --arg repository "${FAKE_REPOSITORY:-example/xo-nixpkg}" \
     '{author:{login:$author},baseRefName:"main",headRefName:"automation/test",headRefOid:"abc123",headRepository:{nameWithOwner:$repository},mergeStateStatus:"CLEAN",state:"OPEN",title:"Trusted update",url:"https://example.invalid/pr/1"}'
 elif [[ "$1 $2" == 'run list' ]]; then
   printf '42\n'
-elif [[ "$1 $2" == 'run watch' ]]; then
-  exit 0
 elif [[ "$1 $2" == 'pr merge' ]]; then
   printf '%s\n' "$*" >"$FAKE_MERGE_LOG"
 else
@@ -35,7 +33,7 @@ trusted_env=(
   PR_NUMBER=1
   EXPECTED_BRANCH=automation/test
   EXPECTED_TITLE='Trusted update'
-  EXPECTED_AUTHOR='github-actions[bot]'
+  EXPECTED_AUTHOR=nixoa-updater
   EXPECTED_HEAD_SHA=abc123
   DEFAULT_BRANCH=main
   FAKE_MERGE_LOG="$temporary/merge.log"

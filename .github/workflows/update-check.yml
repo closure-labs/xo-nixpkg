@@ -19,15 +19,6 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 120
     steps:
-      - name: Create GitHub App token
-        id: app-token
-        uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1 # v3.2.0
-        with:
-          app-id: ${{ vars.UPDATE_GITHUB_APP_ID }}
-          private-key: ${{ secrets.UPDATE_GITHUB_APP_PRIVATE_KEY }}
-          permission-contents: write
-          permission-pull-requests: write
-
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -37,7 +28,6 @@ jobs:
         uses: ./.github/actions/setup-nix
         with:
           github-token: ${{ github.token }}
-          magic-cache: "false"
 
       - name: Update and validate the selected release
         id: release
@@ -45,19 +35,26 @@ jobs:
           GITHUB_TOKEN: ${{ github.token }}
         run: nix run .#update-xo-release -- "$GITHUB_OUTPUT"
 
+      - name: Create GitHub App token
+        if: steps.release.outputs.changed == 'true'
+        id: app-token
+        uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1 # v3.2.0
+        with:
+          client-id: ${{ vars.UPDATE_GITHUB_APP_CLIENT_ID }}
+          private-key: ${{ secrets.UPDATE_GITHUB_APP_PRIVATE_KEY }}
+          permission-contents: write
+          permission-pull-requests: write
+
       - name: Open the update pull request
         if: steps.release.outputs.changed == 'true'
-        uses: peter-evans/create-pull-request@5f6978faf089d4d20b00c7766989d076bb2fc7f1 # v8
-        with:
-          token: ${{ steps.app-token.outputs.token }}
-          branch: update/xen-orchestra-ce-${{ steps.release.outputs.version }}
-          delete-branch: true
-          add-paths: nix/sources/xen-orchestra.json
-          commit-message: "xen-orchestra-ce: update to ${{ steps.release.outputs.version }}"
-          title: "xen-orchestra-ce: update to ${{ steps.release.outputs.version }}"
-          body: |
+        env:
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}
+          UPDATE_BRANCH: update/xen-orchestra-ce-${{ steps.release.outputs.version }}
+          UPDATE_TITLE: "xen-orchestra-ce: update to ${{ steps.release.outputs.version }}"
+          UPDATE_BODY: |-
             Automated update to Xen Orchestra ${{ steps.release.outputs.version }}.
 
             Upstream commit: `vatesfr/xen-orchestra@${{ steps.release.outputs.rev }}`
 
             Validation: `nix run .#update-xo-release`
+        run: nix run .#open-update-pr -- nix/sources/xen-orchestra.json

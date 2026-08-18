@@ -18,10 +18,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   flake checks with Nix-provided dependencies.
 - Use native Nix source prefetching and skip package builds and update pull
   requests when scheduled discovery finds no source change.
-- Keep the public Cachix graph declaration while isolating Magic Nix Cache as
-  idempotent, runner-local GitHub Actions configuration.
+- Remove Magic Nix Cache and publish the exact schema-v2 package plan from the
+  already validated protected-main runner.
 - Publish immutable semantic-version tags as idempotent GitHub Releases using
   the matching changelog section stored in the gated tagged commit.
+- Verify an existing immutable release is published and still points at the
+  expected project tag before treating publication as complete.
+- Replace the schema-v1 attribute validator with a clean-break schema-v2 plan
+  runner that records output manifests and materializes links atomically.
+- Move GitHub source and lock pull-request creation behind Nix-provided apps,
+  deferred GitHub App tokens, and canonical updater identity validation.
 
 ## [0.8.0] - 2026-08-18
 

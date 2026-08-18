@@ -17,7 +17,7 @@ nix build --no-link .#libvhdi
 
 # Inspect or run the exact independent attribute-build plan used by CI
 nix eval --json .#lib.ciPlans.x86_64-linux.validation
-nix run .#validate-ci-plan -- \
+nix run .#run-ci-plan -- \
   --plan lib.ciPlans.x86_64-linux.validation
 ```
 

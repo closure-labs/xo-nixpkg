@@ -21,7 +21,18 @@ tagged_version=$(git -C "$repo_root" show "$tag:VERSION" | tr -d '\r\n')
   exit 1
 }
 
-if gh release view "$tag" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+if release_json=$(gh release view "$tag" --repo "$GITHUB_REPOSITORY" \
+  --json isDraft,tagName 2>/dev/null); then
+  [[ $(jq -er .tagName <<<"$release_json") == "$tag" ]]
+  [[ $(jq -er .isDraft <<<"$release_json") == false ]]
+  local_tag_commit=$(git -C "$repo_root" rev-parse "$tag^{commit}")
+  remote_tag_commit=$(gh api "repos/${GITHUB_REPOSITORY}/git/ref/tags/${tag}" \
+    --jq .object.sha)
+  [[ $remote_tag_commit == "$local_tag_commit" ]] || {
+    printf 'Published release %s points to %s, expected %s\n' \
+      "$tag" "$remote_tag_commit" "$local_tag_commit" >&2
+    exit 1
+  }
   printf 'GitHub release %s is already published\n' "$tag"
   exit 0
 fi

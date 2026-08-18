@@ -19,7 +19,7 @@ Commit the resulting `flake.lock`. The input exposes these primary packages on
 
 - `packages.x86_64-linux.xen-orchestra-ce`
 - `packages.x86_64-linux.libvhdi`
-- `packages.x86_64-linux.flake-attribute-validator`
+- `packages.x86_64-linux.flake-plan-runner`
 
 ## Install packages on NixOS
 
@@ -46,11 +46,9 @@ trusted key. Pass `--accept-flake-config` when consuming it interactively. A
 NixOS host can instead declare the same substituter and key in its trusted Nix
 configuration.
 
-GitHub Actions additionally uses Magic Nix Cache as a runner-local cache proxy.
-It configures itself through the pinned action and is not part of the flake's
-public substituter graph. No Determinate or FlakeHub substituter is required for
-package evaluation; keeping runner-local caches out of `nixConfig` avoids
-duplicating or leaking CI-specific cache policy to downstream users.
+GitHub Actions consumes the same public cache graph and explicitly publishes
+the final package plan only after protected-main validation. No runner-local or
+Determinate substituter is required for package evaluation.
 
 NiXOA Core separately retains `https://install.determinate.systems` for users
 loading its flake from an existing vanilla-nixpkgs NixOS VM. That consumer
@@ -76,13 +74,13 @@ planner:
 
 ```nix
 let
-  mkPlan = inputs.xo-nixpkg.lib.mkFlakeAttributePlan;
+  mkPlan = inputs.xo-nixpkg.lib.mkCiPlan;
 in {
   lib.ciPlans.x86_64-linux.validation = mkPlan {
     name = "example-validation";
     targets = [
-      "checks.x86_64-linux.repository"
-      "packages.x86_64-linux.default"
+      { name = "repository"; attribute = "checks.x86_64-linux.repository"; }
+      { name = "default"; attribute = "packages.x86_64-linux.default"; }
     ];
   };
 }
@@ -92,10 +90,10 @@ Run the plan with the packaged validator:
 
 ```bash
 nix run --accept-flake-config \
-  github:declarative-dale/xo-nixpkg#validate-ci-plan -- \
+  github:declarative-dale/xo-nixpkg#run-ci-plan -- \
   --plan lib.ciPlans.x86_64-linux.validation
 ```
 
-The validator evaluates the selected plan once, verifies schema version 1 and
+The runner evaluates the selected plan once, verifies schema version 2 and
 target uniqueness, builds each attribute in a separate process, and reports
 all target results before returning.

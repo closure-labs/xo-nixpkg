@@ -38,7 +38,13 @@ printf '#!%s\n' "$(command -v bash)" >"$temporary/bin/gh"
 cat >>"$temporary/bin/gh" <<'SH'
 set -euo pipefail
 if [[ $1 == release && $2 == view ]]; then
-  [[ ${FIXTURE_RELEASE_EXISTS:-false} == true ]]
+  [[ ${FIXTURE_RELEASE_EXISTS:-false} == true ]] || exit 1
+  printf '{"isDraft":%s,"tagName":"%s"}\n' \
+    "${FIXTURE_RELEASE_DRAFT:-false}" "${FIXTURE_RELEASE_TAG:-v0.8.0}"
+  exit
+fi
+if [[ $1 == api ]]; then
+  git -C "$XO_NIXPKG_SOURCE_ROOT" rev-parse v0.8.0^{commit}
   exit
 fi
 printf '%s\n' "$*" >>"$FIXTURE_GH_LOG"
@@ -78,3 +84,16 @@ FIXTURE_GH_LOG="$temporary/gh.log" \
 FIXTURE_RELEASE_NOTES="$temporary/notes.md" \
   bash "$root/ci/publish-release.sh"
 [[ ! -s $temporary/gh.log ]]
+
+if PATH="$temporary/bin:$PATH" \
+GH_TOKEN=fixture \
+GITHUB_REPOSITORY=example/repository \
+XO_NIXPKG_SOURCE_ROOT="$repository" \
+FIXTURE_RELEASE_EXISTS=true \
+FIXTURE_RELEASE_DRAFT=true \
+FIXTURE_GH_LOG="$temporary/gh.log" \
+FIXTURE_RELEASE_NOTES="$temporary/notes.md" \
+  bash "$root/ci/publish-release.sh" >/dev/null 2>&1; then
+  echo 'Draft release was accepted as immutable publication' >&2
+  exit 1
+fi

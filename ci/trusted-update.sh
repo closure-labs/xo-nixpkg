@@ -22,9 +22,13 @@ read_pr() {
 
 validate_pr() {
   local candidate=$1
+  local author
+  author=$(jq -er .author.login <<<"$candidate")
+  author=${author#app/}
+  author=${author%\[bot\]}
   [[ $(jq -er .state <<<"$candidate") == OPEN ]]
   [[ $(jq -er .title <<<"$candidate") == "$EXPECTED_TITLE" ]]
-  [[ $(jq -er .author.login <<<"$candidate") == "$EXPECTED_AUTHOR" ]]
+  [[ $author == "$EXPECTED_AUTHOR" ]]
   [[ $(jq -er .baseRefName <<<"$candidate") == "$DEFAULT_BRANCH" ]]
   [[ $(jq -er .headRepository.nameWithOwner <<<"$candidate") == "$GITHUB_REPOSITORY" ]]
   [[ $(jq -er .headRefName <<<"$candidate") == "$EXPECTED_BRANCH" ]]
@@ -78,7 +82,6 @@ fi
   printf 'Could not locate CI for trusted update %s at %s.\n' "$PR_NUMBER" "$head_sha" >&2
   exit 1
 }
-gh run watch "$run_id" --repo "$GITHUB_REPOSITORY" --exit-status
 gh pr merge \
   --repo "$GITHUB_REPOSITORY" \
   --auto \

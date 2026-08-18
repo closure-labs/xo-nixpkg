@@ -1,7 +1,7 @@
 {
   pkgs,
   nixpkgsPath,
-  attributeValidator,
+  planRunner,
 }:
 
 let
@@ -49,7 +49,7 @@ rec {
         git
         nix
       ]
-      ++ [ attributeValidator ];
+      ++ [ planRunner ];
     environment = ''
       export XO_NIXPKG_CI_PLAN=lib.ciPlans.${pkgs.stdenv.hostPlatform.system}.validation
     '';
@@ -58,11 +58,18 @@ rec {
   publish = mkRepositoryApplication {
     name = "xo-nixpkg-publish";
     script = "ci/publish.sh";
-    runtimeInputs = with pkgs; [
-      cachix
-      coreutils
-      nix
-    ];
+    runtimeInputs =
+      with pkgs;
+      [
+        cachix
+        coreutils
+        jq
+        nix
+      ]
+      ++ [ planRunner ];
+    environment = ''
+      export XO_NIXPKG_PUBLISH_PLAN=lib.ciPlans.${pkgs.stdenv.hostPlatform.system}.publish
+    '';
   };
 
   publishRelease = mkRepositoryApplication {
@@ -157,5 +164,25 @@ rec {
       export XO_NIXPKG_NIXPKGS_PATH=${pkgs.lib.escapeShellArg nixpkgsPath}
       export XO_NIXPKG_UPDATE_IN_DEV_SHELL=1
     '';
+  };
+
+  openUpdatePr = mkRepositoryApplication {
+    name = "xo-nixpkg-open-update-pr";
+    script = "ci/open-update-pr.sh";
+    runtimeInputs = with pkgs; [
+      coreutils
+      gh
+      git
+    ];
+  };
+
+  updateFlakeLock = mkRepositoryApplication {
+    name = "xo-nixpkg-update-flake-lock";
+    script = "ci/update-flake-lock.sh";
+    runtimeInputs = with pkgs; [
+      coreutils
+      git
+      nix
+    ];
   };
 }

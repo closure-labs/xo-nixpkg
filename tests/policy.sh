@@ -48,6 +48,8 @@ for application in \
   queue-automation \
   update-xo-release \
   update-libvhdi \
+  open-update-pr \
+  update-flake-lock \
   maintain-latest-upstream \
   forgejo-update; do
   rg -F "nix run .#$application" "$root/.github/workflows" "$root/.forgejo/workflows" >/dev/null
@@ -55,7 +57,25 @@ done
 
 rg -F 'lib.ciPlans.${pkgs.stdenv.hostPlatform.system}.validation' \
   "$root/nix/applications.nix" >/dev/null
-rg -F 'flake-attribute-validator' "$root/ci/run.sh" >/dev/null
+rg -F 'flake-plan-runner' "$root/ci/run.sh" >/dev/null
+rg -F 'schemaVersion = 2' "$root/nix/ci-plan.nix" >/dev/null
+
+if rg -F 'magic-nix-cache-action' "$root/.github"; then
+  echo 'GitHub workflows must not use Magic Nix Cache' >&2
+  exit 1
+fi
+if rg -F 'peter-evans/create-pull-request' "$root/.github"; then
+  echo 'Source updates must use flake-packaged pull-request automation' >&2
+  exit 1
+fi
+if rg -F 'DeterminateSystems/update-flake-lock' "$root/.github"; then
+  echo 'Lock updates must use flake-packaged automation' >&2
+  exit 1
+fi
+if rg -F 'UPDATE_GITHUB_APP_ID' "$root/.github"; then
+  echo 'GitHub App automation must use the client ID' >&2
+  exit 1
+fi
 
 if rg 'run:.*(\./ci/|\./scripts/)' "$root/.github/workflows" "$root/.forgejo/workflows"; then
   echo 'Workflows must invoke repository automation through flake apps' >&2
@@ -67,10 +87,15 @@ while IFS= read -r action; do
     echo "Unpinned workflow action: $action" >&2
     exit 1
   }
-done < <(sed -nE 's/^[[:space:]]*uses:[[:space:]]*([^[:space:]#]+).*/\1/p' \
+done < <(yq -r '.. | .uses? | select(. != null)' \
   "$root"/.github/actions/*/*.yml \
   "$root"/.github/workflows/*.yml \
-  "$root"/.forgejo/workflows/*.yml)
+  "$root"/.forgejo/workflows/*.yml | grep -v '^---$')
+
+yq -e '
+  [.jobs[].steps[] | select(.uses == "actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1") |
+    .with."persist-credentials"] | all_c(. == false)
+' "$root"/.github/workflows/*.yml >/dev/null
 
 actionlint "$root"/.github/workflows/*.yml
 zizmor "$root/.github"

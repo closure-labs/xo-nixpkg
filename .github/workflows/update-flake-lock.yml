@@ -11,8 +11,7 @@ concurrency:
   cancel-in-progress: true
 
 permissions:
-  contents: write
-  pull-requests: write
+  contents: read
 
 jobs:
   update:
@@ -29,14 +28,26 @@ jobs:
         uses: ./.github/actions/setup-nix
         with:
           github-token: ${{ github.token }}
-          magic-cache: "false"
 
-      - name: Refresh Nixpkgs and open a pull request
-        uses: DeterminateSystems/update-flake-lock@834c491b2ece4de0bbd00d85214bb5e83b4da5c6 # v28
+      - name: Refresh and validate Nixpkgs
+        id: update
+        run: nix run .#update-flake-lock -- "$GITHUB_OUTPUT"
+
+      - name: Create GitHub App token
+        if: steps.update.outputs.changed == 'true'
+        id: app-token
+        uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1 # v3.2.0
         with:
-          inputs: nixpkgs
-          base: main
-          branch: automation/weekly-flake-input-refresh
-          commit-msg: "flake.lock: refresh nixpkgs"
-          pr-title: "flake.lock: refresh nixpkgs"
-          pr-body: Automated weekly refresh of the Nixpkgs flake input.
+          client-id: ${{ vars.UPDATE_GITHUB_APP_CLIENT_ID }}
+          private-key: ${{ secrets.UPDATE_GITHUB_APP_PRIVATE_KEY }}
+          permission-contents: write
+          permission-pull-requests: write
+
+      - name: Open the lock update pull request
+        if: steps.update.outputs.changed == 'true'
+        env:
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}
+          UPDATE_BRANCH: automation/weekly-flake-input-refresh
+          UPDATE_TITLE: "flake.lock: refresh nixpkgs"
+          UPDATE_BODY: Automated weekly refresh of the Nixpkgs flake input.
+        run: nix run .#open-update-pr -- flake.lock
