@@ -4,8 +4,8 @@
 ## Setup
 
 ```bash
-git clone ssh://git@codeberg.org/NiXOA/xen-orchestra-ce.git
-cd xen-orchestra-ce
+git clone https://github.com/declarative-dale/xo-nixpkg.git
+cd xo-nixpkg
 nix develop --accept-flake-config
 ```
 
@@ -111,7 +111,20 @@ Then:
 
 ## Release Workflow
 
-1. Update `CHANGELOG.md`.
-2. Confirm `nix run .#ci` passes.
-3. Commit and push.
-4. Tag release if needed.
+Repository releases and packaged upstream versions are independent:
+
+```bash
+nix eval --raw .#lib.projectVersion
+nix eval --raw .#xen-orchestra-ce.version
+```
+
+To prepare a project release:
+
+1. Set the semantic version in `VERSION`.
+2. Add the dated release entry to `CHANGELOG.md`.
+3. Confirm `nix run --accept-flake-config .#ci` passes.
+4. Commit and push through the protected `main` workflow.
+
+After the gated main build succeeds, automation creates the immutable project
+tag, advances `latest`, and points `stable` at the preceding project release.
+The first independent project release initializes `stable` to that release.

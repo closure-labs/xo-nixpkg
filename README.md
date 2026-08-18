@@ -1,132 +1,63 @@
 <!-- SPDX-License-Identifier: Apache-2.0 -->
-# xen-orchestra-ce-nix
+# xo-nixpkg
 
-Nix packages for [Xen Orchestra Community Edition](https://xen-orchestra.com) and [libvhdi](https://github.com/libyal/libvhdi), structured for eventual submission to nixpkgs.
+Reproducible Nix packages for Xen Orchestra Community Edition and libvhdi.
+The project releases independently as `v0.8.0`; each package keeps its own
+upstream version.
 
-## Packages
+## Quick start
 
-- **xen-orchestra-ce**: Full web-based management interface for XCP-ng/XenServer
-- **libvhdi**: FUSE3 library and tools to access VHD/VHDX image formats, built from an npins-pinned official release asset
+Build either package directly from GitHub:
 
-## Usage
+```bash
+nix build --accept-flake-config \
+  github:declarative-dale/xo-nixpkg#xen-orchestra-ce
+nix build --accept-flake-config \
+  github:declarative-dale/xo-nixpkg#libvhdi
+```
 
-### With Flakes
+Or add the flake as an input:
 
 ```nix
 {
-  inputs = {
-    nixpkgs.url = "github:NixOS/nixpkgs/nixos-unstable";
-    xo-ce-nix.url = "git+ssh://git@codeberg.org/NiXOA/xen-orchestra-ce.git";
-  };
+  inputs.xo-nixpkg.url = "github:declarative-dale/xo-nixpkg";
 
-  outputs = { self, nixpkgs, xo-ce-nix }: {
-    nixosConfigurations.myhost = nixpkgs.lib.nixosSystem {
+  outputs = { nixpkgs, xo-nixpkg, ... }: {
+    nixosConfigurations.example = nixpkgs.lib.nixosSystem {
       system = "x86_64-linux";
-      modules = [
-        {
-          environment.systemPackages = [
-            xo-ce-nix.packages.x86_64-linux.xen-orchestra-ce
-            xo-ce-nix.packages.x86_64-linux.libvhdi
-          ];
-        }
-      ];
+      modules = [{
+        environment.systemPackages = [
+          xo-nixpkg.packages.x86_64-linux.xen-orchestra-ce
+          xo-nixpkg.packages.x86_64-linux.libvhdi
+        ];
+      }];
     };
   };
 }
 ```
 
-## Development
+## Develop
 
 ```bash
-# Enter development shell
-nix develop
-
-# Build the XO package
-nix build .#xen-orchestra-ce
-
-# Build libvhdi and run its upstream/install/linkage checks
-nix eval --raw .#packages.x86_64-linux.libvhdi.name
-nix eval --raw .#packages.x86_64-linux.libvhdi.fuseBackend
-nix build --no-link .#libvhdi
-
-# Run the same complete, flake-defined pipeline as CI
-nix run .#ci
-
-# Evaluate the versioned pure target plan, or execute it independently
-nix eval --json .#lib.ciPlans.x86_64-linux.validation
-nix run .#validate-ci-plan -- \
-  --plan lib.ciPlans.x86_64-linux.validation
+git clone https://github.com/declarative-dale/xo-nixpkg.git
+cd xo-nixpkg
+nix develop --accept-flake-config
+nix run --accept-flake-config .#ci
 ```
 
-## CI Binary Cache
-
-The workflow YAML delegates validation, publication, tagging, update discovery,
-and trusted automation to flake applications. GitHub Actions installs
-Determinate Nix and configures the public
-`xen-orchestra-ce` Cachix cache read-only before builds. On `main`,
-`CACHIX_AUTH_TOKEN` is required and the CI workflow explicitly pushes only the
-realized Xen Orchestra and libvhdi closures after the stable `CI gate` succeeds.
-This avoids uploading fetched source tarballs or other incidental store paths
-created during evaluation or builds while keeping the final package closure
-available to NiXOA core.
-
-The validation target list is a versioned pure value under
-`lib.ciPlans.x86_64-linux.validation`. The shared
-`flake-attribute-validator` checks that JSON contract before starting builds,
-runs every declared flake attribute in a fresh child process, and reports all
-failures together. Downstream flakes can reuse `lib.mkFlakeAttributePlan` and
-the validator package without copying its shell implementation.
-
-## Updating Sources
-
-### Update xen-orchestra-ce
+Inspect the project and package versions independently:
 
 ```bash
-# Automatically updates version, src.hash, and yarnOfflineCache.hash
-# from the latest upstream release commit.
-nix run .#update-xo-release
-
-# Track upstream source HEAD without changing version.
-nix run .#update-xo-upstream
-
-# Validate evaluation
-nix run .#ci
+nix eval --raw .#lib.projectVersion
+nix eval --raw .#xen-orchestra-ce.version
 ```
 
-### Update libvhdi
+## Documentation
 
-```bash
-# Discover numeric-date releases (including prereleases), pin the matching
-# official release asset atomically, and reject downgrades or malformed assets.
-nix run --accept-flake-config .#update-libvhdi
+- [Documentation index](docs/index.md)
+- [Advanced package and flake configuration](docs/configuration.md)
+- [Development and source updates](docs/development.md)
+- [Testing and CI contracts](docs/testing.md)
+- [Preparing packages for nixpkgs](docs/nixpkgs-submission.md)
 
-# Validate the package and exclusive libfuse3 linkage
-nix build --accept-flake-config --no-link .#libvhdi
-```
-
-## Nixpkgs Submission
-
-xen-orchestra-ce is maintained here as `default.nix`.
-
-When preparing a nixpkgs PR, copy it to:
-- `pkgs/by-name/xe/xen-orchestra-ce/package.nix`
-
-See [docs/nixpkgs-submission.md](docs/nixpkgs-submission.md) for details.
-
-## Relationship to NiXOA Core
-
-This repository is synced with NiXOA core using a parallel sync strategy. Keep [VERSION-SYNC.md](VERSION-SYNC.md) current when package logic changes.
-
-## License
-
-Apache-2.0 - See [LICENSE](LICENSE)
-
-## Related Projects
-
-- [NiXOA](https://codeberg.org/NiXOA) - Full NixOS deployment system for Xen Orchestra
-- [Xen Orchestra](https://github.com/vatesfr/xen-orchestra) - Upstream project
-- [libvhdi](https://github.com/libyal/libvhdi) - Upstream VHD/VHDX library
-
-## Maintainers
-
-- Dale Morgan
+Licensed under [Apache-2.0](LICENSE).

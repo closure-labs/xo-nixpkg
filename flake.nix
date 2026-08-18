@@ -27,6 +27,7 @@
     in
     {
       lib = ciLib // {
+        projectVersion = nixpkgs.lib.removeSuffix "\n" (builtins.readFile ./VERSION);
         ciPlans = forAllSystems (system: {
           validation = ciLib.mkFlakeAttributePlan {
             name = "xo-nixpkg-validation";

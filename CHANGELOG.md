@@ -8,22 +8,31 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## Unreleased
 
+## [0.8.0] - 2026-08-18
+
+### Added
+
+- Add an npins format-8 source for the official libvhdi release asset, with
+  upstream tests, install checks, and exclusive FUSE3 linkage validation.
+- Add trusted update queues, weekly grouped dependency and input refreshes, a
+  checked-in main ruleset, and shared GitHub and Forgejo update automation.
+- Export a reusable pure flake-attribute CI planner and Nix-wrapped validator
+  that validates target contracts, isolates builds, and collects all failures.
+- Add a repository-owned `VERSION` so project releases advance independently
+  from the packaged Xen Orchestra version.
+
 ### Changed
 
-- Package libvhdi directly from an npins format-8 pin to its official release
-  asset, with FUSE3 as its only FUSE backend and upstream/install checks.
-- Replace devenv with a pure `mkShellNoCC` toolchain and remove the external
-  libvhdi flake, compatibility outputs, lock graph, and dedicated cache.
-- Require a stable, up-to-date `CI gate`; pin actions; use job-local GitHub Nix
-  caching; and publish only final XO/libvhdi closures from protected `main`.
-- Add trusted update queues, weekly grouped dependency/input updates, a checked
-  in main ruleset, and shared GitHub/Forgejo libvhdi update automation.
-- Move validation, publication, tagging, release discovery, and trusted queue
-  policy behind Nix-provided flake apps, leaving workflow YAML as thin host
-  orchestration.
-- Export a reusable pure flake-attribute CI planner and one Nix-wrapped
-  validator that rejects malformed plans, isolates target builds, and collects
-  all failures before returning.
+- Provide a pure `mkShellNoCC` development toolchain with Node.js 22, Yarn,
+  Valkey, update tools, and repository linters.
+- Consolidate validation, publication, tagging, release discovery, and trusted
+  queue policy behind Nix-provided flake apps.
+- Require an up-to-date `CI gate`, pin workflow actions, share job-local Nix
+  results, and publish final XO and libvhdi closures from protected `main`.
+- Use `v0.8.0` for the project release while continuing to report the packaged
+  Xen Orchestra release through `packages.x86_64-linux.xen-orchestra-ce.version`.
+- Organize the README around quick-start commands and link advanced
+  configuration, development, testing, and nixpkgs guidance from `docs/`.
 
 ### Fixed
 

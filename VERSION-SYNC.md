@@ -7,9 +7,15 @@ This document tracks synchronization between NiXOA core and this standalone pack
 
 | Repository | Version | Last Sync | Core Version | Nixpkgs Status |
 |------------|---------|-----------|--------------|----------------|
-| xen-orchestra-ce-nix | v1.1.0 | 2026-02-27 | v0.5+ | Not submitted |
+| xo-nixpkg | v0.8.0 | 2026-08-18 | v1.1.2+ | Packaging maintained here |
 
 ## Sync History
+
+### 2026-08-18: Independent project releases (v0.8.0)
+- Introduced a repository-owned project version
+- Kept Xen Orchestra package versions aligned with their upstream release
+- Integrated the reusable flake-attribute CI planner consumed by core
+- Organized quick-start, configuration, development, and testing documentation
 
 ### 2026-02-27: Submission-readiness cleanup (v1.1.0)
 - Flattened package layout to top-level `default.nix`

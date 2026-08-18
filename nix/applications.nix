@@ -73,7 +73,6 @@ rec {
       coreutils
       git
       gnugrep
-      nix
     ];
   };
 

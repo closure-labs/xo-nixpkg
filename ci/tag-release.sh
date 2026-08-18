@@ -12,7 +12,9 @@ set -euo pipefail
   exit 1
 }
 
-version=$(nix eval --accept-flake-config --raw .#xen-orchestra-ce.version)
+repo_root=$(git rev-parse --show-toplevel)
+version_file=${XO_NIXPKG_VERSION_FILE:-$repo_root/VERSION}
+version=$(tr -d '\r\n' <"$version_file")
 release_tag="v$version"
 if ! [[ $release_tag =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
   echo "Invalid release tag: $release_tag" >&2
@@ -27,11 +29,22 @@ if [[ -z $existing ]]; then
   git tag "$release_tag" "$GATED_SHA"
   refs+=("refs/tags/$release_tag")
 
-  previous_tag=$(git tag --list 'v*.*.*' --sort=-version:refname | grep -Fxv "$release_tag" | head -n 1 || true)
+  previous_tag=
+  while IFS= read -r candidate; do
+    candidate_version=${candidate#v}
+    tagged_version=$(git show "$candidate:VERSION" 2>/dev/null | tr -d '\r\n' || true)
+    if [[ $tagged_version == "$candidate_version" ]]; then
+      previous_tag=$candidate
+      break
+    fi
+  done < <(git tag --list 'v*.*.*' --sort=-version:refname | grep -Fxv "$release_tag")
+
   if [[ -n $previous_tag ]]; then
     git tag -f stable "$previous_tag"
-    refs+=(refs/tags/stable)
+  else
+    git tag -f stable "$release_tag"
   fi
+  refs+=(refs/tags/stable)
 elif [[ $existing == "$GATED_SHA" ]]; then
   echo "$release_tag already points to the gated commit"
   refs+=("refs/tags/$release_tag")
