@@ -148,6 +148,7 @@
                   pkgs.actionlint
                   pkgs.coreutils
                   pkgs.findutils
+                  pkgs.git
                   pkgs.jq
                   pkgs.ripgrep
                   pkgs.shellcheck

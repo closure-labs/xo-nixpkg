@@ -27,6 +27,7 @@ jq -e '
 
 bash "$root/tests/update-libvhdi.sh"
 bash "$root/tests/trusted-update.sh"
+bash "$root/tests/tag-release.sh"
 
 for application in \
   ci \
