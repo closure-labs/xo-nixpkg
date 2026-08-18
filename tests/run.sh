@@ -12,6 +12,6 @@ bash "$root/tests/update-noop.sh"
 bash "$root/tests/trusted-update.sh"
 bash "$root/tests/tag-release.sh"
 bash "$root/tests/publish-release.sh"
-bash "$root/tests/flake-attribute-validator.sh"
+bash "$root/tests/flake-plan-runner.sh"
 
 printf 'Repository fixtures passed\n'

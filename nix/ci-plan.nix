@@ -8,33 +8,38 @@ let
     builtins.isString value
     && builtins.match "[A-Za-z0-9][A-Za-z0-9._+-]*" value != null
     && !(lib.hasInfix ".." value);
+  validLink =
+    value:
+    builtins.isString value
+    && value != ""
+    && builtins.substring 0 1 value != "/"
+    && builtins.match "[A-Za-z0-9._+-][A-Za-z0-9._+/-]*" value != null
+    && !(lib.hasInfix ".." value);
   normalizeTarget =
     target:
-    if builtins.isString target then
-      {
-        name = lib.last (lib.splitString "." target);
-        attribute = target;
-      }
-    else
-      assert lib.assertMsg (builtins.isAttrs target)
-        "CI plan targets must be attribute strings or { name, attribute } sets";
-      assert lib.assertMsg (
-        target ? name && target ? attribute
-      ) "CI plan target sets require name and attribute";
-      assert lib.assertMsg (
-        builtins.attrNames target == [
-          "attribute"
-          "name"
-        ]
-      ) "CI plan target sets may contain only name and attribute";
-      {
-        inherit (target) name attribute;
-      };
+    assert lib.assertMsg (builtins.isAttrs target)
+      "CI plan targets must be { name, attribute, link? } sets";
+    assert lib.assertMsg (
+      target ? name && target ? attribute
+    ) "CI plan targets require name and attribute";
+    assert lib.assertMsg (lib.all (
+      key:
+      builtins.elem key [
+        "attribute"
+        "link"
+        "name"
+      ]
+    ) (builtins.attrNames target)) "CI plan targets may contain only name, attribute, and link";
+    assert lib.assertMsg (!(target ? link) || validLink target.link) "CI plan target link is malformed";
+    {
+      inherit (target) name attribute;
+    }
+    // lib.optionalAttrs (target ? link) { inherit (target) link; };
 in
 {
-  ciPlanSchemaVersion = 1;
+  ciPlanSchemaVersion = 2;
 
-  mkFlakeAttributePlan =
+  mkCiPlan =
     {
       name,
       targets,
@@ -59,7 +64,7 @@ in
       lib.length attributes == lib.length (lib.unique attributes)
     ) "CI plan target attributes must be unique";
     {
-      schemaVersion = 1;
+      schemaVersion = 2;
       inherit name;
       targets = normalizedTargets;
     };

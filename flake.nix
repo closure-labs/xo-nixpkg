@@ -29,7 +29,7 @@
         "repository-policy"
         "source-update-fixtures"
         "automation-fixtures"
-        "attribute-validator-fixtures"
+        "plan-runner-fixtures"
       ];
     in
     {
@@ -37,15 +37,36 @@
         projectVersion = nixpkgs.lib.removeSuffix "\n" (builtins.readFile ./VERSION);
         inherit sourcePins;
         ciPlans = forAllSystems (system: {
-          validation = ciLib.mkFlakeAttributePlan {
+          validation = ciLib.mkCiPlan {
             name = "xo-nixpkg-validation";
+            targets =
+              map
+                (name: {
+                  inherit name;
+                  attribute = "checks.${system}.${name}";
+                })
+                (
+                  [
+                    "xen-orchestra-ce"
+                    "xo-fuse-linkage"
+                    "xo-server-service"
+                    "libvhdi"
+                  ]
+                  ++ repositoryCheckNames
+                );
+          };
+          publish = ciLib.mkCiPlan {
+            name = "xo-nixpkg-publish";
             targets = [
-              "checks.${system}.xen-orchestra-ce"
-              "checks.${system}.xo-fuse-linkage"
-              "checks.${system}.xo-server-service"
-              "checks.${system}.libvhdi"
-            ]
-            ++ map (name: "checks.${system}.${name}") repositoryCheckNames;
+              {
+                name = "xen-orchestra-ce";
+                attribute = "packages.${system}.xen-orchestra-ce";
+              }
+              {
+                name = "libvhdi";
+                attribute = "packages.${system}.libvhdi";
+              }
+            ];
           };
         });
       };
@@ -66,7 +87,7 @@
               extension = "tar";
             };
           };
-          flake-attribute-validator = pkgs.callPackage ./nix/flake-attribute-validator.nix { };
+          flake-plan-runner = pkgs.callPackage ./nix/flake-plan-runner.nix { };
           default = self.packages.${system}.xen-orchestra-ce;
         }
       );
@@ -135,7 +156,7 @@
           applications = import ./nix/applications.nix {
             inherit pkgs;
             nixpkgsPath = nixpkgs.outPath;
-            attributeValidator = self.packages.${system}.flake-attribute-validator;
+            planRunner = self.packages.${system}.flake-plan-runner;
           };
           mkApp = package: description: {
             type = "app";
@@ -145,9 +166,9 @@
         in
         {
           ci = mkApp applications.ci "Run the complete repository validation pipeline";
-          validate-ci-plan =
-            mkApp self.packages.${system}.flake-attribute-validator
-              "Validate and build a pure flake attribute plan";
+          run-ci-plan =
+            mkApp self.packages.${system}.flake-plan-runner
+              "Validate and execute a schema-v2 pure flake CI plan";
           publish = mkApp applications.publish "Publish final package closures to Cachix";
           publish-release = mkApp applications.publishRelease "Publish the immutable project tag as a GitHub release";
           tag-release = mkApp applications.tagRelease "Tag a successfully gated main release";
@@ -158,6 +179,8 @@
           update-libvhdi = mkApp applications.updateLibvhdi "Update and validate the official libvhdi release";
           maintain-latest-upstream = mkApp applications.maintainLatestUpstream "Maintain the latest-upstream tag";
           forgejo-update = mkApp applications.forgejoUpdate "Create a validated Forgejo update pull request";
+          open-update-pr = mkApp applications.openUpdatePr "Commit and open one allowlisted source update pull request";
+          update-flake-lock = mkApp applications.updateFlakeLock "Refresh and validate the Nixpkgs lock";
         }
       );
 

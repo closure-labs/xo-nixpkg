@@ -28,6 +28,7 @@ let
           jq
           ripgrep
           shellcheck
+          yq-go
           zizmor
         ])
         ''
@@ -67,15 +68,15 @@ let
           bash source/tests/publish-release.sh
         '';
 
-    attribute-validator-fixtures =
-      mkCheck "attribute-validator-fixtures"
+    plan-runner-fixtures =
+      mkCheck "plan-runner-fixtures"
         (with pkgs; [
           bash
           coreutils
           jq
         ])
         ''
-          bash source/tests/flake-attribute-validator.sh
+          bash source/tests/flake-plan-runner.sh
         '';
   };
 in

@@ -14,6 +14,6 @@ nix flake check \
   "$flake_ref" \
   "$@"
 
-exec flake-attribute-validator \
+exec flake-plan-runner \
   --flake "$flake_ref" \
   --plan "${XO_NIXPKG_CI_PLAN:?XO_NIXPKG_CI_PLAN must be set}"
