@@ -52,6 +52,30 @@ nix eval --raw .#lib.projectVersion
 nix eval --raw .#xen-orchestra-ce.version
 ```
 
+## Release and upstream channels
+
+The immutable `v*` tags are project releases. The moving `latest` and `stable`
+tags select project release revisions, while `latest-upstream` rebuilds the
+current package definition against `vatesfr/xen-orchestra`'s `master` branch.
+Use `latest-upstream` for development and advanced troubleshooting between
+packaged upstream releases:
+
+```bash
+nix build --accept-flake-config \
+  github:declarative-dale/xo-nixpkg/latest-upstream#xen-orchestra-ce
+```
+
+As a flake input:
+
+```nix
+inputs.xo-nixpkg.url =
+  "github:declarative-dale/xo-nixpkg/latest-upstream";
+```
+
+The workflow moves `latest-upstream` only after the package builds
+successfully. Because it is a moving development tag, pin the resolved commit
+in `flake.lock` when reproducing a specific investigation.
+
 ## Documentation
 
 - [Documentation index](docs/index.md)
