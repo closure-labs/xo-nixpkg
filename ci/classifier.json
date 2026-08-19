@@ -1,0 +1,121 @@
+{
+  "schemaVersion": 1,
+  "lifecycle": {
+    "publish": { "event": "push", "ref": "refs/heads/main" },
+    "release": { "event": "push", "ref": "refs/heads/main" }
+  },
+  "validationTargets": [
+    { "name": "xen-orchestra-ce", "attribute": "checks.x86_64-linux.xen-orchestra-ce", "requires": [] },
+    { "name": "xo-fuse-linkage", "attribute": "checks.x86_64-linux.xo-fuse-linkage", "requires": ["xen-orchestra-ce"] },
+    { "name": "xo-server-service", "attribute": "checks.x86_64-linux.xo-server-service", "requires": ["xen-orchestra-ce"] },
+    { "name": "libvhdi", "attribute": "checks.x86_64-linux.libvhdi", "requires": [] },
+    { "name": "repository-policy", "attribute": "checks.x86_64-linux.repository-policy", "requires": [] },
+    { "name": "ci-workflow-contract", "attribute": "checks.x86_64-linux.ci-workflow-contract", "requires": [] },
+    { "name": "ci-runtime-fixtures", "attribute": "checks.x86_64-linux.ci-runtime-fixtures", "requires": ["ci-workflow-contract"] },
+    { "name": "application-composition", "attribute": "checks.x86_64-linux.application-composition", "requires": [] },
+    { "name": "source-update-fixtures", "attribute": "checks.x86_64-linux.source-update-fixtures", "requires": [] },
+    { "name": "automation-fixtures", "attribute": "checks.x86_64-linux.automation-fixtures", "requires": [] },
+    { "name": "plan-runner-fixtures", "attribute": "checks.x86_64-linux.plan-runner-fixtures", "requires": [] },
+    { "name": "classifier-fixtures", "attribute": "checks.x86_64-linux.classifier-fixtures", "requires": [] }
+  ],
+  "publicationTargets": [
+    { "name": "xen-orchestra-ce", "attribute": "packages.x86_64-linux.xen-orchestra-ce" },
+    { "name": "libvhdi", "attribute": "packages.x86_64-linux.libvhdi" }
+  ],
+  "pathRules": [
+    {
+      "pattern": "^(README\\.md|LICENSE|VERSION-SYNC\\.md|docs/.*|\\.gitignore)$",
+      "validation": [],
+      "publication": []
+    },
+    {
+      "pattern": "^CHANGELOG\\.md$",
+      "validation": ["automation-fixtures"],
+      "publication": []
+    },
+    {
+      "pattern": "^VERSION$",
+      "validation": ["repository-policy", "automation-fixtures", "xen-orchestra-ce", "libvhdi"],
+      "publication": ["xen-orchestra-ce", "libvhdi"]
+    },
+    {
+      "pattern": "^\\.github/workflows/(ci|publish)\\.yml$",
+      "validation": ["repository-policy", "classifier-fixtures", "ci-runtime-fixtures"],
+      "publication": []
+    },
+    {
+      "pattern": "^(\\.github/|\\.forgejo/)",
+      "validation": ["repository-policy"],
+      "publication": []
+    },
+    {
+      "pattern": "^(ci/classif|tests/classif|nix/ci-classifier)",
+      "validation": ["repository-policy", "classifier-fixtures", "ci-runtime-fixtures"],
+      "publication": []
+    },
+    {
+      "pattern": "^(nix/ci-plan\\.nix|nix/flake-plan-runner\\.(nix|sh)|tests/flake-plan-runner\\.sh)$",
+      "validation": ["repository-policy", "plan-runner-fixtures", "ci-runtime-fixtures"],
+      "publication": []
+    },
+    {
+      "pattern": "^(nix/ci-workflow(-tests)?\\.nix|nix/(prepare-ci|ci-gate)-runtime\\.nix|tests/ci-runtime\\.sh)$",
+      "validation": ["repository-policy", "ci-workflow-contract", "ci-runtime-fixtures"],
+      "publication": []
+    },
+    {
+      "pattern": "^(ci/(run|publish)\\.sh)$",
+      "validation": ["repository-policy", "ci-runtime-fixtures", "application-composition"],
+      "publication": []
+    },
+    {
+      "pattern": "^(ci/(tag-release|publish-release|trusted-update|queue-automation)\\.sh|tests/(tag-release|publish-release|trusted-update)\\.sh)$",
+      "validation": ["repository-policy", "automation-fixtures", "application-composition"],
+      "publication": []
+    },
+    {
+      "pattern": "^(ci/(update-xo|update-libvhdi|update-flake-lock|forgejo-update|open-update-pr|maintain-latest-upstream)\\.sh|scripts/|tests/(update-xo|update-libvhdi|update-noop)\\.sh)$",
+      "validation": ["repository-policy", "source-update-fixtures", "application-composition"],
+      "publication": []
+    },
+    {
+      "pattern": "^nix/applications\\.nix$",
+      "validation": ["repository-policy", "ci-runtime-fixtures", "application-composition", "source-update-fixtures", "automation-fixtures"],
+      "publication": []
+    },
+    {
+      "pattern": "^(default\\.nix|nix/(fetch-normalized-yarn-deps|prefetch-yarn-deps)\\.nix|nix/patches/)",
+      "validation": ["xen-orchestra-ce", "xo-fuse-linkage", "xo-server-service"],
+      "publication": ["xen-orchestra-ce"]
+    },
+    {
+      "pattern": "^nix/sources/xen-orchestra\\.json$",
+      "validation": ["xen-orchestra-ce", "xo-fuse-linkage", "xo-server-service", "source-update-fixtures"],
+      "publication": ["xen-orchestra-ce"]
+    },
+    {
+      "pattern": "^(nix/libvhdi\\.nix|nix/sources/libvhdi\\.json)$",
+      "validation": ["libvhdi", "source-update-fixtures"],
+      "publication": ["libvhdi"]
+    },
+    {
+      "pattern": "^nix/source-pins\\.nix$",
+      "validation": ["xen-orchestra-ce", "xo-fuse-linkage", "xo-server-service", "libvhdi", "source-update-fixtures"],
+      "publication": ["xen-orchestra-ce", "libvhdi"]
+    },
+    {
+      "pattern": "^nix/tests/xo-server-service\\.nix$",
+      "validation": ["xo-server-service"],
+      "publication": []
+    },
+    {
+      "pattern": "^(flake\\.nix|flake\\.lock|nix/repository-checks\\.nix|ci/classifier\\.json)$",
+      "validation": ["*"],
+      "publication": ["*"]
+    }
+  ],
+  "fallback": {
+    "validation": ["*"],
+    "publication": ["*"]
+  }
+}

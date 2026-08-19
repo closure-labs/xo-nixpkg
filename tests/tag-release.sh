@@ -64,4 +64,8 @@ GATED_SHA=$next_release bash "$root/ci/tag-release.sh"
 [[ $(git rev-list -n 1 latest) == "$next_release" ]]
 [[ $(git rev-list -n 1 stable) == "$release" ]]
 
+git checkout -q --detach "$packaging"
+GATED_SHA=$packaging bash "$root/ci/tag-release.sh"
+[[ $(git rev-list -n 1 latest) == "$next_release" ]]
+
 printf 'Tag release fixtures passed\n'

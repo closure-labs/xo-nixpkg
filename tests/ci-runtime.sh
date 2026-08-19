@@ -33,12 +33,33 @@ prepared_pull_request=$(jq -cn '{
   },
   gate: {requiredJobs: ["validate"]}
 }')
-prepared_main=$(jq -c '
-  .event = {name: "push", ref: "refs/heads/main"} |
-  .jobs.publish.enabled = true |
-  .release.enabled = true |
-  .gate.requiredJobs = ["publish", "validate"]
-' <<<"$prepared_pull_request")
+prepared_lifecycle=$(jq -cn '{
+  schemaVersion: 2,
+  event: {name: "pull_request", ref: "refs/pull/14/merge", headSha: "fixture"},
+  classification: {mode: "full", reason: "fixture", changedPathCount: 0},
+  jobs: {
+    validate: {
+      enabled: true,
+      plan: {
+        schemaVersion: 2,
+        name: "fixture-validation",
+        targets: [{name: "repository", attribute: "checks.x86_64-linux.repository"}]
+      }
+    },
+    publish: {
+      enabled: true,
+      plan: {
+        schemaVersion: 2,
+        name: "fixture-publication",
+        targets: [
+          {name: "xen-orchestra-ce", attribute: "packages.x86_64-linux.xen-orchestra-ce"},
+          {name: "libvhdi", attribute: "packages.x86_64-linux.libvhdi"}
+        ]
+      }
+    }
+  },
+  release: {enabled: false}
+}')
 
 printf '#!%s\n' "$BASH" >"$temporary_directory/bin/runtime-nix"
 cat >>"$temporary_directory/bin/runtime-nix" <<'EOF'
@@ -60,12 +81,12 @@ if XO_NIXPKG_RUNTIME_NIX="$temporary_directory/bin/runtime-nix" \
   exit 1
 fi
 
-printf '#!%s\n' "$BASH" >"$temporary_directory/bin/prepare-ci"
-cat >>"$temporary_directory/bin/prepare-ci" <<'EOF'
+printf '#!%s\n' "$BASH" >"$temporary_directory/bin/classify-ci"
+cat >>"$temporary_directory/bin/classify-ci" <<'EOF'
 set -euo pipefail
-printf '%s\n' "$FAKE_PREPARED_CI_WORKFLOW"
+printf '%s\n' "$FAKE_LIFECYCLE_WORKFLOW"
 EOF
-chmod +x "$temporary_directory/bin/prepare-ci"
+chmod +x "$temporary_directory/bin/classify-ci"
 
 printf '#!%s\n' "$BASH" >"$temporary_directory/bin/nix"
 cat >>"$temporary_directory/bin/nix" <<'EOF'
@@ -105,19 +126,19 @@ EOF
 chmod +x "$temporary_directory/bin/cachix"
 
 PATH="$temporary_directory/bin:$PATH" \
-FAKE_PREPARED_CI_WORKFLOW="$prepared_pull_request" \
-XO_NIXPKG_PREPARE_CI_COMMAND="$temporary_directory/bin/prepare-ci" \
+FAKE_LIFECYCLE_WORKFLOW="$prepared_lifecycle" \
+XO_NIXPKG_CLASSIFY_CI_COMMAND="$temporary_directory/bin/classify-ci" \
 XO_NIXPKG_SOURCE_ROOT="$root" \
   bash "$root/ci/run.sh" >"$temporary_directory/validation-log"
 [[ $(<"$temporary_directory/validation-log") == \
-  *'<--plan> <lib.ciPlans.x86_64-linux.validation>'* ]]
+  *'<--plan-file>'* ]]
 
 PATH="$temporary_directory/bin:$PATH" \
 CACHIX_AUTH_TOKEN=fixture \
-PREPARED_CI_WORKFLOW="$prepared_main" \
+PREPARED_CI_WORKFLOW="$prepared_lifecycle" \
   bash "$root/ci/publish.sh" >"$temporary_directory/publish-log"
 [[ $(<"$temporary_directory/publish-log") == \
-  *'<--plan> <lib.ciPlans.x86_64-linux.publish>'* ]]
+  *'<--plan-file>'* ]]
 [[ $(<"$temporary_directory/publish-log") == \
   *'cachix <push> <xen-orchestra-ce> </nix/store/xo> </nix/store/libvhdi>'* ]]
 

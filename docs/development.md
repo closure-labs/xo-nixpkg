@@ -134,3 +134,29 @@ The first independent project release initializes `stable` to that release.
 The same gated job idempotently publishes the semantic-version tag as a GitHub
 Release using only that tagged commit's matching changelog section. Re-running
 the workflow never rewrites an existing tag or duplicates a published release.
+Older queued runs cannot move `latest` backwards.
+
+Protected-main publication runs in a FIFO concurrency group and retains every
+pending run. Validation and Cachix publication share one runner and Nix store;
+a successful merge-group run can satisfy validation for an ancestral main SHA,
+while only the path delta after that SHA is revalidated. Missing workflow-run
+history, API failures, incomplete Git history, and non-ancestral SHAs all fall
+back to the complete validation plan.
+
+## Public organization migration
+
+The workflow already listens for `merge_group`, but a personal repository
+cannot enable GitHub's merge queue. After transferring the still-public
+repository to the organization:
+
+1. Install the update GitHub App on the organization repository and verify the
+   release environment, App variables/secrets, Cachix token, and automation
+   token remain available.
+2. Replace the strict "up to date before merging" policy with "require merge
+   queue", retaining `CI gate` as the required status and conversation
+   resolution as required.
+3. Queue a documentation-only PR and a package-changing PR. Confirm both get a
+   `merge_group` gate and that the resulting main run reuses the successful
+   ancestral merge-group validation.
+4. Keep standard GitHub-hosted runners; they remain free while the repository
+   is public. Revisit runner and environment policy only if visibility changes.

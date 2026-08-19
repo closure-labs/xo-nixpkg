@@ -41,9 +41,7 @@ jq -e '
 ' "$root/.github/rulesets/main.json" >/dev/null
 
 for application in \
-  prepare-ci \
   ci \
-  ci-gate \
   publish \
   publish-release \
   tag-release \
@@ -57,11 +55,15 @@ for application in \
   rg -F "nix run .#$application" "$root/.github/workflows" "$root/.forgejo/workflows" >/dev/null
 done
 
+rg -F 'bash ci/classify.sh "$GITHUB_OUTPUT"' \
+  "$root/.github/workflows/ci.yml" "$root/.github/workflows/publish.yml" >/dev/null
+
 rg -F 'ciWorkflows = forAllSystems' "$root/flake.nix" >/dev/null
 rg -F 'prepareCiWorkflow = prepare' "$root/nix/ci-workflow.nix" >/dev/null
 rg -F 'evaluateCiWorkflowGate' "$root/nix/ci-workflow.nix" "$root/nix/ci-gate-runtime.nix" >/dev/null
 rg -F 'PREPARED_CI_WORKFLOW' "$root/ci/run.sh" "$root/ci/publish.sh" "$root/nix/ci-gate-runtime.nix" >/dev/null
 rg -F 'flake-plan-runner' "$root/ci/run.sh" >/dev/null
+rg -F -- '--plan-file' "$root/ci/run.sh" "$root/ci/publish.sh" >/dev/null
 rg -F 'schemaVersion = 2' "$root/nix/ci-plan.nix" >/dev/null
 
 for removed_wrapper in \
@@ -113,7 +115,8 @@ yq -e '
     .with."persist-credentials"] | all_c(. == false)
 ' "$root"/.github/workflows/*.yml >/dev/null
 
-actionlint "$root"/.github/workflows/*.yml
+# actionlint 1.7.12 predates GitHub's queue:max concurrency extension.
+actionlint -ignore 'unexpected key "queue"' "$root"/.github/workflows/*.yml
 zizmor "$root/.github"
 shellcheck "$root"/ci/*.sh "$root"/scripts/*.sh "$root"/tests/*.sh
 

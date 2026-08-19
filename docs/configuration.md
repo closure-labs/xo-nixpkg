@@ -46,9 +46,11 @@ trusted key. Pass `--accept-flake-config` when consuming it interactively. A
 NixOS host can instead declare the same substituter and key in its trusted Nix
 configuration.
 
-GitHub Actions consumes the same public cache graph and explicitly publishes
-the final package plan only after protected-main validation. No runner-local or
-Determinate substituter is required for package evaluation.
+GitHub Actions consumes the same public cache graph. The protected-main
+lifecycle publishes only package closures selected by the path classifier and
+does so in the validation job's existing Nix store. GitHub-hosted runners are
+ephemeral, so CI does not garbage-collect an isolated local store after the
+job. No runner-local or Determinate substituter is required.
 
 NiXOA Core separately retains `https://install.determinate.systems` for users
 loading its flake from an existing vanilla-nixpkgs NixOS VM. That consumer
@@ -108,10 +110,17 @@ then call `lib.evaluateCiWorkflowGate` with GitHub-style job results to obtain
 the gate decision and required-job summary. Both operations are pure Nix
 functions and reject malformed workflow data.
 
+The hosted workflow's faster event adapter uses `ci/classifier.json` as its
+versioned source of truth. Nix imports the same target catalog to construct
+`lib.ciPlans`, while the adapter resolves changed paths, dependency edges, and
+publication targets without installing Nix. Unknown paths and invalid Git
+ancestry select the complete validation plan.
+
 The `prepare-ci` and `ci-gate` apps are generated runtime adapters: they read
 only the selected flake and non-secret GitHub context, delegate policy to those
 pure functions, and optionally write the existing `GITHUB_OUTPUT` format.
 Composed apps invoke packaged sibling executables from their Nix closures.
+`classify-ci` exposes the hosted adapter for local fixtures and diagnostics.
 
 Imperative network, Git, release, source-lock mutation, plan execution, and
 Cachix operations remain checked-in shell programs under `ci/` and `scripts/`.

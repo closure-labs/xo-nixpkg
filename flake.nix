@@ -25,16 +25,8 @@
       forAllSystems = nixpkgs.lib.genAttrs supportedSystems;
       ciLib = import ./nix/ci-plan.nix { lib = nixpkgs.lib; };
       ciWorkflowLib = import ./nix/ci-workflow.nix { lib = nixpkgs.lib; };
+      classifierContract = builtins.fromJSON (builtins.readFile ./ci/classifier.json);
       sourcePins = import ./nix/source-pins.nix { lib = nixpkgs.lib; };
-      repositoryCheckNames = [
-        "repository-policy"
-        "ci-workflow-contract"
-        "ci-runtime-fixtures"
-        "application-composition"
-        "source-update-fixtures"
-        "automation-fixtures"
-        "plan-runner-fixtures"
-      ];
     in
     {
       lib =
@@ -43,46 +35,27 @@
         // {
           projectVersion = nixpkgs.lib.removeSuffix "\n" (builtins.readFile ./VERSION);
           inherit sourcePins;
+          ciClassifier = classifierContract;
           ciPlans = forAllSystems (system: {
             validation = ciLib.mkCiPlan {
               name = "xo-nixpkg-validation";
-              targets =
-                map
-                  (name: {
-                    inherit name;
-                    attribute = "checks.${system}.${name}";
-                  })
-                  (
-                    [
-                      "xen-orchestra-ce"
-                      "xo-fuse-linkage"
-                      "xo-server-service"
-                      "libvhdi"
-                    ]
-                    ++ repositoryCheckNames
-                  );
+              targets = map (target: {
+                inherit (target) name;
+                attribute = builtins.replaceStrings [ "x86_64-linux" ] [ system ] target.attribute;
+              }) classifierContract.validationTargets;
             };
             publish = ciLib.mkCiPlan {
               name = "xo-nixpkg-publish";
-              targets = [
-                {
-                  name = "xen-orchestra-ce";
-                  attribute = "packages.${system}.xen-orchestra-ce";
-                }
-                {
-                  name = "libvhdi";
-                  attribute = "packages.${system}.libvhdi";
-                }
-              ];
+              targets = map (target: {
+                inherit (target) name;
+                attribute = builtins.replaceStrings [ "x86_64-linux" ] [ system ] target.attribute;
+              }) classifierContract.publicationTargets;
             };
           });
           ciWorkflows = forAllSystems (
             system:
             let
-              protectedMain = {
-                event = "push";
-                ref = "refs/heads/main";
-              };
+              protectedMain = classifierContract.lifecycle.publish;
             in
             ciWorkflowLib.mkCiWorkflow {
               name = "xo-nixpkg-ci";
@@ -97,7 +70,7 @@
                   when = protectedMain;
                 };
               };
-              release.when = protectedMain;
+              release.when = classifierContract.lifecycle.release;
             }
           );
         };
@@ -196,6 +169,7 @@
           };
         in
         {
+          classify-ci = mkApp applications.classifyCi "Classify a CI event into exact validation and publication plans";
           ci = mkApp applications.ci "Run the complete repository validation pipeline";
           prepare-ci = mkApp applications.prepareCi "Prepare the Nix-defined CI workflow";
           ci-gate = mkApp applications.ciGate "Gate the prepared CI workflow results";

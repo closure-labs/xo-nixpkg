@@ -64,7 +64,7 @@ let
             ${pkgs.lib.getExe applications.updateXoRelease}
           grep -F -- '${pkgs.lib.getExe applications.updateXo} --upstream' \
             ${pkgs.lib.getExe applications.updateXoUpstream}
-          grep -F 'xo-nixpkg-prepare-ci' source/ci/run.sh
+          grep -F 'xo-nixpkg-classify-ci' source/ci/run.sh
           grep -F 'xo-nixpkg-update-xo-source' source/ci/update-xo.sh
           grep -F 'xo-nixpkg-update-libvhdi-source' source/ci/update-libvhdi.sh
           grep -F 'xo-nixpkg-update-xo-release' source/ci/forgejo-update.sh
@@ -125,6 +125,18 @@ let
         ])
         ''
           bash source/tests/flake-plan-runner.sh
+        '';
+
+    classifier-fixtures =
+      mkCheck "classifier-fixtures"
+        (with pkgs; [
+          bash
+          coreutils
+          git
+          jq
+        ])
+        ''
+          bash source/tests/classifier.sh
         '';
   };
 in
