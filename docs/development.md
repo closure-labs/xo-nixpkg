@@ -64,6 +64,9 @@ nix run .#update-xo-upstream
 ```
 
 The `latest-upstream` tag workflow uses this mode for the source-head channel.
+The updater imports changed lockfiles into the Nix store before calculating
+their fixed-output hashes; passing a raw store-path string would omit the
+dependency from the nested build sandbox.
 
 ## Updating libvhdi
 

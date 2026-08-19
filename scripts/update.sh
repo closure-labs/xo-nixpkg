@@ -9,6 +9,7 @@ pin_file=${XO_NIXPKG_XO_PIN_FILE:-$repo_root/nix/sources/xen-orchestra.json}
 mode=release
 upstream_remote=${XO_NIXPKG_UPSTREAM_REMOTE:-https://github.com/vatesfr/xen-orchestra.git}
 upstream_ref=${XO_NIXPKG_UPSTREAM_REF:-refs/heads/master}
+upstream_rev=${XO_NIXPKG_UPSTREAM_REV:-}
 release_scan_pages=${XO_NIXPKG_RELEASE_SCAN_PAGES:-5}
 
 usage() {
@@ -91,36 +92,16 @@ prefetch_source() {
 prefetch_yarn_hash() {
   local yarn_lock=$1
   local normalized=$2
-  local placeholder='sha256-AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA='
-  local expression output status hash
-
-  if [[ $normalized == true ]]; then
-    expression=$(cat <<EOF
-let
-  pkgs = import $XO_NIXPKG_NIXPKGS_PATH {};
-  fetchNormalizedYarnDeps = import ./nix/fetch-normalized-yarn-deps.nix {
-    inherit (pkgs) fetchYarnDeps;
-  };
-in
-fetchNormalizedYarnDeps {
-  yarnLock = builtins.toPath "$yarn_lock";
-  hash = "$placeholder";
-}
-EOF
-)
-  else
-    expression=$(cat <<EOF
-let pkgs = import $XO_NIXPKG_NIXPKGS_PATH {};
-in pkgs.fetchYarnDeps {
-  yarnLock = builtins.toPath "$yarn_lock";
-  hash = "$placeholder";
-}
-EOF
-)
-  fi
+  local output status hash
 
   set +e
-  output=$(nix-build --no-out-link -E "$expression" 2>&1)
+  output=$(nix-build \
+    --no-out-link \
+    "$repo_root/nix/prefetch-yarn-deps.nix" \
+    --argstr nixpkgsPath "$XO_NIXPKG_NIXPKGS_PATH" \
+    --argstr yarnLock "$yarn_lock" \
+    --arg normalized "$normalized" \
+    2>&1)
   status=$?
   set -e
   if (( status == 0 )); then
@@ -195,8 +176,12 @@ if [[ $mode == release ]]; then
   new_version=$(jq -er .version <<<"$release")
   printf 'Found normal XO release: %s\nVersion: %s\nCommit: %s\n' "$commit_subject" "$new_version" "$commit_sha"
 else
-  printf 'Resolving latest upstream source commit from %s %s...\n' "$upstream_remote" "$upstream_ref"
-  commit_sha=$(retry 3 git ls-remote "$upstream_remote" "$upstream_ref" | awk 'NR == 1 { print $1 }')
+  if [[ -n $upstream_rev ]]; then
+    commit_sha=$upstream_rev
+  else
+    printf 'Resolving latest upstream source commit from %s %s...\n' "$upstream_remote" "$upstream_ref"
+    commit_sha=$(retry 3 git ls-remote "$upstream_remote" "$upstream_ref" | awk 'NR == 1 { print $1 }')
+  fi
   new_version=$current_version
   [[ $commit_sha =~ ^[a-f0-9]{40}$ ]] || { printf 'Failed to resolve upstream ref\n' >&2; exit 1; }
 fi
