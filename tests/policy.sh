@@ -41,7 +41,9 @@ jq -e '
 ' "$root/.github/rulesets/main.json" >/dev/null
 
 for application in \
+  prepare-ci \
   ci \
+  ci-gate \
   publish \
   publish-release \
   tag-release \
@@ -55,10 +57,24 @@ for application in \
   rg -F "nix run .#$application" "$root/.github/workflows" "$root/.forgejo/workflows" >/dev/null
 done
 
-rg -F 'lib.ciPlans.${pkgs.stdenv.hostPlatform.system}.validation' \
-  "$root/nix/applications.nix" >/dev/null
+rg -F 'ciWorkflows = forAllSystems' "$root/flake.nix" >/dev/null
+rg -F 'prepareCiWorkflow = prepare' "$root/nix/ci-workflow.nix" >/dev/null
+rg -F 'evaluateCiWorkflowGate' "$root/nix/ci-workflow.nix" "$root/nix/ci-gate-runtime.nix" >/dev/null
+rg -F 'PREPARED_CI_WORKFLOW' "$root/ci/run.sh" "$root/ci/publish.sh" "$root/nix/ci-gate-runtime.nix" >/dev/null
 rg -F 'flake-plan-runner' "$root/ci/run.sh" >/dev/null
 rg -F 'schemaVersion = 2' "$root/nix/ci-plan.nix" >/dev/null
+
+for removed_wrapper in \
+  ci/prepare.sh \
+  ci/gate.sh \
+  ci/update-xo-release.sh \
+  ci/update-xo-upstream.sh \
+  tests/run.sh; do
+  [[ ! -e $root/$removed_wrapper ]] || {
+    echo "Obsolete shell wrapper still exists: $removed_wrapper" >&2
+    exit 1
+  }
+done
 
 if rg -F 'magic-nix-cache-action' "$root/.github"; then
   echo 'GitHub workflows must not use Magic Nix Cache' >&2

@@ -6,7 +6,7 @@ set -euo pipefail
 : "${APP_TOKEN:?APP_TOKEN must be set}"
 : "${GITHUB_REPOSITORY:?GITHUB_REPOSITORY must be set}"
 
-bash "${XO_NIXPKG_SOURCE_ROOT:-$PWD}/ci/update-xo.sh" --upstream
+xo-nixpkg-update-xo-upstream
 
 git config user.name 'github-actions[bot]'
 git config user.email '41898282+github-actions[bot]@users.noreply.github.com'

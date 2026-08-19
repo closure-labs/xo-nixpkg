@@ -7,7 +7,7 @@ set -euo pipefail
 mode=${1:?usage: forgejo-update.sh xo|libvhdi}
 case "$mode" in
   xo)
-    bash "${XO_NIXPKG_SOURCE_ROOT:-$PWD}/ci/update-xo.sh" --release
+    xo-nixpkg-update-xo-release
     changed_paths=(nix/sources/xen-orchestra.json)
     version=$(nix eval --accept-flake-config --raw .#xen-orchestra-ce.version)
     rev=$(nix eval --accept-flake-config --raw .#xen-orchestra-ce.src.rev)
@@ -16,7 +16,7 @@ case "$mode" in
     body="Automated update to vatesfr/xen-orchestra@$rev. Validated with nix run .#update-xo-release."
     ;;
   libvhdi)
-    bash "${XO_NIXPKG_SOURCE_ROOT:-$PWD}/ci/update-libvhdi.sh"
+    xo-nixpkg-update-libvhdi
     changed_paths=(nix/sources/libvhdi.json)
     version=$(jq -er .version nix/sources/libvhdi.json)
     branch="update/libvhdi-$version"

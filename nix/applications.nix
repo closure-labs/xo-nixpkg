@@ -10,11 +10,11 @@ let
       name,
       script,
       runtimeInputs,
-      arguments ? [ ],
-      environment ? "",
+      prelude ? "",
     }:
     pkgs.writeShellApplication {
-      inherit name runtimeInputs;
+      inherit name;
+      runtimeInputs = [ pkgs.bash ] ++ runtimeInputs;
       text = ''
         repo_root="''${XO_NIXPKG_SOURCE_ROOT:-$PWD}"
         if [[ ! -f "$repo_root/flake.nix" ]]; then
@@ -23,8 +23,8 @@ let
         fi
         export XO_NIXPKG_SOURCE_ROOT="$repo_root"
         cd "$repo_root"
-        ${environment}
-        exec ${pkgs.bash}/bin/bash "$repo_root/${script}" ${pkgs.lib.escapeShellArgs arguments} "$@"
+        ${prelude}
+        ${builtins.readFile script}
       '';
     };
 
@@ -39,25 +39,59 @@ let
   ];
 in
 rec {
+  prepareCi = pkgs.writeShellApplication {
+    name = "xo-nixpkg-prepare-ci";
+    runtimeInputs = with pkgs; [ nix ];
+    text = ''
+      if (( $# > 1 )); then
+        echo 'usage: xo-nixpkg-prepare-ci [GITHUB_OUTPUT]' >&2
+        exit 2
+      fi
+
+      runtime_nix="''${XO_NIXPKG_RUNTIME_NIX:-nix}"
+      prepared=$("$runtime_nix" eval --impure --json --file ${./prepare-ci-runtime.nix})
+      if (( $# == 1 )); then
+        printf 'workflow=%s\n' "$prepared" >>"$1"
+      else
+        printf '%s\n' "$prepared"
+      fi
+    '';
+  };
+
+  ciGate = pkgs.writeShellApplication {
+    name = "xo-nixpkg-ci-gate";
+    runtimeInputs = with pkgs; [ nix ];
+    text = ''
+      if (( $# != 0 )); then
+        echo 'usage: xo-nixpkg-ci-gate' >&2
+        exit 2
+      fi
+
+      runtime_nix="''${XO_NIXPKG_RUNTIME_NIX:-nix}"
+      exec "$runtime_nix" eval --impure --raw --file ${./ci-gate-runtime.nix}
+    '';
+  };
+
   ci = mkRepositoryApplication {
     name = "xo-nixpkg-ci";
-    script = "ci/run.sh";
+    script = ../ci/run.sh;
     runtimeInputs =
       with pkgs;
       [
         coreutils
         git
+        jq
         nix
       ]
-      ++ [ planRunner ];
-    environment = ''
-      export XO_NIXPKG_CI_PLAN=lib.ciPlans.${pkgs.stdenv.hostPlatform.system}.validation
-    '';
+      ++ [
+        planRunner
+        prepareCi
+      ];
   };
 
   publish = mkRepositoryApplication {
     name = "xo-nixpkg-publish";
-    script = "ci/publish.sh";
+    script = ../ci/publish.sh;
     runtimeInputs =
       with pkgs;
       [
@@ -67,14 +101,11 @@ rec {
         nix
       ]
       ++ [ planRunner ];
-    environment = ''
-      export XO_NIXPKG_PUBLISH_PLAN=lib.ciPlans.${pkgs.stdenv.hostPlatform.system}.publish
-    '';
   };
 
   publishRelease = mkRepositoryApplication {
     name = "xo-nixpkg-publish-release";
-    script = "ci/publish-release.sh";
+    script = ../ci/publish-release.sh;
     runtimeInputs = with pkgs; [
       coreutils
       gawk
@@ -85,7 +116,7 @@ rec {
 
   tagRelease = mkRepositoryApplication {
     name = "xo-nixpkg-tag-release";
-    script = "ci/tag-release.sh";
+    script = ../ci/tag-release.sh;
     runtimeInputs = with pkgs; [
       coreutils
       git
@@ -95,7 +126,7 @@ rec {
 
   trustedUpdate = mkRepositoryApplication {
     name = "xo-nixpkg-trusted-update";
-    script = "ci/trusted-update.sh";
+    script = ../ci/trusted-update.sh;
     runtimeInputs = with pkgs; [
       coreutils
       gh
@@ -105,39 +136,50 @@ rec {
 
   queueAutomation = mkRepositoryApplication {
     name = "xo-nixpkg-queue-automation";
-    script = "ci/queue-automation.sh";
-    runtimeInputs = with pkgs; [
-      coreutils
-      gh
-      jq
-    ];
+    script = ../ci/queue-automation.sh;
+    runtimeInputs =
+      with pkgs;
+      [
+        coreutils
+        gh
+        jq
+      ]
+      ++ [ trustedUpdate ];
   };
 
-  updateXoRelease = mkRepositoryApplication {
+  updateXoSource = mkRepositoryApplication {
+    name = "xo-nixpkg-update-xo-source";
+    script = ../scripts/update.sh;
+    runtimeInputs = updateRuntimeInputs;
+  };
+
+  updateXo = mkRepositoryApplication {
+    name = "xo-nixpkg-update-xo";
+    script = ../ci/update-xo.sh;
+    runtimeInputs = updateRuntimeInputs ++ [ updateXoSource ];
+    prelude = ''
+      export XO_NIXPKG_NIXPKGS_PATH="''${XO_NIXPKG_NIXPKGS_PATH:-${nixpkgsPath}}"
+      export XO_NIXPKG_UPDATE_IN_DEV_SHELL=1
+    '';
+  };
+
+  updateXoRelease = pkgs.writeShellApplication {
     name = "xo-nixpkg-update-xo-release";
-    script = "ci/update-xo.sh";
-    arguments = [ "--release" ];
-    runtimeInputs = updateRuntimeInputs;
-    environment = ''
-      export XO_NIXPKG_NIXPKGS_PATH=${pkgs.lib.escapeShellArg nixpkgsPath}
-      export XO_NIXPKG_UPDATE_IN_DEV_SHELL=1
+    text = ''
+      exec ${pkgs.lib.getExe updateXo} --release "$@"
     '';
   };
 
-  updateXoUpstream = mkRepositoryApplication {
+  updateXoUpstream = pkgs.writeShellApplication {
     name = "xo-nixpkg-update-xo-upstream";
-    script = "ci/update-xo.sh";
-    arguments = [ "--upstream" ];
-    runtimeInputs = updateRuntimeInputs;
-    environment = ''
-      export XO_NIXPKG_NIXPKGS_PATH=${pkgs.lib.escapeShellArg nixpkgsPath}
-      export XO_NIXPKG_UPDATE_IN_DEV_SHELL=1
+    text = ''
+      exec ${pkgs.lib.getExe updateXo} --upstream "$@"
     '';
   };
 
-  updateLibvhdi = mkRepositoryApplication {
-    name = "xo-nixpkg-update-libvhdi";
-    script = "ci/update-libvhdi.sh";
+  updateLibvhdiSource = mkRepositoryApplication {
+    name = "xo-nixpkg-update-libvhdi-source";
+    script = ../scripts/update-libvhdi.sh;
     runtimeInputs = with pkgs; [
       coreutils
       curl
@@ -146,29 +188,38 @@ rec {
     ];
   };
 
+  updateLibvhdi = mkRepositoryApplication {
+    name = "xo-nixpkg-update-libvhdi";
+    script = ../ci/update-libvhdi.sh;
+    runtimeInputs =
+      with pkgs;
+      [
+        coreutils
+        curl
+        jq
+        nix
+      ]
+      ++ [ updateLibvhdiSource ];
+  };
+
   maintainLatestUpstream = mkRepositoryApplication {
     name = "xo-nixpkg-maintain-latest-upstream";
-    script = "ci/maintain-latest-upstream.sh";
-    runtimeInputs = updateRuntimeInputs;
-    environment = ''
-      export XO_NIXPKG_NIXPKGS_PATH=${pkgs.lib.escapeShellArg nixpkgsPath}
-      export XO_NIXPKG_UPDATE_IN_DEV_SHELL=1
-    '';
+    script = ../ci/maintain-latest-upstream.sh;
+    runtimeInputs = updateRuntimeInputs ++ [ updateXoUpstream ];
   };
 
   forgejoUpdate = mkRepositoryApplication {
     name = "xo-nixpkg-forgejo-update";
-    script = "ci/forgejo-update.sh";
-    runtimeInputs = updateRuntimeInputs;
-    environment = ''
-      export XO_NIXPKG_NIXPKGS_PATH=${pkgs.lib.escapeShellArg nixpkgsPath}
-      export XO_NIXPKG_UPDATE_IN_DEV_SHELL=1
-    '';
+    script = ../ci/forgejo-update.sh;
+    runtimeInputs = updateRuntimeInputs ++ [
+      updateLibvhdi
+      updateXoRelease
+    ];
   };
 
   openUpdatePr = mkRepositoryApplication {
     name = "xo-nixpkg-open-update-pr";
-    script = "ci/open-update-pr.sh";
+    script = ../ci/open-update-pr.sh;
     runtimeInputs = with pkgs; [
       coreutils
       gh
@@ -178,7 +229,7 @@ rec {
 
   updateFlakeLock = mkRepositoryApplication {
     name = "xo-nixpkg-update-flake-lock";
-    script = "ci/update-flake-lock.sh";
+    script = ../ci/update-flake-lock.sh;
     runtimeInputs = with pkgs; [
       coreutils
       git

@@ -15,10 +15,34 @@ permissions:
   contents: read
 
 jobs:
+  prepare:
+    name: Prepare Nix CI workflow
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    outputs:
+      workflow: ${{ steps.workflow.outputs.workflow }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Set up Nix and cache
+        uses: ./.github/actions/setup-nix
+        with:
+          github-token: ${{ github.token }}
+
+      - name: Prepare the Nix-defined workflow
+        id: workflow
+        run: nix run .#prepare-ci -- "$GITHUB_OUTPUT"
+
   validate:
     name: Flake-defined validation
+    needs: prepare
     runs-on: ubuntu-24.04
     timeout-minutes: 180
+    env:
+      PREPARED_CI_WORKFLOW: ${{ needs.prepare.outputs.workflow }}
     steps:
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -33,8 +57,29 @@ jobs:
       - name: Run the complete flake-defined pipeline
         run: nix run .#ci
 
-      - name: Publish protected-main package closures
-        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+  publish:
+    name: Publish prepared package closures
+    needs: [prepare, validate]
+    if: >-
+      needs.prepare.result == 'success' &&
+      needs.validate.result == 'success' &&
+      fromJSON(needs.prepare.outputs.workflow).jobs.publish.enabled
+    runs-on: ubuntu-24.04
+    timeout-minutes: 180
+    env:
+      PREPARED_CI_WORKFLOW: ${{ needs.prepare.outputs.workflow }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Set up Nix and cache
+        uses: ./.github/actions/setup-nix
+        with:
+          github-token: ${{ github.token }}
+
+      - name: Publish prepared package closures
         env:
           CACHIX_AUTH_TOKEN: ${{ secrets.CACHIX_AUTH_TOKEN }}
         run: nix run .#publish
@@ -42,19 +87,32 @@ jobs:
   gate:
     name: CI gate
     if: always()
-    needs: validate
-    runs-on: ubuntu-slim
-    timeout-minutes: 5
+    needs: [prepare, validate, publish]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    env:
+      CI_JOB_RESULTS: ${{ toJSON(needs) }}
+      PREPARED_CI_WORKFLOW: ${{ needs.prepare.outputs.workflow }}
     steps:
-      - name: Require validation success
-        env:
-          VALIDATE_RESULT: ${{ needs.validate.result }}
-        run: test "$VALIDATE_RESULT" = success
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Set up Nix
+        uses: ./.github/actions/setup-nix
+        with:
+          github-token: ${{ github.token }}
+
+      - name: Enforce the prepared Nix gate
+        run: nix run .#ci-gate
 
   tag:
     name: Tag gated main release and aliases
-    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
-    needs: gate
+    if: >-
+      needs.gate.result == 'success' &&
+      fromJSON(needs.prepare.outputs.workflow).release.enabled
+    needs: [prepare, gate]
     runs-on: ubuntu-24.04
     timeout-minutes: 15
     environment: release

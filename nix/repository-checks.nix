@@ -1,4 +1,6 @@
 {
+  applications,
+  ciWorkflowLib,
   self,
   pkgs,
 }:
@@ -33,6 +35,52 @@ let
         ])
         ''
           bash source/tests/policy.sh
+        '';
+
+    ci-workflow-contract = import ./ci-workflow-tests.nix {
+      inherit ciWorkflowLib pkgs;
+    };
+
+    ci-runtime-fixtures =
+      mkCheck "ci-runtime-fixtures"
+        (with pkgs; [
+          bash
+          coreutils
+          jq
+        ])
+        ''
+          PREPARE_CI_APP=${pkgs.lib.getExe applications.prepareCi} \
+            bash source/tests/ci-runtime.sh
+        '';
+
+    application-composition =
+      mkCheck "application-composition"
+        (with pkgs; [
+          gnugrep
+          ripgrep
+        ])
+        ''
+          grep -F -- '${pkgs.lib.getExe applications.updateXo} --release' \
+            ${pkgs.lib.getExe applications.updateXoRelease}
+          grep -F -- '${pkgs.lib.getExe applications.updateXo} --upstream' \
+            ${pkgs.lib.getExe applications.updateXoUpstream}
+          grep -F 'xo-nixpkg-prepare-ci' source/ci/run.sh
+          grep -F 'xo-nixpkg-update-xo-source' source/ci/update-xo.sh
+          grep -F 'xo-nixpkg-update-libvhdi-source' source/ci/update-libvhdi.sh
+          grep -F 'xo-nixpkg-update-xo-release' source/ci/forgejo-update.sh
+          grep -F 'xo-nixpkg-update-libvhdi' source/ci/forgejo-update.sh
+          grep -F 'xo-nixpkg-update-xo-upstream' source/ci/maintain-latest-upstream.sh
+          grep -F 'xo-nixpkg-trusted-update' source/ci/queue-automation.sh
+          if rg '(ci|scripts)/[A-Za-z0-9._-]+\\.sh' \
+            source/ci/run.sh \
+            source/ci/update-xo.sh \
+            source/ci/update-libvhdi.sh \
+            source/ci/forgejo-update.sh \
+            source/ci/maintain-latest-upstream.sh \
+            source/ci/queue-automation.sh; then
+            echo 'Composed applications must invoke packaged sibling executables' >&2
+            exit 1
+          fi
         '';
 
     source-update-fixtures =
