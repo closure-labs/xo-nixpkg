@@ -24,52 +24,83 @@
       ];
       forAllSystems = nixpkgs.lib.genAttrs supportedSystems;
       ciLib = import ./nix/ci-plan.nix { lib = nixpkgs.lib; };
+      ciWorkflowLib = import ./nix/ci-workflow.nix { lib = nixpkgs.lib; };
       sourcePins = import ./nix/source-pins.nix { lib = nixpkgs.lib; };
       repositoryCheckNames = [
         "repository-policy"
+        "ci-workflow-contract"
+        "ci-runtime-fixtures"
+        "application-composition"
         "source-update-fixtures"
         "automation-fixtures"
         "plan-runner-fixtures"
       ];
     in
     {
-      lib = ciLib // {
-        projectVersion = nixpkgs.lib.removeSuffix "\n" (builtins.readFile ./VERSION);
-        inherit sourcePins;
-        ciPlans = forAllSystems (system: {
-          validation = ciLib.mkCiPlan {
-            name = "xo-nixpkg-validation";
-            targets =
-              map
-                (name: {
-                  inherit name;
-                  attribute = "checks.${system}.${name}";
-                })
-                (
-                  [
-                    "xen-orchestra-ce"
-                    "xo-fuse-linkage"
-                    "xo-server-service"
-                    "libvhdi"
-                  ]
-                  ++ repositoryCheckNames
-                );
-          };
-          publish = ciLib.mkCiPlan {
-            name = "xo-nixpkg-publish";
-            targets = [
-              {
-                name = "xen-orchestra-ce";
-                attribute = "packages.${system}.xen-orchestra-ce";
-              }
-              {
-                name = "libvhdi";
-                attribute = "packages.${system}.libvhdi";
-              }
-            ];
-          };
-        });
-      };
+      lib =
+        ciLib
+        // ciWorkflowLib
+        // {
+          projectVersion = nixpkgs.lib.removeSuffix "\n" (builtins.readFile ./VERSION);
+          inherit sourcePins;
+          ciPlans = forAllSystems (system: {
+            validation = ciLib.mkCiPlan {
+              name = "xo-nixpkg-validation";
+              targets =
+                map
+                  (name: {
+                    inherit name;
+                    attribute = "checks.${system}.${name}";
+                  })
+                  (
+                    [
+                      "xen-orchestra-ce"
+                      "xo-fuse-linkage"
+                      "xo-server-service"
+                      "libvhdi"
+                    ]
+                    ++ repositoryCheckNames
+                  );
+            };
+            publish = ciLib.mkCiPlan {
+              name = "xo-nixpkg-publish";
+              targets = [
+                {
+                  name = "xen-orchestra-ce";
+                  attribute = "packages.${system}.xen-orchestra-ce";
+                }
+                {
+                  name = "libvhdi";
+                  attribute = "packages.${system}.libvhdi";
+                }
+              ];
+            };
+          });
+          ciWorkflows = forAllSystems (
+            system:
+            let
+              protectedMain = {
+                event = "push";
+                ref = "refs/heads/main";
+              };
+            in
+            ciWorkflowLib.mkCiWorkflow {
+              name = "xo-nixpkg-ci";
+              jobs = {
+                validate = {
+                  gate = true;
+                  plan = "lib.ciPlans.${system}.validation";
+                };
+                publish = {
+                  gate = true;
+                  plan = "lib.ciPlans.${system}.publish";
+                  when = protectedMain;
+                };
+              };
+              release.when = protectedMain;
+            }
+          );
+        };
 
       packages = forAllSystems (
         system:
@@ -166,6 +197,8 @@
         in
         {
           ci = mkApp applications.ci "Run the complete repository validation pipeline";
+          prepare-ci = mkApp applications.prepareCi "Prepare the Nix-defined CI workflow";
+          ci-gate = mkApp applications.ciGate "Gate the prepared CI workflow results";
           run-ci-plan =
             mkApp self.packages.${system}.flake-plan-runner
               "Validate and execute a schema-v2 pure flake CI plan";
@@ -188,8 +221,18 @@
         system:
         let
           pkgs = nixpkgs.legacyPackages.${system};
+          applications = import ./nix/applications.nix {
+            inherit pkgs;
+            nixpkgsPath = nixpkgs.outPath;
+            planRunner = self.packages.${system}.flake-plan-runner;
+          };
           repositoryChecks = import ./nix/repository-checks.nix {
-            inherit pkgs self;
+            inherit
+              applications
+              ciWorkflowLib
+              pkgs
+              self
+              ;
           };
         in
         repositoryChecks

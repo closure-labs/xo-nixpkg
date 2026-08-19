@@ -43,6 +43,7 @@ PATH="$temporary/bin:$PATH" \
 NOOP_NIX_LOG="$temporary/nix.log" \
 XO_NIXPKG_SOURCE_ROOT="$root" \
 XO_NIXPKG_UPDATE_IN_DEV_SHELL=1 \
+XO_NIXPKG_UPDATE_XO_SOURCE_COMMAND="$root/scripts/update.sh" \
 XO_NIXPKG_XO_PIN_FILE="$temporary/xo.json" \
 XO_NIXPKG_COMMITS_JSON="$temporary/commits.json" \
   bash "$root/ci/update-xo.sh" --release "$temporary/xo-output"
@@ -55,5 +56,6 @@ fi
 LIBVHDI_PIN_FILE="$temporary/libvhdi.json" \
 LIBVHDI_RELEASES_JSON="$temporary/releases.json" \
 XO_NIXPKG_SOURCE_ROOT="$root" \
+XO_NIXPKG_UPDATE_LIBVHDI_SOURCE_COMMAND="$root/scripts/update-libvhdi.sh" \
   bash "$root/ci/update-libvhdi.sh" "$temporary/libvhdi-output"
 grep -Fx 'changed=false' "$temporary/libvhdi-output" >/dev/null

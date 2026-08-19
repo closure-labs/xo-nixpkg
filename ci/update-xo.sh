@@ -16,7 +16,11 @@ fi
 
 pin_file=${XO_NIXPKG_XO_PIN_FILE:-${XO_NIXPKG_SOURCE_ROOT:-$PWD}/nix/sources/xen-orchestra.json}
 before=$(sha256sum "$pin_file" | cut -d ' ' -f 1)
-bash "${XO_NIXPKG_SOURCE_ROOT:-$PWD}/scripts/update.sh" "$mode"
+if [[ -n ${XO_NIXPKG_UPDATE_XO_SOURCE_COMMAND:-} ]]; then
+  bash "$XO_NIXPKG_UPDATE_XO_SOURCE_COMMAND" "$mode"
+else
+  xo-nixpkg-update-xo-source "$mode"
+fi
 after=$(sha256sum "$pin_file" | cut -d ' ' -f 1)
 changed=false
 if [[ $before != "$after" ]]; then

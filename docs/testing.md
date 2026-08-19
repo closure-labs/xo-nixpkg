@@ -19,6 +19,11 @@ nix build --no-link .#libvhdi
 nix eval --json .#lib.ciPlans.x86_64-linux.validation
 nix run .#run-ci-plan -- \
   --plan lib.ciPlans.x86_64-linux.validation
+
+# Inspect the workflow definition, or prepare it for a pull request
+nix eval --json .#lib.ciWorkflows.x86_64-linux
+GITHUB_EVENT_NAME=pull_request GITHUB_REF=refs/pull/1/merge \
+  nix run .#prepare-ci
 ```
 
 ## Runtime Smoke Tests
@@ -82,13 +87,25 @@ preFixup = ''
 
 ## CI Coverage
 
-`nix run .#ci` is the canonical local and hosted pipeline. It first evaluates
-the complete flake without building, then validates the versioned pure
-`lib.ciPlans.x86_64-linux.validation` contract and builds each declared
-attribute in an independent process so every failure is collected. CI checks:
+`lib.ciWorkflows.x86_64-linux` is the single CI planning and gating source.
+Pure Nix contract tests cover pull requests, protected main, local execution,
+malformed definitions, missing/skipped/failed jobs, failed preparation, and a
+successful gate. The prepare job evaluates the workflow once and passes the
+resulting JSON unchanged to validation, publication, the required-job gate,
+and release selection.
+`nix run .#ci` consumes that prepared output, evaluates the complete flake
+without building, then validates the selected versioned pure CI plan and
+builds each declared attribute in an independent process so every failure is
+collected. For local use, `.#ci` prepares the default local workflow when no
+prepared output is supplied. CI checks:
 - package builds for `xen-orchestra-ce`
 - upstream/install checks and exclusive FUSE3 linkage for `libvhdi`
 - XO `fuse-native` libfuse2 linkage and absence of bundled/prebuilt FUSE files
-- updater, trusted-queue, workflow, shell, and ruleset fixtures
+- updater, trusted-queue, runtime-adapter, shell, and ruleset fixtures
+- closure-composition checks for packaged child commands
 - `nix flake check`
 - basic binary execution smoke tests
+
+`nix flake check` is the canonical aggregate check graph; there is no separate
+shell test aggregator. `nix run .#ci` is the supported end-to-end entrypoint
+that evaluates the flake and executes every validation-plan target.

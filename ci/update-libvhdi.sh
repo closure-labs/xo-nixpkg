@@ -10,7 +10,11 @@ fi
 
 pin_file=${LIBVHDI_PIN_FILE:-${XO_NIXPKG_SOURCE_ROOT:-$PWD}/nix/sources/libvhdi.json}
 before=$(sha256sum "$pin_file" | cut -d ' ' -f 1)
-bash "${XO_NIXPKG_SOURCE_ROOT:-$PWD}/scripts/update-libvhdi.sh"
+if [[ -n ${XO_NIXPKG_UPDATE_LIBVHDI_SOURCE_COMMAND:-} ]]; then
+  bash "$XO_NIXPKG_UPDATE_LIBVHDI_SOURCE_COMMAND"
+else
+  xo-nixpkg-update-libvhdi-source
+fi
 after=$(sha256sum "$pin_file" | cut -d ' ' -f 1)
 changed=false
 if [[ $before != "$after" ]]; then

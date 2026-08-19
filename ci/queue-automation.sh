@@ -36,5 +36,5 @@ while IFS= read -r pull_request; do
   EXPECTED_TITLE=$(jq -er .title <<<"$pull_request")
   EXPECTED_AUTHOR=$(jq -er .author <<<"$pull_request")
   EXPECTED_HEAD_SHA=$(jq -er .sha <<<"$pull_request")
-  bash "${XO_NIXPKG_SOURCE_ROOT:-$PWD}/ci/trusted-update.sh"
+  xo-nixpkg-trusted-update
 done

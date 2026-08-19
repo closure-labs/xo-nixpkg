@@ -97,3 +97,23 @@ nix run --accept-flake-config \
 The runner evaluates the selected plan once, verifies schema version 2 and
 target uniqueness, builds each attribute in a separate process, and reports
 all target results before returning.
+
+## Reuse the CI workflow contract
+
+`lib.mkCiWorkflow` combines named plans with event/ref conditions and declares
+which enabled jobs must pass the gate. This repository exposes the concrete
+definition at `lib.ciWorkflows.x86_64-linux`. Downstream flakes can call
+`lib.prepareCiWorkflow` to produce the versioned prepared schema for an event,
+then call `lib.evaluateCiWorkflowGate` with GitHub-style job results to obtain
+the gate decision and required-job summary. Both operations are pure Nix
+functions and reject malformed workflow data.
+
+The `prepare-ci` and `ci-gate` apps are generated runtime adapters: they read
+only the selected flake and non-secret GitHub context, delegate policy to those
+pure functions, and optionally write the existing `GITHUB_OUTPUT` format.
+Composed apps invoke packaged sibling executables from their Nix closures.
+
+Imperative network, Git, release, source-lock mutation, plan execution, and
+Cachix operations remain checked-in shell programs under `ci/` and `scripts/`.
+Fixture shells remain where fake commands, temporary repositories, or injected
+failures are the behavior under test.
