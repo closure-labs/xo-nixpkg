@@ -111,3 +111,45 @@ if XO_NIXPKG_UPDATE_IN_DEV_SHELL=1 \
   echo 'Older XO release was not rejected' >&2
   exit 1
 fi
+
+# A prefetched store path is only visible in a nested Nix build when the
+# expression imports it with path context. Exercise the command boundary used
+# for both root and documentation lockfiles so this cannot regress silently.
+mkdir -p "$temporary/bin"
+printf '#!%s\n' "$(command -v bash)" >"$temporary/bin/nix-build"
+cat >>"$temporary/bin/nix-build" <<'SH'
+set -euo pipefail
+printf '%s\n' "$*" >>"$PREFETCH_NIX_LOG"
+case " $* " in
+  *' --arg normalized true '*) hash='sha256-CCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCC=' ;;
+  *' --arg normalized false '*) hash='sha256-DDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDD=' ;;
+  *) echo 'missing normalized argument' >&2; exit 2 ;;
+esac
+printf 'error: hash mismatch\n  got:    %s\n' "$hash" >&2
+exit 1
+SH
+chmod +x "$temporary/bin/nix-build"
+: >"$temporary/prefetch-nix.log"
+
+printf '\n# upstream root lock changed\n' >>"$temporary/candidate/yarn.lock"
+printf '\n# upstream docs lock changed\n' >>"$temporary/candidate/docs/yarn.lock"
+jq '.version = "6.7.1" | .rev = "40dede9e11c90562df5cb46c6a83a9d91efedae1"' \
+  "$root/nix/sources/xen-orchestra.json" >"$temporary/xo.json"
+
+PATH="$temporary/bin:$PATH" \
+PREFETCH_NIX_LOG="$temporary/prefetch-nix.log" \
+XO_NIXPKG_UPDATE_IN_DEV_SHELL=1 \
+XO_NIXPKG_NIXPKGS_PATH=/nix/store/test-nixpkgs \
+XO_NIXPKG_XO_PIN_FILE="$temporary/xo.json" \
+XO_NIXPKG_PREFETCH_JSON="$temporary/prefetch.json" \
+XO_NIXPKG_CURRENT_SOURCE="$temporary/current" \
+XO_NIXPKG_UPSTREAM_REV=1111111111111111111111111111111111111111 \
+  bash "$root/scripts/update.sh" --upstream >/dev/null
+
+jq -e '
+  .rev == "1111111111111111111111111111111111111111" and
+  .yarnHash == "sha256-CCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCC=" and
+  .docsYarnHash == "sha256-DDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDD="
+' "$temporary/xo.json" >/dev/null
+grep -F -- "$root/nix/prefetch-yarn-deps.nix" "$temporary/prefetch-nix.log" >/dev/null
+grep -F -- '--argstr yarnLock' "$temporary/prefetch-nix.log" >/dev/null
