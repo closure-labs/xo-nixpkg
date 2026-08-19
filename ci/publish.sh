@@ -6,22 +6,22 @@ set -euo pipefail
 : "${CACHIX_AUTH_TOKEN:?CACHIX_AUTH_TOKEN must be set}"
 : "${PREPARED_CI_WORKFLOW:?PREPARED_CI_WORKFLOW must be set}"
 
-publish_plan=$(jq -er '
+publish_plan=$(mktemp)
+manifest=$(mktemp)
+trap 'rm -f -- "$publish_plan" "$manifest"' EXIT
+jq -er '
   select(
-    .schemaVersion == 1 and
-    .jobs.publish.enabled == true and
-    (.gate.requiredJobs | index("publish") != null)
+    .schemaVersion == 2 and
+    .jobs.publish.enabled == true
   ) |
   .jobs.publish.plan
-' <<<"$PREPARED_CI_WORKFLOW")
+' <<<"$PREPARED_CI_WORKFLOW" >"$publish_plan"
 
-manifest=$(mktemp)
-trap 'rm -f -- "$manifest"' EXIT
-flake-plan-runner --flake . --plan "$publish_plan" --manifest "$manifest"
+flake-plan-runner --flake . --plan-file "$publish_plan" --manifest "$manifest"
 mapfile -t package_paths < <(jq -er '.results[].outputs[]' "$manifest")
 
-if [[ ${#package_paths[@]} -ne 2 ]]; then
-  printf 'Expected two final package paths, found %s\n' "${#package_paths[@]}" >&2
+if [[ ${#package_paths[@]} -lt 1 || ${#package_paths[@]} -gt 2 ]]; then
+  printf 'Expected one or two final package paths, found %s\n' "${#package_paths[@]}" >&2
   exit 1
 fi
 

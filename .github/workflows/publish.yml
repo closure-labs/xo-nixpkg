@@ -1,0 +1,132 @@
+# SPDX-License-Identifier: Apache-2.0
+name: Publish protected main
+
+on:
+  push:
+    branches: [main]
+
+concurrency:
+  group: publication-${{ github.repository }}
+  queue: max
+
+permissions:
+  actions: read
+  contents: read
+
+jobs:
+  classify:
+    name: Classify main lifecycle
+    runs-on: ubuntu-slim
+    timeout-minutes: 10
+    outputs:
+      workflow: ${{ steps.classify.outputs.workflow }}
+    steps:
+      - name: Checkout publication history
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Classify merge-group reuse and publication paths
+        id: classify
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: bash ci/classify.sh "$GITHUB_OUTPUT"
+
+  lifecycle:
+    name: Validate and publish selected closures
+    needs: classify
+    if: >-
+      needs.classify.result == 'success' &&
+      (fromJSON(needs.classify.outputs.workflow).jobs.validate.enabled ||
+       fromJSON(needs.classify.outputs.workflow).jobs.publish.enabled)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 180
+    env:
+      PREPARED_CI_WORKFLOW: ${{ needs.classify.outputs.workflow }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Set up Nix and cache
+        uses: ./.github/actions/setup-nix
+        with:
+          github-token: ${{ github.token }}
+
+      - name: Run selected validation targets
+        if: fromJSON(env.PREPARED_CI_WORKFLOW).jobs.validate.enabled
+        run: nix run .#ci
+
+      - name: Publish selected package closures from the same Nix store
+        if: fromJSON(env.PREPARED_CI_WORKFLOW).jobs.publish.enabled
+        env:
+          CACHIX_AUTH_TOKEN: ${{ secrets.CACHIX_AUTH_TOKEN }}
+        run: nix run .#publish
+
+  gate:
+    name: Main lifecycle gate
+    if: always()
+    needs: [classify, lifecycle]
+    runs-on: ubuntu-slim
+    timeout-minutes: 5
+    env:
+      CLASSIFY_RESULT: ${{ needs.classify.result }}
+      LIFECYCLE_RESULT: ${{ needs.lifecycle.result }}
+      LIFECYCLE_ENABLED: ${{ needs.classify.result == 'success' && (fromJSON(needs.classify.outputs.workflow).jobs.validate.enabled || fromJSON(needs.classify.outputs.workflow).jobs.publish.enabled) || false }}
+    steps:
+      - name: Enforce the classified lifecycle
+        run: |
+          test "$CLASSIFY_RESULT" = success
+          if test "$LIFECYCLE_ENABLED" = true; then
+            test "$LIFECYCLE_RESULT" = success
+          else
+            test "$LIFECYCLE_RESULT" = skipped
+          fi
+
+  release:
+    name: Tag gated main release and aliases
+    if: >-
+      needs.classify.result == 'success' &&
+      needs.gate.result == 'success' &&
+      fromJSON(needs.classify.outputs.workflow).release.enabled
+    needs: [classify, gate]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    environment: release
+    permissions:
+      contents: read
+    steps:
+      - name: Create GitHub App token
+        id: app-token
+        uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1 # v3.2.0
+        with:
+          client-id: ${{ vars.UPDATE_GITHUB_APP_CLIENT_ID }}
+          private-key: ${{ secrets.UPDATE_GITHUB_APP_PRIVATE_KEY }}
+          permission-contents: write
+
+      - name: Checkout the gated commit and tags
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          token: ${{ steps.app-token.outputs.token }}
+          fetch-depth: 0
+          fetch-tags: true
+          persist-credentials: false
+
+      - name: Set up Nix
+        uses: ./.github/actions/setup-nix
+        with:
+          github-token: ${{ github.token }}
+
+      - name: Create tags from the gated SHA
+        env:
+          APP_TOKEN: ${{ steps.app-token.outputs.token }}
+          GATED_SHA: ${{ github.sha }}
+        run: nix run .#tag-release
+
+      - name: Publish the immutable GitHub release
+        env:
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
+        run: nix run .#publish-release

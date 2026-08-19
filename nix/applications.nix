@@ -39,6 +39,17 @@ let
   ];
 in
 rec {
+  classifyCi = mkRepositoryApplication {
+    name = "xo-nixpkg-classify-ci";
+    script = ../ci/classify.sh;
+    runtimeInputs = with pkgs; [
+      coreutils
+      gh
+      git
+      jq
+    ];
+  };
+
   prepareCi = pkgs.writeShellApplication {
     name = "xo-nixpkg-prepare-ci";
     runtimeInputs = with pkgs; [ nix ];
@@ -84,8 +95,8 @@ rec {
         nix
       ]
       ++ [
+        classifyCi
         planRunner
-        prepareCi
       ];
   };
 

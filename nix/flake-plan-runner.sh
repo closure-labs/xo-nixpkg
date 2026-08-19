@@ -5,16 +5,17 @@ set -uo pipefail
 
 usage() {
   cat <<'EOF'
-Usage: flake-plan-runner --plan ATTRIBUTE [--flake REFERENCE] [--manifest FILE]
+Usage: flake-plan-runner (--plan ATTRIBUTE | --plan-file FILE) [--flake REFERENCE] [--manifest FILE]
 
-Evaluate one schema-v2 CI plan, validate its contract, build every declared
-attribute in an isolated child process, and materialize links only after the
-complete plan succeeds.
+Evaluate or consume one schema-v2 CI plan, validate its contract, build every
+declared attribute in an isolated child process, and materialize links only
+after the complete plan succeeds.
 EOF
 }
 
 flake_ref=.
 plan_attribute=
+input_plan_file=
 manifest_file=
 
 while (($# > 0)); do
@@ -27,6 +28,11 @@ while (($# > 0)); do
     --plan)
       (($# >= 2)) || { usage >&2; exit 2; }
       plan_attribute=$2
+      shift 2
+      ;;
+    --plan-file)
+      (($# >= 2)) || { usage >&2; exit 2; }
+      input_plan_file=$2
       shift 2
       ;;
     --manifest)
@@ -46,7 +52,11 @@ while (($# > 0)); do
   esac
 done
 
-[[ -n $plan_attribute ]] || { printf '%s\n' '--plan is required' >&2; exit 2; }
+if [[ -n $plan_attribute && -n $input_plan_file ]] ||
+   [[ -z $plan_attribute && -z $input_plan_file ]]; then
+  printf '%s\n' 'exactly one of --plan or --plan-file is required' >&2
+  exit 2
+fi
 
 nix_bin=${FLAKE_PLAN_RUNNER_NIX:-nix}
 link_root=${FLAKE_PLAN_LINK_ROOT:-$PWD}
@@ -56,10 +66,16 @@ plan_json=$temporary/plan.json
 results_jsonl=$temporary/results.jsonl
 manifest_json=$temporary/manifest.json
 
-if ! "$nix_bin" eval --accept-flake-config --no-write-lock-file --json \
-  "$flake_ref#$plan_attribute" >"$plan_json"; then
-  printf 'Could not evaluate CI plan %s#%s\n' "$flake_ref" "$plan_attribute" >&2
-  exit 1
+if [[ -n $input_plan_file ]]; then
+  cp -- "$input_plan_file" "$plan_json"
+  plan_source=$input_plan_file
+else
+  if ! "$nix_bin" eval --accept-flake-config --no-write-lock-file --json \
+    "$flake_ref#$plan_attribute" >"$plan_json"; then
+    printf 'Could not evaluate CI plan %s#%s\n' "$flake_ref" "$plan_attribute" >&2
+    exit 1
+  fi
+  plan_source="$flake_ref#$plan_attribute"
 fi
 
 if ! jq -e '
@@ -82,7 +98,7 @@ if ! jq -e '
   ([.targets[].attribute] | length == (unique | length)) and
   ([.targets[] | select(has("link")) | .link] | length == (unique | length))
 ' "$plan_json" >/dev/null; then
-  printf 'CI plan %s#%s violates schema version 2\n' "$flake_ref" "$plan_attribute" >&2
+  printf 'CI plan %s violates schema version 2\n' "$plan_source" >&2
   exit 1
 fi
 

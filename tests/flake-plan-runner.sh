@@ -74,6 +74,18 @@ FAKE_NIX_PLAN="$temporary/success.json" \
     --manifest "$temporary/success-manifest.json"
 [[ $(readlink "$temporary/result-first") == /nix/store/first ]]
 
+: >"$temporary/nix.log"
+FAKE_NIX_PLAN="$temporary/success.json" \
+  FAKE_NIX_LOG="$temporary/nix.log" \
+  FLAKE_PLAN_LINK_ROOT="$temporary" \
+  FLAKE_PLAN_RUNNER_NIX="$fake_nix" \
+  bash "$root/nix/flake-plan-runner.sh" \
+    --plan-file "$temporary/success.json" \
+    --manifest "$temporary/direct-manifest.json"
+[[ $(grep -c '^eval ' "$temporary/nix.log" || true) -eq 0 ]]
+jq -e '.targetCount == 2 and .failureCount == 0' \
+  "$temporary/direct-manifest.json" >/dev/null
+
 jq '.targets[1].name = .targets[0].name' \
   "$temporary/success.json" >"$temporary/malformed.json"
 : >"$temporary/nix.log"
