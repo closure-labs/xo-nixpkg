@@ -7,9 +7,15 @@ This document tracks synchronization between NiXOA core and this standalone pack
 
 | Repository | Version | Last Sync | Core Version | Nixpkgs Status |
 |------------|---------|-----------|--------------|----------------|
-| xo-nixpkg | v0.8.0 | 2026-08-18 | v1.1.2+ | Packaging maintained here |
+| xo-nixpkg | v0.9.0 | 2026-08-20 | v1.2.2-dev.1+ | Packaging maintained here |
 
 ## Sync History
+
+### 2026-08-20: Nix-native release channels (v0.9.0)
+- Replaced moving channel tags with immutable `latest`, `stable`, and `rolling` package outputs
+- Replaced daily build-and-retry jobs with standing release and rolling candidate pull requests
+- Published all three Xen Orchestra closures from protected main, including libvhdi transitively
+- Updated NiXOA core to select the `latest` package output by default
 
 ### 2026-08-18: Independent project releases (v0.8.0)
 - Introduced a repository-owned project version
