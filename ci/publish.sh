@@ -20,8 +20,8 @@ jq -er '
 flake-plan-runner --flake . --plan-file "$publish_plan" --manifest "$manifest"
 mapfile -t package_paths < <(jq -er '.results[].outputs[]' "$manifest")
 
-if [[ ${#package_paths[@]} -lt 1 || ${#package_paths[@]} -gt 2 ]]; then
-  printf 'Expected one or two final package paths, found %s\n' "${#package_paths[@]}" >&2
+if [[ ${#package_paths[@]} -lt 1 ]]; then
+  printf 'Expected at least one final package path\n' >&2
   exit 1
 fi
 

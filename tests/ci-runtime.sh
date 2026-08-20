@@ -52,8 +52,9 @@ prepared_lifecycle=$(jq -cn '{
         schemaVersion: 2,
         name: "fixture-publication",
         targets: [
-          {name: "xen-orchestra-ce", attribute: "packages.x86_64-linux.xen-orchestra-ce"},
-          {name: "libvhdi", attribute: "packages.x86_64-linux.libvhdi"}
+          {name: "xo-latest", attribute: "packages.x86_64-linux.latest"},
+          {name: "xo-stable", attribute: "packages.x86_64-linux.stable"},
+          {name: "xo-rolling", attribute: "packages.x86_64-linux.rolling"}
         ]
       }
     }
@@ -111,7 +112,7 @@ while (( $# > 0 )); do
 done
 printf '\n'
 if [[ -n $manifest ]]; then
-  printf '%s\n' '{"results":[{"outputs":["/nix/store/xo"]},{"outputs":["/nix/store/libvhdi"]}]}' >"$manifest"
+  printf '%s\n' '{"results":[{"outputs":["/nix/store/xo-latest"]},{"outputs":["/nix/store/xo-stable"]},{"outputs":["/nix/store/xo-rolling"]}]}' >"$manifest"
 fi
 EOF
 chmod +x "$temporary_directory/bin/flake-plan-runner"
@@ -140,6 +141,6 @@ PREPARED_CI_WORKFLOW="$prepared_lifecycle" \
 [[ $(<"$temporary_directory/publish-log") == \
   *'<--plan-file>'* ]]
 [[ $(<"$temporary_directory/publish-log") == \
-  *'cachix <push> <xen-orchestra-ce> </nix/store/xo> </nix/store/libvhdi>'* ]]
+  *'cachix <push> <xen-orchestra-ce> </nix/store/xo-latest> </nix/store/xo-stable> </nix/store/xo-rolling>'* ]]
 
 printf 'CI runtime fixtures passed\n'
