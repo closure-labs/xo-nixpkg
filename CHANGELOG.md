@@ -33,6 +33,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Move GitHub source and lock pull-request creation behind Nix-provided apps,
   deferred GitHub App tokens, and canonical updater identity validation.
 
+### Fixed
+
+- Publish every selected Xen Orchestra channel closure without imposing the
+  former two-output limit; include `libvhdi` through those closures instead of
+  treating it as a separate final publication target.
+
 ## [0.8.0] - 2026-08-18
 
 ### Added

@@ -6,6 +6,14 @@ set -euo pipefail
 root=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)
 temporary=$(mktemp -d "${TMPDIR:-/tmp}/classifier-test.XXXXXX")
 trap 'rm -rf -- "$temporary"' EXIT
+
+jq -e '
+  [.publicationTargets[].name] == ["xo-latest", "xo-stable", "xo-rolling"] and
+  ([.pathRules[] |
+    select(.pattern == "^(nix/libvhdi\\.nix|nix/sources/libvhdi\\.json)$") |
+    .publication[]] == ["xo-latest", "xo-stable", "xo-rolling"])
+' "$root/ci/classifier.json" >/dev/null
+
 fixture=$temporary/repository
 mkdir -p "$fixture"
 git -C "$fixture" init -q

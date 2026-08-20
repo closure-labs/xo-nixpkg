@@ -23,8 +23,7 @@
   "publicationTargets": [
     { "name": "xo-latest", "attribute": "packages.x86_64-linux.latest" },
     { "name": "xo-stable", "attribute": "packages.x86_64-linux.stable" },
-    { "name": "xo-rolling", "attribute": "packages.x86_64-linux.rolling" },
-    { "name": "libvhdi", "attribute": "packages.x86_64-linux.libvhdi" }
+    { "name": "xo-rolling", "attribute": "packages.x86_64-linux.rolling" }
   ],
   "pathRules": [
     {
@@ -40,7 +39,7 @@
     {
       "pattern": "^VERSION$",
       "validation": ["repository-policy", "automation-fixtures", "xo-latest", "xo-stable", "xo-rolling", "libvhdi"],
-      "publication": ["xo-latest", "xo-stable", "xo-rolling", "libvhdi"]
+      "publication": ["xo-latest", "xo-stable", "xo-rolling"]
     },
     {
       "pattern": "^\\.github/workflows/(ci|publish)\\.yml$",
@@ -100,12 +99,12 @@
     {
       "pattern": "^(nix/libvhdi\\.nix|nix/sources/libvhdi\\.json)$",
       "validation": ["libvhdi", "source-update-fixtures"],
-      "publication": ["libvhdi"]
+      "publication": ["xo-latest", "xo-stable", "xo-rolling"]
     },
     {
       "pattern": "^nix/source-pins\\.nix$",
       "validation": ["xo-latest", "xo-stable", "xo-rolling", "xo-fuse-linkage", "xo-server-service", "libvhdi", "source-update-fixtures"],
-      "publication": ["xo-latest", "xo-stable", "xo-rolling", "libvhdi"]
+      "publication": ["xo-latest", "xo-stable", "xo-rolling"]
     },
     {
       "pattern": "^nix/tests/xo-server-service\\.nix$",
