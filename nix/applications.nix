@@ -158,16 +158,10 @@ rec {
       ++ [ trustedUpdate ];
   };
 
-  updateXoSource = mkRepositoryApplication {
-    name = "xo-nixpkg-update-xo-source";
-    script = ../scripts/update.sh;
-    runtimeInputs = updateRuntimeInputs;
-  };
-
   updateXo = mkRepositoryApplication {
     name = "xo-nixpkg-update-xo";
     script = ../ci/update-xo.sh;
-    runtimeInputs = updateRuntimeInputs ++ [ updateXoSource ];
+    runtimeInputs = updateRuntimeInputs;
     prelude = ''
       export XO_NIXPKG_NIXPKGS_PATH="''${XO_NIXPKG_NIXPKGS_PATH:-${nixpkgsPath}}"
       export XO_NIXPKG_UPDATE_IN_DEV_SHELL=1
@@ -181,10 +175,10 @@ rec {
     '';
   };
 
-  updateXoUpstream = pkgs.writeShellApplication {
-    name = "xo-nixpkg-update-xo-upstream";
+  updateXoRolling = pkgs.writeShellApplication {
+    name = "xo-nixpkg-update-xo-rolling";
     text = ''
-      exec ${pkgs.lib.getExe updateXo} --upstream "$@"
+      exec ${pkgs.lib.getExe updateXo} --rolling "$@"
     '';
   };
 
@@ -211,12 +205,6 @@ rec {
         nix
       ]
       ++ [ updateLibvhdiSource ];
-  };
-
-  maintainLatestUpstream = mkRepositoryApplication {
-    name = "xo-nixpkg-maintain-latest-upstream";
-    script = ../ci/maintain-latest-upstream.sh;
-    runtimeInputs = updateRuntimeInputs ++ [ updateXoUpstream ];
   };
 
   forgejoUpdate = mkRepositoryApplication {

@@ -17,9 +17,17 @@ Use a locked flake input for reproducible deployments:
 Commit the resulting `flake.lock`. The input exposes these primary packages on
 `x86_64-linux`:
 
-- `packages.x86_64-linux.xen-orchestra-ce`
+- `packages.x86_64-linux.latest`: newest official XO release
+- `packages.x86_64-linux.stable`: preceding official XO release
+- `packages.x86_64-linux.rolling`: newest admitted upstream `master` commit
+- `packages.x86_64-linux.xen-orchestra-ce`: compatibility alias for `latest`
 - `packages.x86_64-linux.libvhdi`
 - `packages.x86_64-linux.flake-plan-runner`
+
+The descriptive aliases `xen-orchestra-ce-latest`,
+`xen-orchestra-ce-stable`, and `xen-orchestra-ce-rolling` resolve to the same
+three derivations. Channels are outputs of the locked input, so switching
+channels does not require following a moving Git tag.
 
 ## Install packages on NixOS
 
@@ -65,9 +73,10 @@ Both upstream pins are exposed as pure flake data:
 nix eval --json .#lib.sourcePins
 ```
 
-The XO lock records its selected normal-release commit and dependency hashes.
-The libvhdi lock records the exact official release tarball. XO Lite releases
-are intentionally not represented.
+The XO lock records the `latest`, `stable`, and `rolling` revisions and their
+dependency hashes. The corresponding flake inputs provide Nix-native immutable
+source locks. The libvhdi lock records the exact official release tarball. XO
+Lite releases are intentionally not represented.
 
 ## Reuse the CI plan contract
 

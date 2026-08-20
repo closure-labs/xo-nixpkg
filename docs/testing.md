@@ -7,8 +7,8 @@
 # Evaluate all outputs (no builds)
 nix flake check --all-systems --no-build
 
-# Build the XO package
-nix build .#xen-orchestra-ce
+# Build every XO channel
+nix build .#latest .#stable .#rolling
 
 # Validate the source-locked libvhdi package and FUSE3 linkage
 nix eval --raw .#packages.x86_64-linux.libvhdi.name
@@ -56,7 +56,7 @@ Before opening nixpkgs PRs:
 nix flake check --all-systems --no-build
 
 # Optional: dry-run package build planning
-nix build .#xen-orchestra-ce --dry-run
+nix build .#latest .#stable .#rolling --dry-run
 nix build --no-link .#libvhdi
 ```
 
@@ -103,7 +103,8 @@ The plan runner validates a supplied JSON plan without evaluating the plan a
 second time, then builds each selected attribute independently so every
 failure is collected. For local use, `.#ci` classifies the local event as a
 full run when no prepared output is supplied. CI checks:
-- package builds for `xen-orchestra-ce`
+
+- independent package builds for `latest`, `stable`, and `rolling`
 - upstream/install checks and exclusive FUSE3 linkage for `libvhdi`
 - XO `fuse-native` libfuse2 linkage and absence of bundled/prebuilt FUSE files
 - updater, trusted-queue, runtime-adapter, shell, and ruleset fixtures

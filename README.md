@@ -52,29 +52,41 @@ nix eval --raw .#lib.projectVersion
 nix eval --raw .#xen-orchestra-ce.version
 ```
 
-## Release and upstream channels
+## Xen Orchestra channels
 
-The immutable `v*` tags are project releases. The moving `latest` and `stable`
-tags select project release revisions, while `latest-upstream` rebuilds the
-current package definition against `vatesfr/xen-orchestra`'s `master` branch.
-Use `latest-upstream` for development and advanced troubleshooting between
-packaged upstream releases:
+Channels are package outputs of one locked repository revision, not moving Git
+tags:
+
+- `latest` is the newest official Xen Orchestra release.
+- `stable` is the preceding official Xen Orchestra release.
+- `rolling` follows the newest upstream `master` commit that has passed this
+  repository's pull-request CI. It is intended for troubleshooting and
+  development.
+
+`xen-orchestra-ce`, `xen-orchestra-ce-latest`,
+`xen-orchestra-ce-stable`, and `xen-orchestra-ce-rolling` are descriptive
+aliases. `latest-upstream` is a compatibility output alias for `rolling`.
+Select a channel by package attribute:
 
 ```bash
-nix build --accept-flake-config \
-  github:declarative-dale/xo-nixpkg/latest-upstream#xen-orchestra-ce
+nix build --accept-flake-config github:declarative-dale/xo-nixpkg#latest
+nix build --accept-flake-config github:declarative-dale/xo-nixpkg#stable
+nix build --accept-flake-config github:declarative-dale/xo-nixpkg#rolling
 ```
 
-As a flake input:
+As a flake input, keep one locked input and select its output:
 
 ```nix
-inputs.xo-nixpkg.url =
-  "github:declarative-dale/xo-nixpkg/latest-upstream";
+inputs.xo-nixpkg.url = "github:declarative-dale/xo-nixpkg";
+
+environment.systemPackages = [
+  inputs.xo-nixpkg.packages.x86_64-linux.stable
+];
 ```
 
-The workflow moves `latest-upstream` only after the package builds
-successfully. Because it is a moving development tag, pin the resolved commit
-in `flake.lock` when reproducing a specific investigation.
+The immutable project `v*` tags remain available for repository releases. No
+automation moves `latest`, `stable`, or `latest-upstream` Git tags. Commit the
+resolved `flake.lock` when reproducing a rolling-channel investigation.
 
 ## Documentation
 

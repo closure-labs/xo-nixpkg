@@ -5,9 +5,11 @@
     "release": { "event": "push", "ref": "refs/heads/main" }
   },
   "validationTargets": [
-    { "name": "xen-orchestra-ce", "attribute": "checks.x86_64-linux.xen-orchestra-ce", "requires": [] },
-    { "name": "xo-fuse-linkage", "attribute": "checks.x86_64-linux.xo-fuse-linkage", "requires": ["xen-orchestra-ce"] },
-    { "name": "xo-server-service", "attribute": "checks.x86_64-linux.xo-server-service", "requires": ["xen-orchestra-ce"] },
+    { "name": "xo-latest", "attribute": "checks.x86_64-linux.xo-latest", "requires": [] },
+    { "name": "xo-stable", "attribute": "checks.x86_64-linux.xo-stable", "requires": [] },
+    { "name": "xo-rolling", "attribute": "checks.x86_64-linux.xo-rolling", "requires": [] },
+    { "name": "xo-fuse-linkage", "attribute": "checks.x86_64-linux.xo-fuse-linkage", "requires": ["xo-latest"] },
+    { "name": "xo-server-service", "attribute": "checks.x86_64-linux.xo-server-service", "requires": ["xo-latest"] },
     { "name": "libvhdi", "attribute": "checks.x86_64-linux.libvhdi", "requires": [] },
     { "name": "repository-policy", "attribute": "checks.x86_64-linux.repository-policy", "requires": [] },
     { "name": "ci-workflow-contract", "attribute": "checks.x86_64-linux.ci-workflow-contract", "requires": [] },
@@ -19,7 +21,9 @@
     { "name": "classifier-fixtures", "attribute": "checks.x86_64-linux.classifier-fixtures", "requires": [] }
   ],
   "publicationTargets": [
-    { "name": "xen-orchestra-ce", "attribute": "packages.x86_64-linux.xen-orchestra-ce" },
+    { "name": "xo-latest", "attribute": "packages.x86_64-linux.latest" },
+    { "name": "xo-stable", "attribute": "packages.x86_64-linux.stable" },
+    { "name": "xo-rolling", "attribute": "packages.x86_64-linux.rolling" },
     { "name": "libvhdi", "attribute": "packages.x86_64-linux.libvhdi" }
   ],
   "pathRules": [
@@ -35,8 +39,8 @@
     },
     {
       "pattern": "^VERSION$",
-      "validation": ["repository-policy", "automation-fixtures", "xen-orchestra-ce", "libvhdi"],
-      "publication": ["xen-orchestra-ce", "libvhdi"]
+      "validation": ["repository-policy", "automation-fixtures", "xo-latest", "xo-stable", "xo-rolling", "libvhdi"],
+      "publication": ["xo-latest", "xo-stable", "xo-rolling", "libvhdi"]
     },
     {
       "pattern": "^\\.github/workflows/(ci|publish)\\.yml$",
@@ -74,7 +78,7 @@
       "publication": []
     },
     {
-      "pattern": "^(ci/(update-xo|update-libvhdi|update-flake-lock|forgejo-update|open-update-pr|maintain-latest-upstream)\\.sh|scripts/|tests/(update-xo|update-libvhdi|update-noop)\\.sh)$",
+      "pattern": "^(ci/(update-xo|update-libvhdi|update-flake-lock|forgejo-update|open-update-pr)\\.sh|scripts/|tests/(update-xo|update-libvhdi|update-noop)\\.sh)$",
       "validation": ["repository-policy", "source-update-fixtures", "application-composition"],
       "publication": []
     },
@@ -84,14 +88,14 @@
       "publication": []
     },
     {
-      "pattern": "^(default\\.nix|nix/(fetch-normalized-yarn-deps|prefetch-yarn-deps)\\.nix|nix/patches/)",
-      "validation": ["xen-orchestra-ce", "xo-fuse-linkage", "xo-server-service"],
-      "publication": ["xen-orchestra-ce"]
+      "pattern": "^(default\\.nix|nix/(fetch-normalized-yarn-deps|prefetch-yarn-deps|yarn-platform-tools)\\.nix|nix/patches/)",
+      "validation": ["xo-latest", "xo-stable", "xo-rolling", "xo-fuse-linkage", "xo-server-service"],
+      "publication": ["xo-latest", "xo-stable", "xo-rolling"]
     },
     {
       "pattern": "^nix/sources/xen-orchestra\\.json$",
-      "validation": ["xen-orchestra-ce", "xo-fuse-linkage", "xo-server-service", "source-update-fixtures"],
-      "publication": ["xen-orchestra-ce"]
+      "validation": ["xo-latest", "xo-stable", "xo-rolling", "xo-fuse-linkage", "xo-server-service", "source-update-fixtures"],
+      "publication": ["xo-latest", "xo-stable", "xo-rolling"]
     },
     {
       "pattern": "^(nix/libvhdi\\.nix|nix/sources/libvhdi\\.json)$",
@@ -100,8 +104,8 @@
     },
     {
       "pattern": "^nix/source-pins\\.nix$",
-      "validation": ["xen-orchestra-ce", "xo-fuse-linkage", "xo-server-service", "libvhdi", "source-update-fixtures"],
-      "publication": ["xen-orchestra-ce", "libvhdi"]
+      "validation": ["xo-latest", "xo-stable", "xo-rolling", "xo-fuse-linkage", "xo-server-service", "libvhdi", "source-update-fixtures"],
+      "publication": ["xo-latest", "xo-stable", "xo-rolling", "libvhdi"]
     },
     {
       "pattern": "^nix/tests/xo-server-service\\.nix$",

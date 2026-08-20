@@ -28,6 +28,10 @@ git config user.name 'nixoa-updater[bot]'
 git config user.email 'nixoa-updater[bot]@users.noreply.github.com'
 git remote set-url origin "https://x-access-token:${GH_TOKEN}@github.com/${GITHUB_REPOSITORY}.git"
 remote_sha=$(git ls-remote --refs origin "refs/heads/$UPDATE_BRANCH" | cut -f1)
+if [[ -n $remote_sha ]] && git diff --quiet "$remote_sha" -- "$@"; then
+  echo 'The candidate is already published on the update branch'
+  exit 0
+fi
 git switch -C "$UPDATE_BRANCH"
 git add -- "$@"
 git diff --cached --quiet && { echo 'No allowlisted update changes to publish'; exit 0; }
@@ -35,8 +39,10 @@ git commit -m "$UPDATE_TITLE"
 git push --force-with-lease="refs/heads/$UPDATE_BRANCH:$remote_sha" \
   origin "HEAD:refs/heads/$UPDATE_BRANCH"
 
-if gh pr view "$UPDATE_BRANCH" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
-  gh pr edit "$UPDATE_BRANCH" --repo "$GITHUB_REPOSITORY" \
+open_pr=$(gh pr list --repo "$GITHUB_REPOSITORY" --state open --head "$UPDATE_BRANCH" \
+  --json number --jq '.[0].number // empty')
+if [[ -n $open_pr ]]; then
+  gh pr edit "$open_pr" --repo "$GITHUB_REPOSITORY" \
     --title "$UPDATE_TITLE" --body "$UPDATE_BODY"
 else
   gh pr create --repo "$GITHUB_REPOSITORY" --base main --head "$UPDATE_BRANCH" \

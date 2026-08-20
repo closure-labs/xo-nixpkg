@@ -8,17 +8,31 @@ let
   isHash = value: builtins.isString value && lib.hasPrefix "sha256-" value;
   xo = pins.xenOrchestra;
   vhdi = pins.libvhdi;
+  officialVersion = channel: builtins.match "[0-9]+(\\.[0-9]+)+" channel.version != null;
+  rollingVersion =
+    channel: builtins.match "unstable-[0-9]{4}-[0-9]{2}-[0-9]{2}" channel.version != null;
+  validXoPin =
+    channel:
+    builtins.match "[a-f0-9]{40}" channel.rev != null
+    && isHash channel.yarnHash
+    && isHash channel.docsYarnHash;
 in
 assert lib.assertMsg (
-  xo.schemaVersion == 1
+  xo.schemaVersion == 2
   && xo.owner == "vatesfr"
   && xo.repo == "xen-orchestra"
-  && builtins.match "[0-9]+(\\.[0-9]+)+" xo.version != null
-  && builtins.match "[a-f0-9]{40}" xo.rev != null
-  && isHash xo.hash
-  && isHash xo.yarnHash
-  && isHash xo.docsYarnHash
-  && builtins.isAttrs xo.platformTools
+  && builtins.isAttrs xo.channels
+  &&
+    builtins.attrNames xo.channels == [
+      "latest"
+      "rolling"
+      "stable"
+    ]
+  && officialVersion xo.channels.latest
+  && officialVersion xo.channels.stable
+  && rollingVersion xo.channels.rolling
+  && lib.all validXoPin (builtins.attrValues xo.channels)
+  && builtins.compareVersions xo.channels.latest.version xo.channels.stable.version > 0
 ) "invalid Xen Orchestra source-lock contract";
 assert lib.assertMsg (
   vhdi.schemaVersion == 1

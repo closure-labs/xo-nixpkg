@@ -22,8 +22,10 @@ The XO updater enters the pure `.#updater` shell automatically when needed.
 ## Build and Evaluate
 
 ```bash
-# Build the XO package
+# Build the default/latest XO package, or an explicit channel
 nix build .#xen-orchestra-ce
+nix build .#stable
+nix build .#rolling
 
 # Validate the in-repository FUSE3 libvhdi package
 nix eval --raw .#packages.x86_64-linux.libvhdi.name
@@ -39,11 +41,11 @@ nix eval --accept-flake-config --json .#checks.x86_64-linux --apply builtins.att
 
 ## Updating xen-orchestra-ce
 
-Use the flake updater application to refresh the declarative XO source lock
-from the latest upstream release commit. Nix supplies every updater dependency.
-Discovery searches commits that changed upstream's root `CHANGELOG.md` and
-accepts only unscoped `feat: release VERSION` markers. Scoped `feat(lite):`
-commits and XO Lite tags belong to a separate upstream product and are ignored.
+Use the release updater to refresh both official package outputs. Discovery
+searches commits that changed upstream's root `CHANGELOG.md`, accepts only
+unscoped `feat: release VERSION` markers, assigns the newest match to `latest`,
+and assigns the next match to `stable`. Scoped `feat(lite):` commits and XO
+Lite tags belong to a separate upstream product and are ignored.
 
 ```bash
 nix run .#update-xo-release
@@ -52,21 +54,22 @@ nix run .#update-xo-release
 nix run .#ci
 ```
 
-The script atomically updates `nix/sources/xen-orchestra.json`. One native Nix
-prefetch supplies both the source hash and source tree. Existing Yarn dependency
-hashes are reused when their lock files did not change.
+The script atomically updates `nix/sources/xen-orchestra.json` and the matching
+immutable flake inputs. Existing Yarn dependency hashes are reused when their
+lock files did not change. Scheduled discovery opens or refreshes a standing
+candidate pull request; the ordinary pull-request workflow is responsible for
+building every affected package output.
 
-To refresh the source revision and affected hashes to upstream HEAD without
-changing the packaged version, run:
+To refresh `rolling` to upstream HEAD for troubleshooting, run:
 
 ```bash
-nix run .#update-xo-upstream
+nix run .#update-xo-rolling
 ```
 
-The `latest-upstream` tag workflow uses this mode for the source-head channel.
-The updater imports changed lockfiles into the Nix store before calculating
-their fixed-output hashes; passing a raw store-path string would omit the
-dependency from the nested build sandbox.
+This refreshes a separate rolling candidate pull request. A deterministic
+upstream build failure remains visible on that pull request instead of being
+retried every day; the next upstream revision replaces the candidate. The
+`update-xo-upstream` app remains as a compatibility alias.
 
 ## Updating libvhdi
 
@@ -128,13 +131,12 @@ To prepare a project release:
 3. Confirm `nix run --accept-flake-config .#ci` passes.
 4. Commit and push through the protected `main` workflow.
 
-After the gated main build succeeds, automation creates the immutable project
-tag, advances `latest`, and points `stable` at the preceding project release.
-The first independent project release initializes `stable` to that release.
-The same gated job idempotently publishes the semantic-version tag as a GitHub
-Release using only that tagged commit's matching changelog section. Re-running
-the workflow never rewrites an existing tag or duplicates a published release.
-Older queued runs cannot move `latest` backwards.
+After the gated main build succeeds, automation creates only the immutable
+project tag. The same gated job idempotently publishes that semantic-version
+tag as a GitHub Release using only the tagged commit's matching changelog
+section. Re-running the workflow never rewrites an existing tag or duplicates
+a published release. The XO `latest`, `stable`, and `rolling` names are flake
+package outputs and are unrelated to project-release tags.
 
 Protected-main publication runs in a FIFO concurrency group and retains every
 pending run. Validation and Cachix publication share one runner and Nix store;

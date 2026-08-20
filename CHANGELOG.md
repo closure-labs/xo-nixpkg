@@ -10,6 +10,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- Model Xen Orchestra's `latest`, `stable`, and `rolling` channels as package
+  outputs backed by immutable flake inputs, replacing mutable channel Git tags.
+- Replace daily build-and-retry automation with standing release and rolling
+  candidate pull requests whose normal CI builds all affected channel outputs.
 - Replace mutable XO package fields and the single-purpose npins loader with
   pure flake-visible, atomically updated source locks.
 - Detect normal XO releases through root-changelog commits, explicitly exclude

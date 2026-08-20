@@ -1,30 +1,25 @@
 {
-  "schemaVersion": 1,
+  "schemaVersion": 2,
   "owner": "vatesfr",
   "repo": "xen-orchestra",
-  "version": "6.7.1",
-  "rev": "40dede9e11c90562df5cb46c6a83a9d91efedae1",
-  "hash": "sha256-hVQvMFLeBWrxQNQwjEVuvmO5sMIMCIgSq/BxVmAz2gI=",
-  "yarnHash": "sha256-8qv/ak3fYY2ODpWN3WZO5wrXokiK6CH8vGq49cmZlvA=",
-  "docsYarnHash": "sha256-v5h1lb7zlW926EKpjK+c5CTtqczvgMDZhyQzkWdattE=",
-  "platformTools": {
-    "x86_64-linux": {
-      "esbuild": null,
-      "turbo": {
-        "version": "2.9.17",
-        "tarball": "_turbo_linux_64___linux_64_2.9.17.tgz",
-        "path": "turbo-linux-x64/bin/turbo"
-      },
-      "rollup": null
+  "channels": {
+    "latest": {
+      "version": "6.7.1",
+      "rev": "40dede9e11c90562df5cb46c6a83a9d91efedae1",
+      "yarnHash": "sha256-8qv/ak3fYY2ODpWN3WZO5wrXokiK6CH8vGq49cmZlvA=",
+      "docsYarnHash": "sha256-v5h1lb7zlW926EKpjK+c5CTtqczvgMDZhyQzkWdattE="
     },
-    "aarch64-linux": {
-      "esbuild": null,
-      "turbo": {
-        "version": "2.9.17",
-        "tarball": "_turbo_linux_arm64___linux_arm64_2.9.17.tgz",
-        "path": "turbo-linux-arm64/bin/turbo"
-      },
-      "rollup": null
+    "stable": {
+      "version": "6.7.0",
+      "rev": "1a795970f9c60396967d9510e3d2a29b56f2da1d",
+      "yarnHash": "sha256-8qv/ak3fYY2ODpWN3WZO5wrXokiK6CH8vGq49cmZlvA=",
+      "docsYarnHash": "sha256-v5h1lb7zlW926EKpjK+c5CTtqczvgMDZhyQzkWdattE="
+    },
+    "rolling": {
+      "version": "unstable-2026-08-18",
+      "rev": "4235644950555ed5637f2352b684aaba398e61de",
+      "yarnHash": "sha256-EXfNtQuQZWknIBwaXyrZjxOoNq6e8/wRk678tBm5pwQ=",
+      "docsYarnHash": "sha256-g/rB7fqBHgv94XI3OakCIaebzNe6pyK6Wmlx0cLWNSk="
     }
   }
 }
