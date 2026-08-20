@@ -4,21 +4,23 @@
 set -euo pipefail
 
 script_dir=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
-repo_root=$(cd "$script_dir/.." && pwd)
+repo_root=${XO_NIXPKG_SOURCE_ROOT:-$(cd "$script_dir/.." && pwd)}
 pin_file=${XO_NIXPKG_XO_PIN_FILE:-$repo_root/nix/sources/xen-orchestra.json}
+flake_file=${XO_NIXPKG_FLAKE_FILE:-$repo_root/flake.nix}
 mode=release
 upstream_remote=${XO_NIXPKG_UPSTREAM_REMOTE:-https://github.com/vatesfr/xen-orchestra.git}
 upstream_ref=${XO_NIXPKG_UPSTREAM_REF:-refs/heads/master}
 upstream_rev=${XO_NIXPKG_UPSTREAM_REV:-}
+upstream_date=${XO_NIXPKG_UPSTREAM_DATE:-}
 release_scan_pages=${XO_NIXPKG_RELEASE_SCAN_PAGES:-5}
 
 usage() {
   cat <<EOF
-Usage: $0 [--release|--upstream]
+Usage: $0 [--release|--rolling]
 
 Modes:
-  --release   Update to the latest unscoped "feat: release X.Y.Z" commit.
-  --upstream  Update the source pin to upstream HEAD without changing its version.
+  --release  Refresh latest and stable from the two newest official XO releases.
+  --rolling  Refresh rolling from the current upstream master commit.
 EOF
 }
 
@@ -34,22 +36,24 @@ retry() {
       printf 'Command failed after %s attempts: %s\n' "$attempt" "$*" >&2
       return 1
     fi
-    printf 'Retrying after transient failure (attempt %s failed): %s\n' "$attempt" "$*" >&2
-    sleep $((attempt * 15))
+    printf 'Retrying network operation (attempt %s failed): %s\n' "$attempt" "$*" >&2
+    sleep $((attempt * 5))
   done
 }
 
 github_api() {
   local url=$1
-  local args=(--fail --location --silent --show-error --header 'Accept: application/vnd.github+json' --header 'X-GitHub-Api-Version: 2022-11-28')
+  local args=(--fail --location --silent --show-error
+    --header 'Accept: application/vnd.github+json'
+    --header 'X-GitHub-Api-Version: 2022-11-28')
   if [[ -n ${GITHUB_TOKEN:-} ]]; then
     args+=(--header "Authorization: Bearer $GITHUB_TOKEN")
   fi
   curl "${args[@]}" "$url"
 }
 
-select_release() {
-  jq -cer '
+select_releases() {
+  jq -ce '
     [
       .[]
       | .commit.message as $message
@@ -57,31 +61,43 @@ select_release() {
       | ($subject | capture("^feat: release (XO )?(?<version>[0-9]+(\\.[0-9]+)+)( \\(#[0-9]+\\))?$")?) as $release
       | select($release != null)
       | {sha: .sha, subject: $subject, version: $release.version}
-    ][0] // error("no Xen Orchestra release marker found")
+    ]
+    | unique_by(.version)
+    | sort_by(.version | split(".") | map(tonumber))
+    | reverse
+    | .[0:2]
   '
 }
 
-find_latest_release() {
+find_latest_releases() {
   local fixture=${XO_NIXPKG_COMMITS_JSON:-}
-  local page response
+  local page response combined='[]' selected
   if [[ -n $fixture ]]; then
-    select_release <"$fixture"
+    selected=$(select_releases <"$fixture")
+    [[ $(jq -r length <<<"$selected") == 2 ]] || return 1
+    printf '%s\n' "$selected"
     return
   fi
 
   for page in $(seq 1 "$release_scan_pages"); do
-    printf 'Scanning root CHANGELOG.md commits page %s for an XO release marker...\n' "$page" >&2
+    printf 'Scanning root CHANGELOG.md commits page %s for XO releases...\n' "$page" >&2
     response=$(retry 3 github_api "https://api.github.com/repos/vatesfr/xen-orchestra/commits?path=CHANGELOG.md&per_page=100&page=$page")
     [[ $(jq -r length <<<"$response") != 0 ]] || break
-    if select_release <<<"$response" 2>/dev/null; then
-      return 0
+    combined=$(jq -cn --argjson previous "$combined" --argjson page "$response" '$previous + $page')
+    selected=$(select_releases <<<"$combined")
+    if [[ $(jq -r length <<<"$selected") == 2 ]]; then
+      printf '%s\n' "$selected"
+      return
     fi
   done
   return 1
 }
 
 prefetch_source() {
-  local url=$1
+  local rev=$1 owner repo url
+  owner=$(jq -er .owner "$pin_file")
+  repo=$(jq -er .repo "$pin_file")
+  url="https://github.com/$owner/$repo/archive/$rev.tar.gz"
   if [[ -n ${XO_NIXPKG_PREFETCH_JSON:-} ]]; then
     cat "$XO_NIXPKG_PREFETCH_JSON"
   else
@@ -90,10 +106,7 @@ prefetch_source() {
 }
 
 prefetch_yarn_hash() {
-  local yarn_lock=$1
-  local normalized=$2
-  local output status hash
-
+  local yarn_lock=$1 normalized=$2 output status hash
   set +e
   output=$(nix-build \
     --no-out-link \
@@ -105,175 +118,182 @@ prefetch_yarn_hash() {
   status=$?
   set -e
   if (( status == 0 )); then
-    printf 'Unexpectedly resolved Yarn dependencies with the placeholder hash\n' >&2
+    echo 'Unexpectedly resolved Yarn dependencies with the placeholder hash' >&2
     return 1
   fi
   hash=$(sed -n 's/^[[:space:]]*got:[[:space:]]*\(sha256-[A-Za-z0-9+/=]*\).*/\1/p' <<<"$output" | head -n 1)
   if [[ -z $hash ]]; then
-    printf 'Failed to extract the Yarn dependency hash\n' >&2
+    echo 'Failed to extract the Yarn dependency hash' >&2
     tail -n 80 <<<"$output" >&2
     return 1
   fi
   printf '%s\n' "$hash"
 }
 
-lock_version() {
-  local yarn_lock=$1 package=$2
-  awk -v package="$package" '
-    index($0, "\"" package "@") == 1 { inEntry = 1; next }
-    inEntry && $1 == "version" { gsub(/"/, "", $2); print $2; exit }
-    inEntry && /^$/ { inEntry = 0 }
-  ' "$yarn_lock"
+source_path_from_prefetch() {
+  jq -er '.storePath | select(type == "string")'
 }
 
-tool_json() {
-  local version=$1 tarball=$2 path=$3 package_base=${4:-}
-  if [[ -z $version ]]; then
-    printf 'null'
-  elif [[ -n $package_base ]]; then
-    jq -cn --arg version "$version" --arg tarball "$tarball" --arg path "$path" --arg packageBase "$package_base" \
-      '{version:$version,tarball:$tarball,path:$path,packageBase:$packageBase}'
+release_source() {
+  local version=$1 rev=$2 source_path changelog_version
+  source_path=$(prefetch_source "$rev" | source_path_from_prefetch)
+  changelog_version=$(sed -nE 's/^## \*\*([0-9]+(\.[0-9]+)+)\*\*.*/\1/p' "$source_path/CHANGELOG.md" | head -n 1)
+  [[ $changelog_version == "$version" ]] || {
+    printf 'Release marker %s does not match root changelog version %s\n' "$version" "${changelog_version:-missing}" >&2
+    return 1
+  }
+  printf '%s\n' "$source_path"
+}
+
+channel_for_rev() {
+  local rev=$1
+  jq -cer --arg rev "$rev" '.channels | to_entries[] | select(.value.rev == $rev) | .value' "$pin_file" | head -n 1
+}
+
+channel_json() {
+  local version=$1 rev=$2 source_path=${3:-} baseline=${4:-} baseline_channel=${5:-latest}
+  local existing yarn_hash docs_yarn_hash
+  if existing=$(channel_for_rev "$rev"); then
+    jq -cn --arg version "$version" --arg rev "$rev" --argjson existing "$existing" \
+      '{version:$version,rev:$rev,yarnHash:$existing.yarnHash,docsYarnHash:$existing.docsYarnHash}'
+    return
+  fi
+
+  [[ -n $source_path ]] || {
+    source_path=$(prefetch_source "$rev" | source_path_from_prefetch)
+  }
+  [[ -f $source_path/yarn.lock && -f $source_path/docs/yarn.lock ]] || {
+    echo 'Prefetched XO source is missing a required Yarn lock' >&2
+    return 1
+  }
+
+  yarn_hash=
+  docs_yarn_hash=
+  if [[ -n $baseline && -f $baseline/yarn.lock ]] && cmp -s "$baseline/yarn.lock" "$source_path/yarn.lock"; then
+    yarn_hash=$(jq -er --arg channel "$baseline_channel" '.channels[$channel].yarnHash' "$pin_file")
+  fi
+  if [[ -n $baseline && -f $baseline/docs/yarn.lock ]] && cmp -s "$baseline/docs/yarn.lock" "$source_path/docs/yarn.lock"; then
+    docs_yarn_hash=$(jq -er --arg channel "$baseline_channel" '.channels[$channel].docsYarnHash' "$pin_file")
+  fi
+  if [[ -z $yarn_hash || -z $docs_yarn_hash ]]; then
+    [[ -n ${XO_NIXPKG_NIXPKGS_PATH:-} ]] || {
+      echo 'XO_NIXPKG_NIXPKGS_PATH is required when a Yarn lock changes' >&2
+      return 1
+    }
+  fi
+  [[ -n $yarn_hash ]] || yarn_hash=$(prefetch_yarn_hash "$source_path/yarn.lock" true)
+  [[ -n $docs_yarn_hash ]] || docs_yarn_hash=$(prefetch_yarn_hash "$source_path/docs/yarn.lock" false)
+  jq -cn --arg version "$version" --arg rev "$rev" \
+    --arg yarnHash "$yarn_hash" --arg docsYarnHash "$docs_yarn_hash" \
+    '{version:$version,rev:$rev,yarnHash:$yarnHash,docsYarnHash:$docsYarnHash}'
+}
+
+update_flake_input() {
+  local input=$1 rev=$2 temporary
+  temporary=$(mktemp "$(dirname "$flake_file")/.flake.nix.XXXXXX")
+  awk -v input="$input" -v rev="$rev" '
+    $0 ~ "^    " input " = \\{" { inInput = 1 }
+    inInput && $0 ~ /url = "github:vatesfr\/xen-orchestra\/[a-f0-9]+";/ {
+      sub(/[a-f0-9]{40}";/, rev "\";")
+      inInput = 0
+    }
+    { print }
+  ' "$flake_file" >"$temporary"
+  if cmp -s "$flake_file" "$temporary"; then
+    rm -f "$temporary"
   else
-    jq -cn --arg version "$version" --arg tarball "$tarball" --arg path "$path" \
-      '{version:$version,tarball:$tarball,path:$path}'
+    mv "$temporary" "$flake_file"
   fi
 }
 
 for argument in "$@"; do
   case "$argument" in
     --release) mode=release ;;
-    --upstream) mode=upstream ;;
+    --rolling | --upstream) mode=rolling ;;
     -h | --help) usage; exit 0 ;;
     *) printf 'Unknown argument: %s\n' "$argument" >&2; usage >&2; exit 2 ;;
   esac
 done
 
-if [[ -z ${XO_NIXPKG_UPDATE_IN_DEV_SHELL:-} ]]; then
-  export XO_NIXPKG_UPDATE_IN_DEV_SHELL=1
-  exec nix develop --accept-flake-config "$repo_root#updater" --command bash "$script_dir/update.sh" "--$mode"
-fi
-
 cd "$repo_root"
 jq -e '
-  .schemaVersion == 1 and
-  (.version | test("^[0-9]+(\\.[0-9]+)+$")) and
-  (.rev | test("^[a-f0-9]{40}$")) and
-  (.hash | startswith("sha256-")) and
-  (.yarnHash | startswith("sha256-")) and
-  (.docsYarnHash | startswith("sha256-"))
+  .schemaVersion == 2 and
+  (.channels | keys == ["latest", "rolling", "stable"]) and
+  all(.channels[];
+    (.rev | test("^[a-f0-9]{40}$")) and
+    (.yarnHash | startswith("sha256-")) and
+    (.docsYarnHash | startswith("sha256-")))
 ' "$pin_file" >/dev/null
 
-current_version=$(jq -er .version "$pin_file")
-current_rev=$(jq -er .rev "$pin_file")
-
 if [[ $mode == release ]]; then
-  if ! release=$(find_latest_release); then
-    printf 'No normal Xen Orchestra release found in %s root changelog page(s)\n' "$release_scan_pages" >&2
+  releases=$(find_latest_releases) || {
+    printf 'Could not find the two newest official XO releases in %s page(s)\n' "$release_scan_pages" >&2
+    exit 1
+  }
+  latest_version=$(jq -er '.[0].version' <<<"$releases")
+  latest_rev=$(jq -er '.[0].sha' <<<"$releases")
+  stable_version=$(jq -er '.[1].version' <<<"$releases")
+  stable_rev=$(jq -er '.[1].sha' <<<"$releases")
+  current_latest_rev=$(jq -er '.channels.latest.rev' "$pin_file")
+  current_stable_rev=$(jq -er '.channels.stable.rev' "$pin_file")
+  current_latest_version=$(jq -er '.channels.latest.version' "$pin_file")
+  highest=$(printf '%s\n%s\n' "$current_latest_version" "$latest_version" | sort -V | tail -n 1)
+  if [[ $highest != "$latest_version" ]]; then
+    printf 'Refusing to downgrade latest XO from %s to %s\n' "$current_latest_version" "$latest_version" >&2
     exit 1
   fi
-  commit_sha=$(jq -er .sha <<<"$release")
-  commit_subject=$(jq -er .subject <<<"$release")
-  new_version=$(jq -er .version <<<"$release")
-  printf 'Found normal XO release: %s\nVersion: %s\nCommit: %s\n' "$commit_subject" "$new_version" "$commit_sha"
+  if [[ $latest_rev == "$current_latest_rev" && $stable_rev == "$current_stable_rev" ]]; then
+    printf 'Official XO channels are current: latest %s, stable %s\n' "$latest_version" "$stable_version"
+    exit 0
+  fi
+
+  baseline=${XO_NIXPKG_CURRENT_SOURCE:-}
+  if [[ -z $baseline ]]; then
+    baseline=$(nix eval --accept-flake-config --raw '.#latest.src.outPath')
+  fi
+  latest_source=
+  if ! channel_for_rev "$latest_rev" >/dev/null; then
+    latest_source=$(release_source "$latest_version" "$latest_rev")
+  fi
+  stable_source=
+  if ! channel_for_rev "$stable_rev" >/dev/null; then
+    stable_source=$(release_source "$stable_version" "$stable_rev")
+  fi
+  latest_json=$(channel_json "$latest_version" "$latest_rev" "$latest_source" "$baseline")
+  stable_json=$(channel_json "$stable_version" "$stable_rev" "$stable_source" "$baseline")
+  temporary=$(mktemp "$(dirname "$pin_file")/.xen-orchestra.json.XXXXXX")
+  jq --argjson latest "$latest_json" --argjson stable "$stable_json" \
+    '.channels.latest = $latest | .channels.stable = $stable' "$pin_file" >"$temporary"
+  mv "$temporary" "$pin_file"
+  update_flake_input xo-latest "$latest_rev"
+  update_flake_input xo-stable "$stable_rev"
+  printf 'Updated official XO channels: latest %s (%s), stable %s (%s)\n' \
+    "$latest_version" "$latest_rev" "$stable_version" "$stable_rev"
 else
-  if [[ -n $upstream_rev ]]; then
-    commit_sha=$upstream_rev
-  else
-    printf 'Resolving latest upstream source commit from %s %s...\n' "$upstream_remote" "$upstream_ref"
-    commit_sha=$(retry 3 git ls-remote "$upstream_remote" "$upstream_ref" | awk 'NR == 1 { print $1 }')
+  if [[ -z $upstream_rev ]]; then
+    upstream_rev=$(retry 3 git ls-remote "$upstream_remote" "$upstream_ref" | awk 'NR == 1 { print $1 }')
   fi
-  new_version=$current_version
-  [[ $commit_sha =~ ^[a-f0-9]{40}$ ]] || { printf 'Failed to resolve upstream ref\n' >&2; exit 1; }
-fi
-
-if [[ $commit_sha == "$current_rev" && $new_version == "$current_version" ]]; then
-  printf 'xen-orchestra-ce is already current at %s (%s)\n' "$current_version" "$current_rev"
-  exit 0
-fi
-if [[ $mode == release ]]; then
-  if [[ $new_version == "$current_version" ]]; then
-    printf 'Refusing a second commit for existing XO version %s\n' "$current_version" >&2
-    exit 1
+  [[ $upstream_rev =~ ^[a-f0-9]{40}$ ]] || { echo 'Failed to resolve upstream ref' >&2; exit 1; }
+  current_rev=$(jq -er '.channels.rolling.rev' "$pin_file")
+  if [[ $upstream_rev == "$current_rev" ]]; then
+    printf 'Rolling XO channel is current at %s\n' "$current_rev"
+    exit 0
   fi
-  highest=$(printf '%s\n%s\n' "$current_version" "$new_version" | sort -V | tail -n 1)
-  if [[ $highest != "$new_version" ]]; then
-    printf 'Refusing to downgrade XO from %s to %s\n' "$current_version" "$new_version" >&2
-    exit 1
+  if [[ -z $upstream_date ]]; then
+    owner=$(jq -er .owner "$pin_file")
+    repo=$(jq -er .repo "$pin_file")
+    upstream_date=$(retry 3 github_api "https://api.github.com/repos/$owner/$repo/commits/$upstream_rev" | jq -er '.commit.committer.date[0:10]')
   fi
-fi
-
-owner=$(jq -er .owner "$pin_file")
-repo=$(jq -er .repo "$pin_file")
-source_url="https://github.com/$owner/$repo/archive/$commit_sha.tar.gz"
-prefetch=$(prefetch_source "$source_url")
-new_hash=$(jq -er '.hash | select(startswith("sha256-"))' <<<"$prefetch")
-if [[ -n ${XO_NIXPKG_PREFETCH_JSON:-} ]]; then
-  new_source=$(jq -er '.storePath | select(type == "string")' <<<"$prefetch")
-else
-  new_source=$(jq -er '.storePath | select(startswith("/nix/store/"))' <<<"$prefetch")
-fi
-[[ -f $new_source/yarn.lock && -f $new_source/docs/yarn.lock ]] || {
-  printf 'Prefetched XO source is missing a required Yarn lock\n' >&2
-  exit 1
-}
-
-if [[ $mode == release ]]; then
-  changelog_version=$(sed -nE 's/^## \*\*([0-9]+(\.[0-9]+)+)\*\*.*/\1/p' "$new_source/CHANGELOG.md" | head -n 1)
-  if [[ $changelog_version != "$new_version" ]]; then
-    printf 'Release marker %s does not match root changelog version %s\n' "$new_version" "${changelog_version:-missing}" >&2
-    exit 1
+  [[ $upstream_date =~ ^[0-9]{4}-[0-9]{2}-[0-9]{2}$ ]] || { echo 'Invalid upstream commit date' >&2; exit 1; }
+  baseline=${XO_NIXPKG_CURRENT_SOURCE:-}
+  if [[ -z $baseline ]]; then
+    baseline=$(nix eval --accept-flake-config --raw '.#rolling.src.outPath')
   fi
+  source_path=$(prefetch_source "$upstream_rev" | source_path_from_prefetch)
+  rolling_json=$(channel_json "unstable-$upstream_date" "$upstream_rev" "$source_path" "$baseline" rolling)
+  temporary=$(mktemp "$(dirname "$pin_file")/.xen-orchestra.json.XXXXXX")
+  jq --argjson rolling "$rolling_json" '.channels.rolling = $rolling' "$pin_file" >"$temporary"
+  mv "$temporary" "$pin_file"
+  update_flake_input xo-rolling "$upstream_rev"
+  printf 'Updated rolling XO channel to %s (%s)\n' "unstable-$upstream_date" "$upstream_rev"
 fi
-
-current_source=${XO_NIXPKG_CURRENT_SOURCE:-}
-if [[ -z $current_source ]]; then
-  current_source=$(nix build --accept-flake-config --no-link --print-out-paths '.#xen-orchestra-ce.src')
-fi
-
-new_yarn_hash=$(jq -er .yarnHash "$pin_file")
-if ! cmp -s "$current_source/yarn.lock" "$new_source/yarn.lock"; then
-  [[ -n ${XO_NIXPKG_NIXPKGS_PATH:-} ]] || { printf 'XO_NIXPKG_NIXPKGS_PATH is required\n' >&2; exit 1; }
-  new_yarn_hash=$(retry 5 prefetch_yarn_hash "$new_source/yarn.lock" true)
-fi
-new_docs_yarn_hash=$(jq -er .docsYarnHash "$pin_file")
-if ! cmp -s "$current_source/docs/yarn.lock" "$new_source/docs/yarn.lock"; then
-  [[ -n ${XO_NIXPKG_NIXPKGS_PATH:-} ]] || { printf 'XO_NIXPKG_NIXPKGS_PATH is required\n' >&2; exit 1; }
-  new_docs_yarn_hash=$(retry 5 prefetch_yarn_hash "$new_source/docs/yarn.lock" false)
-fi
-
-esbuild_version=$(lock_version "$new_source/yarn.lock" '@esbuild/linux-x64')
-turbo_version=$(lock_version "$new_source/yarn.lock" '@turbo/linux-64')
-rollup_version=$(lock_version "$new_source/yarn.lock" '@rollup/rollup-linux-x64-gnu')
-[[ -n $turbo_version ]] || { printf 'Failed to find @turbo/linux-64 in upstream yarn.lock\n' >&2; exit 1; }
-
-x86_esbuild=$(tool_json "$esbuild_version" "_esbuild_linux_x64___linux_x64_$esbuild_version.tgz" package/bin/esbuild)
-x86_turbo=$(tool_json "$turbo_version" "_turbo_linux_64___linux_64_$turbo_version.tgz" turbo-linux-x64/bin/turbo)
-x86_rollup=$(tool_json "$rollup_version" "_rollup_rollup_linux_x64_gnu___rollup_linux_x64_gnu_$rollup_version.tgz" package/rollup.linux-x64-gnu.node linux-x64-gnu)
-arm_esbuild=$(tool_json "$esbuild_version" "_esbuild_linux_arm64___linux_arm64_$esbuild_version.tgz" package/bin/esbuild)
-arm_turbo=$(tool_json "$turbo_version" "_turbo_linux_arm64___linux_arm64_$turbo_version.tgz" turbo-linux-arm64/bin/turbo)
-arm_rollup=$(tool_json "$rollup_version" "_rollup_rollup_linux_arm64_gnu___rollup_linux_arm64_gnu_$rollup_version.tgz" package/rollup.linux-arm64-gnu.node linux-arm64-gnu)
-platform_tools=$(jq -cn \
-  --argjson x86Esbuild "$x86_esbuild" --argjson x86Turbo "$x86_turbo" --argjson x86Rollup "$x86_rollup" \
-  --argjson armEsbuild "$arm_esbuild" --argjson armTurbo "$arm_turbo" --argjson armRollup "$arm_rollup" \
-  '{"x86_64-linux":{esbuild:$x86Esbuild,turbo:$x86Turbo,rollup:$x86Rollup},"aarch64-linux":{esbuild:$armEsbuild,turbo:$armTurbo,rollup:$armRollup}}')
-
-pin_directory=$(dirname "$pin_file")
-temporary_pin=$(mktemp "$pin_directory/.xen-orchestra.json.XXXXXX")
-trap 'rm -f "$temporary_pin"' EXIT
-jq \
-  --arg version "$new_version" --arg rev "$commit_sha" --arg hash "$new_hash" \
-  --arg yarnHash "$new_yarn_hash" --arg docsYarnHash "$new_docs_yarn_hash" \
-  --argjson platformTools "$platform_tools" '
-    .version = $version |
-    .rev = $rev |
-    .hash = $hash |
-    .yarnHash = $yarnHash |
-    .docsYarnHash = $docsYarnHash |
-    .platformTools = $platformTools
-  ' "$pin_file" >"$temporary_pin"
-jq -e '.schemaVersion == 1 and (.rev | test("^[a-f0-9]{40}$")) and (.platformTools["x86_64-linux"].turbo.version | length > 0)' "$temporary_pin" >/dev/null
-mv "$temporary_pin" "$pin_file"
-trap - EXIT
-
-printf 'Updated XO source lock to %s (%s)\n' "$new_version" "$commit_sha"
-printf '  source: %s\n  yarn: %s\n  docs yarn: %s\n' "$new_hash" "$new_yarn_hash" "$new_docs_yarn_hash"

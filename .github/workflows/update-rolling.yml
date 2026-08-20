@@ -1,13 +1,13 @@
 # SPDX-License-Identifier: Apache-2.0
-name: Check for XO release updates
+name: Refresh XO rolling channel
 
 on:
   schedule:
-    - cron: "0 6 * * *"
+    - cron: "40 6 * * *"
   workflow_dispatch:
 
 concurrency:
-  group: xo-release-update
+  group: xo-rolling-update
   cancel-in-progress: true
 
 permissions:
@@ -15,9 +15,9 @@ permissions:
 
 jobs:
   update:
-    name: Refresh Xen Orchestra release
+    name: Refresh upstream HEAD candidate
     runs-on: ubuntu-24.04
-    timeout-minutes: 120
+    timeout-minutes: 45
     steps:
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -29,14 +29,14 @@ jobs:
         with:
           github-token: ${{ github.token }}
 
-      - name: Refresh the official release channels
-        id: release
+      - name: Refresh the rolling source and dependency locks
+        id: rolling
         env:
           GITHUB_TOKEN: ${{ github.token }}
-        run: nix run .#update-xo-release -- "$GITHUB_OUTPUT"
+        run: nix run .#update-xo-rolling -- "$GITHUB_OUTPUT"
 
       - name: Create GitHub App token
-        if: steps.release.outputs.changed == 'true'
+        if: steps.rolling.outputs.changed == 'true'
         id: app-token
         uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1 # v3.2.0
         with:
@@ -45,16 +45,17 @@ jobs:
           permission-contents: write
           permission-pull-requests: write
 
-      - name: Open the update pull request
-        if: steps.release.outputs.changed == 'true'
+      - name: Open or update the rolling candidate pull request
+        if: steps.rolling.outputs.changed == 'true'
         env:
           GH_TOKEN: ${{ steps.app-token.outputs.token }}
-          UPDATE_BRANCH: automation/xo-release-channels
-          UPDATE_TITLE: "xen-orchestra-ce channels: refresh official releases"
+          UPDATE_BRANCH: automation/xo-rolling
+          UPDATE_TITLE: "xen-orchestra-ce rolling: refresh upstream"
           UPDATE_BODY: |-
-            Automated refresh of the latest and stable Xen Orchestra release outputs.
+            Automated rolling-channel candidate from Xen Orchestra upstream master.
 
-            Upstream commit: `vatesfr/xen-orchestra@${{ steps.release.outputs.rev }}`
+            Upstream commit: `vatesfr/xen-orchestra@${{ steps.rolling.outputs.rev }}`
 
-            Pull-request CI builds all three channel outputs before this can merge.
+            The normal pull-request CI is authoritative. A broken candidate remains
+            visible here and is replaced only when upstream advances.
         run: nix run .#open-update-pr -- flake.nix flake.lock nix/sources/xen-orchestra.json

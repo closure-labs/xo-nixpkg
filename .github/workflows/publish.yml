@@ -86,7 +86,7 @@ jobs:
           fi
 
   release:
-    name: Tag gated main release and aliases
+    name: Tag gated project release
     if: >-
       needs.classify.result == 'success' &&
       needs.gate.result == 'success' &&
@@ -119,7 +119,7 @@ jobs:
         with:
           github-token: ${{ github.token }}
 
-      - name: Create tags from the gated SHA
+      - name: Create the immutable project tag
         env:
           APP_TOKEN: ${{ steps.app-token.outputs.token }}
           GATED_SHA: ${{ github.sha }}

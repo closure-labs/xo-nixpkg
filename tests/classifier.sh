@@ -53,7 +53,7 @@ jq -n --arg base "$docs_head" '{pull_request:{base:{sha:$base}}}' >"$temporary/e
 package_plan=$(classify pull_request refs/pull/2/merge "$package_head")
 jq -e '
   [.jobs.validate.plan.targets[].name] ==
-    ["xen-orchestra-ce", "xo-fuse-linkage", "xo-server-service"]
+    ["xo-latest", "xo-stable", "xo-rolling", "xo-fuse-linkage", "xo-server-service"]
 ' <<<"$package_plan" >/dev/null
 
 # The generated fixture expands this variable when it runs.
@@ -67,7 +67,7 @@ jq -e '
   .classification.mode == "reused-merge-group" and
   .jobs.validate.enabled == false and
   .jobs.publish.enabled == true and
-  [.jobs.publish.plan.targets[].name] == ["xen-orchestra-ce"] and
+  [.jobs.publish.plan.targets[].name] == ["xo-latest", "xo-stable", "xo-rolling"] and
   .release.enabled == true
 ' <<<"$push_plan" >/dev/null
 
@@ -80,7 +80,7 @@ delta_plan=$(classify push refs/heads/main "$delta_head")
 jq -e '
   .classification.reason == "merge-group-ancestor-plus-delta" and
   .jobs.validate.enabled == false and
-  [.jobs.publish.plan.targets[].name] == ["xen-orchestra-ce"]
+  [.jobs.publish.plan.targets[].name] == ["xo-latest", "xo-stable", "xo-rolling"]
 ' <<<"$delta_plan" >/dev/null
 
 git -C "$fixture" checkout -q --orphan unrelated
@@ -94,14 +94,14 @@ jq -n --arg base "$unrelated" --arg head "$delta_head" \
 invalid_plan=$(classify merge_group refs/heads/gh-readonly-queue/main/pr-1 "$delta_head")
 jq -e '
   .classification.reason == "invalid-merge-group-ancestry" and
-  (.jobs.validate.plan.targets | length) == 12
+  (.jobs.validate.plan.targets | length) == 14
 ' <<<"$invalid_plan" >/dev/null
 
 printf '{}\n' >"$temporary/event.json"
 dispatch_plan=$(classify workflow_dispatch refs/heads/main "$delta_head")
 jq -e '
   .classification.reason == "event-does-not-classify-paths" and
-  (.jobs.validate.plan.targets | length) == 12 and
+  (.jobs.validate.plan.targets | length) == 14 and
   .jobs.publish.enabled == false and
   .release.enabled == false
 ' <<<"$dispatch_plan" >/dev/null

@@ -10,12 +10,27 @@
 
   inputs = {
     nixpkgs.url = "github:NixOS/nixpkgs/nixos-unstable";
+    xo-latest = {
+      url = "github:vatesfr/xen-orchestra/40dede9e11c90562df5cb46c6a83a9d91efedae1";
+      flake = false;
+    };
+    xo-stable = {
+      url = "github:vatesfr/xen-orchestra/1a795970f9c60396967d9510e3d2a29b56f2da1d";
+      flake = false;
+    };
+    xo-rolling = {
+      url = "github:vatesfr/xen-orchestra/4235644950555ed5637f2352b684aaba398e61de";
+      flake = false;
+    };
   };
 
   outputs =
     {
       self,
       nixpkgs,
+      xo-latest,
+      xo-rolling,
+      xo-stable,
       ...
     }:
     let
@@ -79,11 +94,28 @@
         system:
         let
           pkgs = nixpkgs.legacyPackages.${system};
+          mkXo =
+            channel: source:
+            let
+              pin = sourcePins.xenOrchestra.channels.${channel};
+            in
+            pkgs.callPackage ./default.nix {
+              inherit channel source;
+              inherit (pin) docsYarnHash version yarnHash;
+              sourceRev = pin.rev;
+            };
+          latest = mkXo "latest" xo-latest;
+          stable = mkXo "stable" xo-stable;
+          rolling = mkXo "rolling" xo-rolling;
         in
         {
-          xen-orchestra-ce = pkgs.callPackage ./default.nix {
-            sourcePin = sourcePins.xenOrchestra;
-          };
+          inherit latest rolling stable;
+          latest-upstream = rolling;
+          xen-orchestra-ce = latest;
+          xen-orchestra-ce-latest = latest;
+          xen-orchestra-ce-stable = stable;
+          xen-orchestra-ce-rolling = rolling;
+          xen-orchestra-ce-latest-upstream = rolling;
           libvhdi = pkgs.callPackage ./nix/libvhdi.nix {
             inherit (sourcePins.libvhdi) version;
             source = pkgs.fetchzip {
@@ -92,7 +124,7 @@
             };
           };
           flake-plan-runner = pkgs.callPackage ./nix/flake-plan-runner.nix { };
-          default = self.packages.${system}.xen-orchestra-ce;
+          default = latest;
         }
       );
 
@@ -181,10 +213,10 @@
           tag-release = mkApp applications.tagRelease "Tag a successfully gated main release";
           trusted-update = mkApp applications.trustedUpdate "Validate and merge one trusted update";
           queue-automation = mkApp applications.queueAutomation "Queue trusted automation updates";
-          update-xo-release = mkApp applications.updateXoRelease "Update and validate the latest XO release";
-          update-xo-upstream = mkApp applications.updateXoUpstream "Update and validate XO upstream HEAD";
+          update-xo-release = mkApp applications.updateXoRelease "Refresh the latest and stable XO release channels";
+          update-xo-rolling = mkApp applications.updateXoRolling "Refresh the rolling XO channel from upstream HEAD";
+          update-xo-upstream = mkApp applications.updateXoRolling "Compatibility alias for the rolling XO updater";
           update-libvhdi = mkApp applications.updateLibvhdi "Update and validate the official libvhdi release";
-          maintain-latest-upstream = mkApp applications.maintainLatestUpstream "Maintain the latest-upstream tag";
           forgejo-update = mkApp applications.forgejoUpdate "Create a validated Forgejo update pull request";
           open-update-pr = mkApp applications.openUpdatePr "Commit and open one allowlisted source update pull request";
           update-flake-lock = mkApp applications.updateFlakeLock "Refresh and validate the Nixpkgs lock";
@@ -211,11 +243,14 @@
         in
         repositoryChecks
         // {
-          xen-orchestra-ce = self.packages.${system}.xen-orchestra-ce;
-          xo-fuse-linkage = self.packages.${system}.xen-orchestra-ce;
+          xo-latest = self.packages.${system}.latest;
+          xo-stable = self.packages.${system}.stable;
+          xo-rolling = self.packages.${system}.rolling;
+          xen-orchestra-ce = self.packages.${system}.latest;
+          xo-fuse-linkage = self.packages.${system}.latest;
           xo-server-service = import ./nix/tests/xo-server-service.nix {
             inherit pkgs;
-            xen-orchestra-ce = self.packages.${system}.xen-orchestra-ce;
+            xen-orchestra-ce = self.packages.${system}.latest;
           };
           libvhdi = self.packages.${system}.libvhdi;
         }

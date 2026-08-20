@@ -8,12 +8,12 @@ mode=${1:?usage: forgejo-update.sh xo|libvhdi}
 case "$mode" in
   xo)
     xo-nixpkg-update-xo-release
-    changed_paths=(nix/sources/xen-orchestra.json)
-    version=$(nix eval --accept-flake-config --raw .#xen-orchestra-ce.version)
-    rev=$(nix eval --accept-flake-config --raw .#xen-orchestra-ce.src.rev)
-    branch="update/xen-orchestra-ce-$version"
-    title="xen-orchestra-ce: update to $version"
-    body="Automated update to vatesfr/xen-orchestra@$rev. Validated with nix run .#update-xo-release."
+    changed_paths=(flake.nix flake.lock nix/sources/xen-orchestra.json)
+    version=$(jq -er .channels.latest.version nix/sources/xen-orchestra.json)
+    rev=$(jq -er .channels.latest.rev nix/sources/xen-orchestra.json)
+    branch="automation/xo-release-channels"
+    title="xen-orchestra-ce channels: refresh official releases"
+    body="Automated latest/stable channel refresh to Xen Orchestra $version at $rev."
     ;;
   libvhdi)
     xo-nixpkg-update-libvhdi
@@ -35,20 +35,33 @@ fi
 
 git config user.name 'Forgejo Actions'
 git config user.email 'actions@codeberg.org'
-git switch -c "$branch"
+git remote set-url origin "https://oauth2:${FORGEJO_TOKEN}@codeberg.org/NiXOA/xen-orchestra-ce.git"
+remote_sha=$(git ls-remote --refs origin "refs/heads/$branch" | cut -f1)
+if [[ -n $remote_sha ]] && git diff --quiet "$remote_sha" -- "${changed_paths[@]}"; then
+  echo 'The candidate is already published on the update branch'
+  exit 0
+fi
+git switch -C "$branch"
 git add "${changed_paths[@]}"
 git commit -m "$title"
-git remote set-url origin "https://oauth2:${FORGEJO_TOKEN}@codeberg.org/NiXOA/xen-orchestra-ce.git"
-git push origin "$branch"
+git push --force-with-lease="refs/heads/$branch:$remote_sha" origin "$branch"
 
-jq -n \
-  --arg base main \
-  --arg body "$body" \
-  --arg head "$branch" \
-  --arg title "$title" \
-  '{base:$base,body:$body,head:$head,title:$title}' |
+api=https://codeberg.org/api/v1/repos/NiXOA/xen-orchestra-ce
+open_pr=$(curl --fail-with-body --silent --show-error \
+  --header "Authorization: token $FORGEJO_TOKEN" \
+  "$api/pulls?state=open" |
+  jq -r --arg branch "$branch" '[.[] | select(.head.ref == $branch)][0].number // empty')
+payload=$(jq -cn \
+  --arg base main --arg body "$body" --arg head "$branch" --arg title "$title" \
+  '{base:$base,body:$body,head:$head,title:$title}')
+if [[ -n $open_pr ]]; then
   curl --fail-with-body \
     --header "Authorization: token $FORGEJO_TOKEN" \
     --header 'Content-Type: application/json' \
-    --data-binary @- \
-    https://codeberg.org/api/v1/repos/NiXOA/xen-orchestra-ce/pulls
+    --request PATCH --data-binary "$payload" "$api/pulls/$open_pr"
+else
+  curl --fail-with-body \
+    --header "Authorization: token $FORGEJO_TOKEN" \
+    --header 'Content-Type: application/json' \
+    --data-binary "$payload" "$api/pulls"
+fi

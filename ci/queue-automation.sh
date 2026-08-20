@@ -24,7 +24,8 @@ jq -c \
     select(
       ($author == "dependabot" and (.head.ref | startswith("dependabot/github_actions/"))) or
       ($author == $update_author and .head.ref == "automation/weekly-flake-input-refresh" and .title == "flake.lock: refresh nixpkgs") or
-      ($author == $update_author and (.head.ref | test("^update/xen-orchestra-ce-[0-9]+(\\.[0-9]+)+$")) and .title == ("xen-orchestra-ce: update to " + (.head.ref | capture("^update/xen-orchestra-ce-(?<version>.+)$").version))) or
+      ($author == $update_author and .head.ref == "automation/xo-release-channels" and .title == "xen-orchestra-ce channels: refresh official releases") or
+      ($author == $update_author and .head.ref == "automation/xo-rolling" and .title == "xen-orchestra-ce rolling: refresh upstream") or
       ($author == $update_author and (.head.ref | test("^update/libvhdi-[0-9]{8}$")) and .title == (.head.ref | sub("^update/libvhdi-"; "libvhdi: update to ")))
     ) |
     {author:$author,branch:.head.ref,number,title,sha:.head.sha}

@@ -1,7 +1,6 @@
 {
   lib,
   stdenv,
-  fetchFromGitHub,
   fetchYarnDeps,
   yarn,
   yarnConfigHook,
@@ -14,11 +13,20 @@
   libpng,
   zlib,
   fuse,
-  sourcePin,
+  channel,
+  docsYarnHash,
+  source,
+  sourceRev,
+  version,
+  yarnHash,
 }:
 
 let
-  platformToolTarballsForHost = sourcePin.platformTools.${stdenv.hostPlatform.system} or null;
+  platformToolTarballs = import ./nix/yarn-platform-tools.nix {
+    inherit lib;
+    yarnLock = source + "/yarn.lock";
+  };
+  platformToolTarballsForHost = platformToolTarballs.${stdenv.hostPlatform.system} or null;
 
   mkYarnCacheBinary =
     yarnOfflineCache:
@@ -118,27 +126,19 @@ stdenv.mkDerivation (
   in
   {
     pname = "xen-orchestra-ce";
-    version = sourcePin.version;
+    inherit version;
 
-    # Xen Orchestra doesn't use git tags for releases; versions are indicated
-    # in commit messages like "feat: release 6.3.3".
-    src = fetchFromGitHub {
-      inherit (sourcePin)
-        owner
-        repo
-        rev
-        hash
-        ;
-    };
+    # The flake input owns the immutable source revision and NAR hash.
+    src = source;
 
     yarnOfflineCache = fetchNormalizedYarnDeps {
       yarnLock = "${finalAttrs.src}/yarn.lock";
-      hash = sourcePin.yarnHash;
+      hash = yarnHash;
     };
 
     docsYarnOfflineCache = fetchYarnDeps {
       yarnLock = "${finalAttrs.src}/docs/yarn.lock";
-      hash = sourcePin.docsYarnHash;
+      hash = docsYarnHash;
     };
 
     patches = [ ./nix/patches/xo-server-immutable-source.patch ];
@@ -203,11 +203,11 @@ stdenv.mkDerivation (
       # Git repository for xo-web's build script.
       substituteInPlace packages/xo-web/package.json \
         --replace-fail 'GIT_HEAD=$(git rev-parse HEAD)' \
-                       'GIT_HEAD=${finalAttrs.src.rev}'
+                       'GIT_HEAD=${sourceRev}'
       substituteInPlace packages/xo-server/.babelrc.cjs \
         --replace-fail "const { execFileSync } = require('node:child_process')" "" \
         --replace-fail "execFileSync('git', ['rev-parse', '--short', 'HEAD']).toString().trim()" \
-                       "'${builtins.substring 0 7 finalAttrs.src.rev}'"
+                       "'${builtins.substring 0 7 sourceRev}'"
 
       # TypeScript in newer toolchains infers `Object.entries()` values as unknown.
       # Coerce labels to string for xo-server-openmetrics build compatibility.
@@ -432,7 +432,10 @@ stdenv.mkDerivation (
       find "$out/libexec/xen-orchestra" -xtype l -delete || true
     '';
 
-    passthru.updateScript = ./scripts/update.sh;
+    passthru = {
+      inherit channel sourceRev;
+      updateScript = ./scripts/update.sh;
+    };
 
     meta = {
       description = "Web interface for Xen Orchestra - XenServer/XCP-ng management";

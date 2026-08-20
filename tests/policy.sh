@@ -21,13 +21,23 @@ jq -e '
 ' "$root/nix/sources/libvhdi.json" >/dev/null
 
 jq -e '
-  .schemaVersion == 1 and
+  .schemaVersion == 2 and
   .owner == "vatesfr" and
   .repo == "xen-orchestra" and
-  (.version | test("^[0-9]+(\\.[0-9]+)+$")) and
-  (.rev | test("^[a-f0-9]{40}$")) and
-  (.platformTools["x86_64-linux"].turbo.version | length > 0)
+  (.channels | keys == ["latest", "rolling", "stable"]) and
+  (.channels.latest.version | test("^[0-9]+(\\.[0-9]+)+$")) and
+  (.channels.stable.version | test("^[0-9]+(\\.[0-9]+)+$")) and
+  (.channels.rolling.version | test("^unstable-[0-9]{4}-[0-9]{2}-[0-9]{2}$")) and
+  all(.channels[]; (.rev | test("^[a-f0-9]{40}$"))) and
+  all(.channels[]; has("platformTools") | not) and
+  all(.channels[]; has("hash") | not)
 ' "$root/nix/sources/xen-orchestra.json" >/dev/null
+
+for channel in latest stable rolling; do
+  rev=$(jq -er ".channels.$channel.rev" "$root/nix/sources/xen-orchestra.json")
+  rg -F "url = \"github:vatesfr/xen-orchestra/$rev\";" "$root/flake.nix" >/dev/null
+  rg -F "$channel = mkXo \"$channel\"" "$root/flake.nix" >/dev/null
+done
 
 jq -e '
   .name == "Protect main with an up-to-date CI gate" and
@@ -47,10 +57,10 @@ for application in \
   tag-release \
   queue-automation \
   update-xo-release \
+  update-xo-rolling \
   update-libvhdi \
   open-update-pr \
   update-flake-lock \
-  maintain-latest-upstream \
   forgejo-update; do
   rg -F "nix run .#$application" "$root/.github/workflows" "$root/.forgejo/workflows" >/dev/null
 done
@@ -71,6 +81,7 @@ for removed_wrapper in \
   ci/gate.sh \
   ci/update-xo-release.sh \
   ci/update-xo-upstream.sh \
+  ci/maintain-latest-upstream.sh \
   tests/run.sh; do
   [[ ! -e $root/$removed_wrapper ]] || {
     echo "Obsolete shell wrapper still exists: $removed_wrapper" >&2
