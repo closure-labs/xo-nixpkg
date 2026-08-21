@@ -55,6 +55,7 @@ jobs:
             Automated refresh of the latest and stable Xen Orchestra release outputs.
 
             Upstream commit: `vatesfr/xen-orchestra@${{ steps.release.outputs.rev }}`
+            Changed channels: `${{ steps.release.outputs.changed_channels }}`
 
-            Pull-request CI builds all three channel outputs before this can merge.
+            Pull-request CI builds only the affected channel outputs before this can merge.
         run: nix run .#open-update-pr -- flake.nix flake.lock nix/sources/xen-orchestra.json

@@ -71,25 +71,42 @@ select_releases() {
 
 find_latest_releases() {
   local fixture=${XO_NIXPKG_COMMITS_JSON:-}
-  local page response combined='[]' selected
+  local page selected temporary combined response next
   if [[ -n $fixture ]]; then
+    jq -e 'type == "array"' "$fixture" >/dev/null
     selected=$(select_releases <"$fixture")
     [[ $(jq -r length <<<"$selected") == 2 ]] || return 1
     printf '%s\n' "$selected"
     return
   fi
 
+  temporary=$(mktemp -d)
+  combined=$temporary/combined.json
+  response=$temporary/response.json
+  next=$temporary/next.json
+  printf '[]\n' >"$combined"
   for page in $(seq 1 "$release_scan_pages"); do
     printf 'Scanning root CHANGELOG.md commits page %s for XO releases...\n' "$page" >&2
-    response=$(retry 3 github_api "https://api.github.com/repos/vatesfr/xen-orchestra/commits?path=CHANGELOG.md&per_page=100&page=$page")
-    [[ $(jq -r length <<<"$response") != 0 ]] || break
-    combined=$(jq -cn --argjson previous "$combined" --argjson page "$response" '$previous + $page')
-    selected=$(select_releases <<<"$combined")
+    if ! retry 3 github_api "https://api.github.com/repos/vatesfr/xen-orchestra/commits?path=CHANGELOG.md&per_page=100&page=$page" >"$response"; then
+      rm -rf "$temporary"
+      return 1
+    fi
+    if ! jq -e 'type == "array"' "$response" >/dev/null; then
+      printf 'GitHub commits page %s is not a JSON array\n' "$page" >&2
+      rm -rf "$temporary"
+      return 1
+    fi
+    [[ $(jq -r length "$response") != 0 ]] || break
+    jq -cs 'add' "$combined" "$response" >"$next"
+    mv "$next" "$combined"
+    selected=$(select_releases <"$combined")
     if [[ $(jq -r length <<<"$selected") == 2 ]]; then
+      rm -rf "$temporary"
       printf '%s\n' "$selected"
       return
     fi
   done
+  rm -rf "$temporary"
   return 1
 }
 
@@ -242,33 +259,56 @@ if [[ $mode == release ]]; then
     printf 'Refusing to downgrade latest XO from %s to %s\n' "$current_latest_version" "$latest_version" >&2
     exit 1
   fi
-  if [[ $latest_rev == "$current_latest_rev" && $stable_rev == "$current_stable_rev" ]]; then
+  latest_changed=false
+  stable_changed=false
+  [[ $latest_rev == "$current_latest_rev" ]] || latest_changed=true
+  [[ $stable_rev == "$current_stable_rev" ]] || stable_changed=true
+  if [[ $latest_changed == false && $stable_changed == false ]]; then
     printf 'Official XO channels are current: latest %s, stable %s\n' "$latest_version" "$stable_version"
     exit 0
   fi
 
-  baseline=${XO_NIXPKG_CURRENT_SOURCE:-}
-  if [[ -z $baseline ]]; then
-    baseline=$(nix eval --accept-flake-config --raw '.#latest.src.outPath')
+  if [[ $latest_changed == true ]]; then
+    latest_baseline=${XO_NIXPKG_CURRENT_LATEST_SOURCE:-${XO_NIXPKG_CURRENT_SOURCE:-}}
+    if [[ -z $latest_baseline ]]; then
+      latest_baseline=$(nix eval --accept-flake-config --raw '.#latest.src.outPath')
+    fi
+    latest_source=
+    if ! channel_for_rev "$latest_rev" >/dev/null; then
+      latest_source=$(release_source "$latest_version" "$latest_rev")
+    fi
+    latest_json=$(channel_json "$latest_version" "$latest_rev" "$latest_source" "$latest_baseline" latest)
   fi
-  latest_source=
-  if ! channel_for_rev "$latest_rev" >/dev/null; then
-    latest_source=$(release_source "$latest_version" "$latest_rev")
+  if [[ $stable_changed == true ]]; then
+    stable_baseline=${XO_NIXPKG_CURRENT_STABLE_SOURCE:-${XO_NIXPKG_CURRENT_SOURCE:-}}
+    if [[ -z $stable_baseline ]]; then
+      stable_baseline=$(nix eval --accept-flake-config --raw '.#stable.src.outPath')
+    fi
+    stable_source=
+    if ! channel_for_rev "$stable_rev" >/dev/null; then
+      stable_source=$(release_source "$stable_version" "$stable_rev")
+    fi
+    stable_json=$(channel_json "$stable_version" "$stable_rev" "$stable_source" "$stable_baseline" stable)
   fi
-  stable_source=
-  if ! channel_for_rev "$stable_rev" >/dev/null; then
-    stable_source=$(release_source "$stable_version" "$stable_rev")
-  fi
-  latest_json=$(channel_json "$latest_version" "$latest_rev" "$latest_source" "$baseline")
-  stable_json=$(channel_json "$stable_version" "$stable_rev" "$stable_source" "$baseline")
   temporary=$(mktemp "$(dirname "$pin_file")/.xen-orchestra.json.XXXXXX")
-  jq --argjson latest "$latest_json" --argjson stable "$stable_json" \
-    '.channels.latest = $latest | .channels.stable = $stable' "$pin_file" >"$temporary"
+  cp "$pin_file" "$temporary"
+  if [[ $latest_changed == true ]]; then
+    next=$(mktemp "$(dirname "$pin_file")/.xen-orchestra.json.XXXXXX")
+    jq --argjson channel "$latest_json" '.channels.latest = $channel' "$temporary" >"$next"
+    mv "$next" "$temporary"
+    update_flake_input xo-latest "$latest_rev"
+  fi
+  if [[ $stable_changed == true ]]; then
+    next=$(mktemp "$(dirname "$pin_file")/.xen-orchestra.json.XXXXXX")
+    jq --argjson channel "$stable_json" '.channels.stable = $channel' "$temporary" >"$next"
+    mv "$next" "$temporary"
+    update_flake_input xo-stable "$stable_rev"
+  fi
   mv "$temporary" "$pin_file"
-  update_flake_input xo-latest "$latest_rev"
-  update_flake_input xo-stable "$stable_rev"
-  printf 'Updated official XO channels: latest %s (%s), stable %s (%s)\n' \
-    "$latest_version" "$latest_rev" "$stable_version" "$stable_rev"
+  printf 'Updated official XO channels:'
+  [[ $latest_changed == false ]] || printf ' latest %s (%s)' "$latest_version" "$latest_rev"
+  [[ $stable_changed == false ]] || printf ' stable %s (%s)' "$stable_version" "$stable_rev"
+  printf '\n'
 else
   if [[ -z $upstream_rev ]]; then
     upstream_rev=$(retry 3 git ls-remote "$upstream_remote" "$upstream_ref" | awk 'NR == 1 { print $1 }')

@@ -46,6 +46,8 @@ rec {
       coreutils
       gh
       git
+      gnugrep
+      gnused
       jq
     ];
   };
@@ -182,6 +184,16 @@ rec {
     '';
   };
 
+  prewarmRolling = mkRepositoryApplication {
+    name = "xo-nixpkg-prewarm-rolling";
+    script = ../ci/prewarm-rolling.sh;
+    runtimeInputs = with pkgs; [
+      cachix
+      coreutils
+      nix
+    ];
+  };
+
   updateLibvhdiSource = mkRepositoryApplication {
     name = "xo-nixpkg-update-libvhdi-source";
     script = ../scripts/update-libvhdi.sh;
@@ -223,6 +235,7 @@ rec {
       coreutils
       gh
       git
+      jq
     ];
   };
 

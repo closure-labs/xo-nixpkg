@@ -55,11 +55,13 @@ nix run .#update-xo-release
 nix run .#ci
 ```
 
-The script atomically updates `nix/sources/xen-orchestra.json` and the matching
-immutable flake inputs. Existing Yarn dependency hashes are reused when their
-lock files did not change. Scheduled discovery opens or refreshes a standing
-candidate pull request; the ordinary pull-request workflow is responsible for
-building every affected package output.
+The script atomically updates only the affected channel entries in
+`nix/sources/xen-orchestra.json`, their matching immutable flake inputs, and
+their lock nodes. Existing Yarn dependency hashes are reused when their lock
+files did not change. Commit discovery streams paginated GitHub responses
+through temporary files, so long upstream histories cannot exceed the process
+argument limit. CI recognizes this generated pin/flake/lock cohort and builds
+only the changed channels.
 
 To refresh `rolling` to upstream HEAD for troubleshooting, run:
 
@@ -67,9 +69,11 @@ To refresh `rolling` to upstream HEAD for troubleshooting, run:
 nix run .#update-xo-rolling
 ```
 
-This refreshes a separate rolling candidate pull request. A deterministic
-upstream build failure remains visible on that pull request instead of being
-retried every day; the next upstream revision replaces the candidate. The
+This realizes the exact `rolling-candidate` closure and uploads it to the
+existing `xen-orchestra-ce` Cachix before opening a draft pull request. A
+realization or upload failure still opens the draft, records it as broken, and
+fails the automation run so the candidate remains diagnosable. Pull-request CI
+then starts from a clean runner and substitutes the prewarmed closure. The
 `update-xo-upstream` app remains as a compatibility alias.
 
 ## Updating libvhdi

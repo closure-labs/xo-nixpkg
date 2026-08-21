@@ -62,6 +62,48 @@ XO_NIXPKG_PREFETCH_JSON="$temporary/missing-prefetch.json" run_update --release 
 sed 's/feat: release 6.8.0/feat: release XO 6.8.0/' "$temporary/commits.json" >"$temporary/historical.json"
 XO_NIXPKG_COMMITS_JSON="$temporary/historical.json" run_update --release >/dev/null
 
+# Paginated responses larger than ARG_MAX stay in files instead of becoming
+# jq command-line arguments. Page one deliberately exceeds typical 2 MiB
+# process argument limits and page two completes the two-release selection.
+jq -n --arg latest_rev "$latest_rev" '
+  [{sha:$latest_rev,commit:{message:"feat: release 6.8.0 (#11001)"}}] +
+  [range(0; 35000) as $index | {
+    sha:("f" * 40),
+    commit:{message:("chore: large pagination fixture " + ($index | tostring) + ("x" * 80))}
+  }]
+' >"$temporary/page-1.json"
+jq -n --arg stable_rev "$stable_rev" \
+  '[{sha:$stable_rev,commit:{message:"feat: release 6.7.1 (#10229)"}}]' \
+  >"$temporary/page-2.json"
+mkdir -p "$temporary/bin"
+printf '#!%s\n' "$BASH" >"$temporary/bin/curl"
+cat >>"$temporary/bin/curl" <<'SH'
+set -euo pipefail
+url=${!#}
+case "$url" in
+  *page=1) cat "$LARGE_PAGE_ONE" ;;
+  *page=2) cat "$LARGE_PAGE_TWO" ;;
+  *) printf '[]\n' ;;
+esac
+SH
+chmod +x "$temporary/bin/curl"
+PATH="$temporary/bin:$PATH" \
+LARGE_PAGE_ONE="$temporary/page-1.json" \
+LARGE_PAGE_TWO="$temporary/page-2.json" \
+XO_NIXPKG_SOURCE_ROOT="$root" \
+XO_NIXPKG_XO_PIN_FILE="$temporary/xo.json" \
+XO_NIXPKG_FLAKE_FILE="$temporary/flake.nix" \
+XO_NIXPKG_PREFETCH_JSON="$temporary/missing-prefetch.json" \
+XO_NIXPKG_CURRENT_SOURCE="$temporary/current" \
+  bash "$root/scripts/update.sh" --release >/dev/null
+
+# Non-array GitHub payloads are rejected before release classification.
+printf '{"message":"rate limited"}\n' >"$temporary/malformed.json"
+if XO_NIXPKG_COMMITS_JSON="$temporary/malformed.json" run_update --release >/dev/null 2>&1; then
+  echo 'Malformed GitHub commit response was accepted' >&2
+  exit 1
+fi
+
 # Lite and technical markers cannot form the two official release channels.
 jq '[.[0], {sha:"2222222222222222222222222222222222222222",commit:{message:"feat: technical release (#10999)"}}]' \
   "$temporary/commits.json" >"$temporary/non-xo.json"

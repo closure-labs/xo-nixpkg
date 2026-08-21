@@ -16,18 +16,33 @@ fi
 
 pin_file=${XO_NIXPKG_XO_PIN_FILE:-${XO_NIXPKG_SOURCE_ROOT:-$PWD}/nix/sources/xen-orchestra.json}
 flake_file=${XO_NIXPKG_FLAKE_FILE:-${XO_NIXPKG_SOURCE_ROOT:-$PWD}/flake.nix}
-before=$(sha256sum "$pin_file" "$flake_file")
+before_pin=$(mktemp)
+trap 'rm -f -- "$before_pin"' EXIT
+cp "$pin_file" "$before_pin"
+before_flake=$(sha256sum "$flake_file")
 if [[ -n ${XO_NIXPKG_UPDATE_XO_SOURCE_COMMAND:-} ]]; then
   bash "$XO_NIXPKG_UPDATE_XO_SOURCE_COMMAND" "$mode"
 else
   bash "${XO_NIXPKG_SOURCE_ROOT:-$PWD}/scripts/update.sh" "$mode"
 fi
-after=$(sha256sum "$pin_file" "$flake_file")
+changed_channels_json=$(jq -cs '
+  .[0] as $before | .[1] as $after |
+  ["latest", "stable", "rolling"] |
+  map(select($before.channels[.] != $after.channels[.]))
+' "$before_pin" "$pin_file")
+changed_channels=$(jq -r 'join(",")' <<<"$changed_channels_json")
 changed=false
-if [[ $before != "$after" ]]; then
+if [[ $(jq -r length <<<"$changed_channels_json") != 0 ]]; then
   changed=true
-  nix flake lock --accept-flake-config
+  lock_args=()
+  while IFS= read -r channel; do
+    lock_args+=(--update-input "xo-$channel")
+  done < <(jq -r '.[]' <<<"$changed_channels_json")
+  nix flake lock --accept-flake-config "${lock_args[@]}"
   nix flake check --accept-flake-config --no-build --no-write-lock-file
+elif [[ $before_flake != "$(sha256sum "$flake_file")" ]]; then
+  echo 'XO updater changed flake.nix without changing a channel pin' >&2
+  exit 1
 fi
 
 channel=latest
@@ -38,7 +53,9 @@ rev=$(jq -er ".channels.$channel.rev" "$pin_file")
 [[ $rev =~ ^[a-f0-9]{40}$ ]]
 
 if (( $# == 1 )); then
-  printf 'changed=%s\nversion=%s\nrev=%s\n' "$changed" "$version" "$rev" >>"$1"
+  printf 'changed=%s\nchanged_channels=%s\nversion=%s\nrev=%s\n' \
+    "$changed" "$changed_channels" "$version" "$rev" >>"$1"
 else
-  printf 'changed=%s\nversion=%s\nrev=%s\n' "$changed" "$version" "$rev"
+  printf 'changed=%s\nchanged_channels=%s\nversion=%s\nrev=%s\n' \
+    "$changed" "$changed_channels" "$version" "$rev"
 fi

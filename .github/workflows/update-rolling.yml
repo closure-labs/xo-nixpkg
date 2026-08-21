@@ -17,7 +17,7 @@ jobs:
   update:
     name: Refresh upstream HEAD candidate
     runs-on: ubuntu-24.04
-    timeout-minutes: 45
+    timeout-minutes: 180
     steps:
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -35,8 +35,16 @@ jobs:
           GITHUB_TOKEN: ${{ github.token }}
         run: nix run .#update-xo-rolling -- "$GITHUB_OUTPUT"
 
-      - name: Create GitHub App token
+      - name: Realize and publish the exact rolling candidate closure
         if: steps.rolling.outputs.changed == 'true'
+        id: prewarm
+        continue-on-error: true
+        env:
+          CACHIX_AUTH_TOKEN: ${{ secrets.CACHIX_AUTH_TOKEN }}
+        run: nix run .#prewarm-rolling-candidate -- "$GITHUB_OUTPUT"
+
+      - name: Create GitHub App token
+        if: always() && steps.rolling.outputs.changed == 'true'
         id: app-token
         uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1 # v3.2.0
         with:
@@ -46,16 +54,25 @@ jobs:
           permission-pull-requests: write
 
       - name: Open or update the rolling candidate pull request
-        if: steps.rolling.outputs.changed == 'true'
+        if: always() && steps.rolling.outputs.changed == 'true'
         env:
           GH_TOKEN: ${{ steps.app-token.outputs.token }}
           UPDATE_BRANCH: automation/xo-rolling
           UPDATE_TITLE: "xen-orchestra-ce rolling: refresh upstream"
+          UPDATE_DRAFT: true
           UPDATE_BODY: |-
             Automated rolling-channel candidate from Xen Orchestra upstream master.
 
             Upstream commit: `vatesfr/xen-orchestra@${{ steps.rolling.outputs.rev }}`
+            Changed channels: `${{ steps.rolling.outputs.changed_channels }}`
+            Candidate cache status: `${{ steps.prewarm.outcome == 'success' && 'prewarmed' || 'BROKEN — realization or Cachix upload failed' }}`
 
             The normal pull-request CI is authoritative. A broken candidate remains
             visible here and is replaced only when upstream advances.
         run: nix run .#open-update-pr -- flake.nix flake.lock nix/sources/xen-orchestra.json
+
+      - name: Fail after preserving a broken rolling candidate
+        if: always() && steps.rolling.outputs.changed == 'true' && steps.prewarm.outcome != 'success'
+        run: |
+          echo 'Rolling candidate realization or Cachix upload failed; the draft PR was preserved for diagnosis.' >&2
+          exit 1

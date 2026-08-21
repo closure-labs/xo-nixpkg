@@ -77,18 +77,138 @@ select_path() {
   done < <(jq -r '.publication[]?' <<<"$selections")
 }
 
+select_xo_channel() {
+  local channel=$1
+  validation_names["xo-$channel"]=1
+  validation_names["supply-protector-$channel"]=1
+  publication_names["xo-$channel"]=1
+  publication_names["supply-protector-$channel"]=1
+  if [[ $channel == latest ]]; then
+    validation_names["xo-fuse-linkage"]=1
+    validation_names["xo-server-service"]=1
+  fi
+}
+
+classify_xo_channel_update() {
+  local base=$1 head=$2 path channel old_rev new_rev temporary expected_flake channels_json
+  shift 2
+  local -a changed_paths=("$@") changed_channels=()
+
+  ((${#changed_paths[@]} >= 2)) || return 1
+  for path in "${changed_paths[@]}"; do
+    case "$path" in
+      flake.nix|flake.lock|nix/sources/xen-orchestra.json) ;;
+      *) return 1 ;;
+    esac
+  done
+  printf '%s\n' "${changed_paths[@]}" | grep -Fxq 'nix/sources/xen-orchestra.json' || return 1
+
+  temporary=$(mktemp -d)
+  git -C "$repo_root" show "$base:nix/sources/xen-orchestra.json" >"$temporary/before-pin.json" || {
+    rm -rf "$temporary"
+    return 1
+  }
+  git -C "$repo_root" show "$head:nix/sources/xen-orchestra.json" >"$temporary/after-pin.json" || {
+    rm -rf "$temporary"
+    return 1
+  }
+  jq -e -s '
+    (.[0] | del(.channels)) == (.[1] | del(.channels)) and
+    (.[0].channels | keys) == ["latest", "rolling", "stable"] and
+    (.[1].channels | keys) == ["latest", "rolling", "stable"]
+  ' "$temporary/before-pin.json" "$temporary/after-pin.json" >/dev/null || {
+    rm -rf "$temporary"
+    return 1
+  }
+  mapfile -t changed_channels < <(jq -r -s '
+    .[0] as $before | .[1] as $after |
+    ["latest", "stable", "rolling"][] |
+    select($before.channels[.] != $after.channels[.])
+  ' "$temporary/before-pin.json" "$temporary/after-pin.json")
+  ((${#changed_channels[@]} > 0)) || {
+    rm -rf "$temporary"
+    return 1
+  }
+
+  git -C "$repo_root" show "$base:flake.nix" >"$temporary/before-flake.nix" || {
+    rm -rf "$temporary"
+    return 1
+  }
+  git -C "$repo_root" show "$head:flake.nix" >"$temporary/after-flake.nix" || {
+    rm -rf "$temporary"
+    return 1
+  }
+  expected_flake=$temporary/expected-flake.nix
+  cp "$temporary/before-flake.nix" "$expected_flake"
+  for channel in "${changed_channels[@]}"; do
+    old_rev=$(jq -er --arg channel "$channel" '.channels[$channel].rev' "$temporary/before-pin.json") || {
+      rm -rf "$temporary"
+      return 1
+    }
+    new_rev=$(jq -er --arg channel "$channel" '.channels[$channel].rev' "$temporary/after-pin.json") || {
+      rm -rf "$temporary"
+      return 1
+    }
+    sed -i "s|github:vatesfr/xen-orchestra/$old_rev|github:vatesfr/xen-orchestra/$new_rev|" "$expected_flake"
+  done
+  cmp -s "$expected_flake" "$temporary/after-flake.nix" || {
+    rm -rf "$temporary"
+    return 1
+  }
+
+  git -C "$repo_root" show "$base:flake.lock" >"$temporary/before-lock.json" || {
+    rm -rf "$temporary"
+    return 1
+  }
+  git -C "$repo_root" show "$head:flake.lock" >"$temporary/after-lock.json" || {
+    rm -rf "$temporary"
+    return 1
+  }
+  channels_json=$(printf '%s\n' "${changed_channels[@]}" | jq -Rsc 'split("\n") | map(select(length > 0))')
+  jq --argjson channels "$channels_json" '
+    reduce $channels[] as $channel (.; del(.nodes["xo-" + $channel]))
+  ' "$temporary/before-lock.json" >"$temporary/before-lock-normalized.json"
+  jq --argjson channels "$channels_json" '
+    reduce $channels[] as $channel (.; del(.nodes["xo-" + $channel]))
+  ' "$temporary/after-lock.json" >"$temporary/after-lock-normalized.json"
+  cmp -s "$temporary/before-lock-normalized.json" "$temporary/after-lock-normalized.json" || {
+    rm -rf "$temporary"
+    return 1
+  }
+  for channel in "${changed_channels[@]}"; do
+    new_rev=$(jq -er --arg channel "$channel" '.channels[$channel].rev' "$temporary/after-pin.json")
+    jq -e --arg channel "xo-$channel" --arg rev "$new_rev" '
+      .nodes[$channel].locked.rev == $rev and
+      .nodes[$channel].original.rev == $rev
+    ' "$temporary/after-lock.json" >/dev/null || {
+      rm -rf "$temporary"
+      return 1
+    }
+    select_xo_channel "$channel"
+  done
+  validation_names["source-update-fixtures"]=1
+  classification_reason=semantic-xo-channel-update
+  rm -rf "$temporary"
+}
+
 classify_range() {
   local base=$1 head=$2 path
+  local -a changed_paths=()
   git -C "$repo_root" cat-file -e "$base^{commit}" 2>/dev/null || return 1
   git -C "$repo_root" cat-file -e "$head^{commit}" 2>/dev/null || return 1
   git -C "$repo_root" merge-base --is-ancestor "$base" "$head" || return 1
-  while IFS= read -r -d '' path; do
-    ((changed_path_count += 1))
-    select_path "$path"
-  done < <(git -C "$repo_root" diff --no-renames --name-only -z "$base" "$head")
+  classification_reason=classified-paths
+  mapfile -d '' -t changed_paths < <(
+    git -C "$repo_root" diff --no-renames --name-only -z "$base" "$head"
+  )
+  changed_path_count=${#changed_paths[@]}
+  if ! classify_xo_channel_update "$base" "$head" "${changed_paths[@]}"; then
+    for path in "${changed_paths[@]}"; do
+      select_path "$path"
+    done
+  fi
   classification_base=$base
   classification_mode=paths
-  classification_reason=classified-paths
 }
 
 expand_validation_dependencies() {
