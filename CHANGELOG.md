@@ -8,12 +8,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## Unreleased
 
+## [0.9.5] - 2026-08-20
+
 ### Added
 
 - Publish a reproducible supply assertion plus SPDX 2.3 and CycloneDX 1.5
   runtime-closure documents for every Xen Orchestra channel. The assertion
   retains the exact protected store closure and is distributed through the
   existing signed Cachix cache for downstream verification.
+
+### Changed
+
+- Establish the supply-protector output as a cryptographic dependency contract
+  for downstream flakes. NiXOA Core can verify the immutable Xen Orchestra
+  store identity, retained closure reference, Cachix trust root, and document
+  hashes before linking the upstream SPDX document into its appliance
+  attestation.
 
 ## [0.9.0] - 2026-08-20
 
