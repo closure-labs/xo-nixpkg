@@ -64,6 +64,8 @@ let
             ${pkgs.lib.getExe applications.updateXoRelease}
           grep -F -- '${pkgs.lib.getExe applications.updateXo} --rolling' \
             ${pkgs.lib.getExe applications.updateXoRolling}
+          grep -F 'rolling-candidate' ${pkgs.lib.getExe applications.prewarmRolling}
+          grep -F 'cachix push xen-orchestra-ce' source/ci/prewarm-rolling.sh
           grep -F 'xo-nixpkg-classify-ci' source/ci/run.sh
           grep -F '/scripts/update.sh' source/ci/update-xo.sh
           grep -F 'xo-nixpkg-update-libvhdi-source' source/ci/update-libvhdi.sh
@@ -94,6 +96,8 @@ let
         ])
         ''
           bash source/tests/update-xo.sh
+          bash source/tests/update-effects.sh
+          bash source/tests/prewarm-rolling.sh
           bash source/tests/update-libvhdi.sh
           bash source/tests/update-noop.sh
         '';
@@ -130,6 +134,8 @@ let
           bash
           coreutils
           git
+          gnugrep
+          gnused
           jq
         ])
         ''

@@ -66,6 +66,8 @@ tags:
 `xen-orchestra-ce`, `xen-orchestra-ce-latest`,
 `xen-orchestra-ce-stable`, and `xen-orchestra-ce-rolling` are descriptive
 aliases. `latest-upstream` is a compatibility output alias for `rolling`.
+Automation also exposes `rolling-candidate` as an exact alias used to prewarm
+the rolling closure in the existing `xen-orchestra-ce` Cachix.
 Select a channel by package attribute:
 
 ```bash

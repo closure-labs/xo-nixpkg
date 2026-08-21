@@ -8,6 +8,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## Unreleased
 
+### Added
+
+- Prewarm the exact rolling candidate closure in the existing
+  `xen-orchestra-ce` Cachix before preserving it in a draft pull request.
+
+### Changed
+
+- Stream paginated Xen Orchestra commit discovery through files to avoid
+  process argument limits, update only semantically changed channels, and
+  limit pull-request validation and publication to those channel outputs.
+- Preserve broken rolling candidates for diagnosis while failing their update
+  run when realization or Cachix publication fails.
+
 ## [0.9.5] - 2026-08-20
 
 ### Added

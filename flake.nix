@@ -121,6 +121,7 @@
         in
         {
           inherit latest rolling stable;
+          rolling-candidate = rolling;
           supply-protector = latestSupplyProtector;
           supply-protector-latest = latestSupplyProtector;
           supply-protector-stable = stableSupplyProtector;
@@ -230,6 +231,7 @@
           queue-automation = mkApp applications.queueAutomation "Queue trusted automation updates";
           update-xo-release = mkApp applications.updateXoRelease "Refresh the latest and stable XO release channels";
           update-xo-rolling = mkApp applications.updateXoRolling "Refresh the rolling XO channel from upstream HEAD";
+          prewarm-rolling-candidate = mkApp applications.prewarmRolling "Realize and publish the exact rolling candidate closure";
           update-xo-upstream = mkApp applications.updateXoRolling "Compatibility alias for the rolling XO updater";
           update-libvhdi = mkApp applications.updateLibvhdi "Update and validate the official libvhdi release";
           forgejo-update = mkApp applications.forgejoUpdate "Create a validated Forgejo update pull request";

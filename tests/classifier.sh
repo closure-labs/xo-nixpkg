@@ -114,4 +114,46 @@ jq -e '
   .release.enabled == false
 ' <<<"$dispatch_plan" >/dev/null
 
+# A generated XO pin/flake/lock cohort is classified by changed channel, not
+# merely by the three shared file paths. This rolling-only fixture must avoid
+# rebuilding latest and stable.
+semantic=$temporary/semantic-repository
+mkdir -p "$semantic/nix/sources"
+git -C "$semantic" init -q
+git -C "$semantic" config user.name fixture
+git -C "$semantic" config user.email fixture@example.invalid
+cp "$root/flake.nix" "$semantic/flake.nix"
+cp "$root/flake.lock" "$semantic/flake.lock"
+cp "$root/nix/sources/xen-orchestra.json" "$semantic/nix/sources/xen-orchestra.json"
+git -C "$semantic" add .
+git -C "$semantic" commit -qm base
+semantic_base=$(git -C "$semantic" rev-parse HEAD)
+old_rolling=$(jq -er '.channels.rolling.rev' "$semantic/nix/sources/xen-orchestra.json")
+new_rolling=4444444444444444444444444444444444444444
+jq --arg rev "$new_rolling" '
+  .channels.rolling.rev = $rev |
+  .channels.rolling.version = "unstable-2026-08-21"
+' "$semantic/nix/sources/xen-orchestra.json" >"$temporary/semantic-pin.json"
+mv "$temporary/semantic-pin.json" "$semantic/nix/sources/xen-orchestra.json"
+sed -i "s|github:vatesfr/xen-orchestra/$old_rolling|github:vatesfr/xen-orchestra/$new_rolling|" \
+  "$semantic/flake.nix"
+jq --arg rev "$new_rolling" '
+  .nodes["xo-rolling"].locked.rev = $rev |
+  .nodes["xo-rolling"].original.rev = $rev
+' "$semantic/flake.lock" >"$temporary/semantic-lock.json"
+mv "$temporary/semantic-lock.json" "$semantic/flake.lock"
+git -C "$semantic" add .
+git -C "$semantic" commit -qm rolling
+semantic_head=$(git -C "$semantic" rev-parse HEAD)
+fixture=$semantic
+jq -n --arg base "$semantic_base" '{pull_request:{base:{sha:$base}}}' >"$temporary/event.json"
+semantic_plan=$(classify pull_request refs/pull/3/merge "$semantic_head")
+jq -e '
+  .classification.reason == "semantic-xo-channel-update" and
+  [.jobs.validate.plan.targets[].name] ==
+    ["xo-rolling", "supply-protector-rolling", "source-update-fixtures"] and
+  [.jobs.publish.plan.targets[].name] ==
+    ["xo-rolling", "supply-protector-rolling"]
+' <<<"$semantic_plan" >/dev/null
+
 printf 'Classifier fixtures passed\n'

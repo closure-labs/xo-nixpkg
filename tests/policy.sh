@@ -63,6 +63,7 @@ for application in \
   queue-automation \
   update-xo-release \
   update-xo-rolling \
+  prewarm-rolling-candidate \
   update-libvhdi \
   open-update-pr \
   update-flake-lock \
