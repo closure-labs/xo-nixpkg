@@ -5,7 +5,7 @@ set -euo pipefail
 
 root=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)
 
-[[ $(tr -d '\r\n' <"$root/VERSION") == 0.9.0 ]]
+[[ $(tr -d '\r\n' <"$root/VERSION") == 0.9.5 ]]
 rg -F 'version=$(tr -d' "$root/ci/tag-release.sh" >/dev/null
 if rg -F '.#xen-orchestra-ce.version' "$root/ci/tag-release.sh"; then
   echo 'Project tags must use the repository version' >&2

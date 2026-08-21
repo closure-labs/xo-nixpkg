@@ -2,7 +2,7 @@
 # xo-nixpkg
 
 Reproducible Nix packages for Xen Orchestra Community Edition and libvhdi.
-The project releases independently as `v0.9.0`; each package keeps its own
+The project releases independently as `v0.9.5`; each package keeps its own
 upstream version.
 
 ## Quick start
