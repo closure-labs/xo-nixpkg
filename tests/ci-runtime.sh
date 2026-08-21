@@ -54,7 +54,10 @@ prepared_lifecycle=$(jq -cn '{
         targets: [
           {name: "xo-latest", attribute: "packages.x86_64-linux.latest"},
           {name: "xo-stable", attribute: "packages.x86_64-linux.stable"},
-          {name: "xo-rolling", attribute: "packages.x86_64-linux.rolling"}
+          {name: "xo-rolling", attribute: "packages.x86_64-linux.rolling"},
+          {name: "supply-protector-latest", attribute: "packages.x86_64-linux.supply-protector-latest"},
+          {name: "supply-protector-stable", attribute: "packages.x86_64-linux.supply-protector-stable"},
+          {name: "supply-protector-rolling", attribute: "packages.x86_64-linux.supply-protector-rolling"}
         ]
       }
     }
@@ -112,7 +115,7 @@ while (( $# > 0 )); do
 done
 printf '\n'
 if [[ -n $manifest ]]; then
-  printf '%s\n' '{"results":[{"outputs":["/nix/store/xo-latest"]},{"outputs":["/nix/store/xo-stable"]},{"outputs":["/nix/store/xo-rolling"]}]}' >"$manifest"
+  printf '%s\n' '{"results":[{"outputs":["/nix/store/xo-latest"]},{"outputs":["/nix/store/xo-stable"]},{"outputs":["/nix/store/xo-rolling"]},{"outputs":["/nix/store/supply-latest"]},{"outputs":["/nix/store/supply-stable"]},{"outputs":["/nix/store/supply-rolling"]}]}' >"$manifest"
 fi
 EOF
 chmod +x "$temporary_directory/bin/flake-plan-runner"
@@ -141,6 +144,6 @@ PREPARED_CI_WORKFLOW="$prepared_lifecycle" \
 [[ $(<"$temporary_directory/publish-log") == \
   *'<--plan-file>'* ]]
 [[ $(<"$temporary_directory/publish-log") == \
-  *'cachix <push> <xen-orchestra-ce> </nix/store/xo-latest> </nix/store/xo-stable> </nix/store/xo-rolling>'* ]]
+  *'cachix <push> <xen-orchestra-ce> </nix/store/xo-latest> </nix/store/xo-stable> </nix/store/xo-rolling> </nix/store/supply-latest> </nix/store/supply-stable> </nix/store/supply-rolling>'* ]]
 
 printf 'CI runtime fixtures passed\n'

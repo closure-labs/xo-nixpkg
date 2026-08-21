@@ -72,6 +72,8 @@ Select a channel by package attribute:
 nix build --accept-flake-config github:declarative-dale/xo-nixpkg#latest
 nix build --accept-flake-config github:declarative-dale/xo-nixpkg#stable
 nix build --accept-flake-config github:declarative-dale/xo-nixpkg#rolling
+nix build --accept-flake-config \
+  github:declarative-dale/xo-nixpkg#supply-protector-latest
 ```
 
 As a flake input, keep one locked input and select its output:
@@ -87,6 +89,12 @@ environment.systemPackages = [
 The immutable project `v*` tags remain available for repository releases. No
 automation moves `latest`, `stable`, or `latest-upstream` Git tags. Commit the
 resolved `flake.lock` when reproducing a rolling-channel investigation.
+
+Each channel has a matching `supply-protector-<channel>` output containing a
+reproducible closure assertion, the exported Nix reference graph, and SPDX 2.3
+and CycloneDX 1.5 documents. `supply-protector` selects `latest`. Protected
+main publishes these outputs through the signed public Cachix cache alongside
+the packages they describe.
 
 ## Documentation
 

@@ -8,6 +8,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## Unreleased
 
+### Added
+
+- Publish a reproducible supply assertion plus SPDX 2.3 and CycloneDX 1.5
+  runtime-closure documents for every Xen Orchestra channel. The assertion
+  retains the exact protected store closure and is distributed through the
+  existing signed Cachix cache for downstream verification.
+
 ## [0.9.0] - 2026-08-20
 
 ### Changed

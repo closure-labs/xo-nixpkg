@@ -26,6 +26,7 @@ The XO updater enters the pure `.#updater` shell automatically when needed.
 nix build .#xen-orchestra-ce
 nix build .#stable
 nix build .#rolling
+nix build .#supply-protector-latest
 
 # Validate the in-repository FUSE3 libvhdi package
 nix eval --raw .#packages.x86_64-linux.libvhdi.name
@@ -144,6 +145,10 @@ a successful merge-group run can satisfy validation for an ancestral main SHA,
 while only the path delta after that SHA is revalidated. Missing workflow-run
 history, API failures, incomplete Git history, and non-ancestral SHAs all fall
 back to the complete validation plan.
+
+The same publication plan pushes each channel's `supply-protector` store output.
+Those outputs retain the exact XO closure and package deterministic SPDX,
+CycloneDX, closure-graph, checksum, and assertion files for downstream flakes.
 
 ## Public organization migration
 

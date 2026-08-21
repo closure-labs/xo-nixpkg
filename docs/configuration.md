@@ -20,6 +20,12 @@ Commit the resulting `flake.lock`. The input exposes these primary packages on
 - `packages.x86_64-linux.latest`: newest official XO release
 - `packages.x86_64-linux.stable`: preceding official XO release
 - `packages.x86_64-linux.rolling`: newest admitted upstream `master` commit
+- `packages.x86_64-linux.supply-protector-latest`: signed-cache supply
+  assertion and closure documents for `latest`
+- `packages.x86_64-linux.supply-protector-stable`: matching `stable` supply
+  assertion
+- `packages.x86_64-linux.supply-protector-rolling`: matching `rolling` supply
+  assertion
 - `packages.x86_64-linux.xen-orchestra-ce`: compatibility alias for `latest`
 - `packages.x86_64-linux.libvhdi`
 - `packages.x86_64-linux.flake-plan-runner`
@@ -59,6 +65,15 @@ lifecycle publishes only package closures selected by the path classifier and
 does so in the validation job's existing Nix store. GitHub-hosted runners are
 ephemeral, so CI does not garbage-collect an isolated local store after the
 job. No runner-local or Determinate substituter is required.
+
+The three supply-protector outputs are ordinary Nix store outputs in the same
+publication plan. Their `assertion.json` identifies the exact XO store path,
+channel, upstream revision, closure-graph digest, document digests, and Cachix
+trust root. The SPDX and CycloneDX documents model the exported runtime
+reference graph without querying the Nix daemon from a sandboxed builder. A
+consumer that substitutes the assertion through the configured Cachix key can
+therefore compare its selected XO output with the asserted store path before
+building a broader system-level SBOM or provenance attestation.
 
 NiXOA Core separately retains `https://install.determinate.systems` for users
 loading its flake from an existing vanilla-nixpkgs NixOS VM. That consumer
