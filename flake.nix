@@ -107,9 +107,24 @@
           latest = mkXo "latest" xo-latest;
           stable = mkXo "stable" xo-stable;
           rolling = mkXo "rolling" xo-rolling;
+          mkSupplyProtector =
+            channel: package: source:
+            pkgs.callPackage ./nix/supply-protector.nix {
+              inherit channel package;
+              inherit (sourcePins.xenOrchestra.channels.${channel}) version;
+              sourceRev = source.rev;
+              sourceTimestamp = source.lastModified;
+            };
+          latestSupplyProtector = mkSupplyProtector "latest" latest xo-latest;
+          stableSupplyProtector = mkSupplyProtector "stable" stable xo-stable;
+          rollingSupplyProtector = mkSupplyProtector "rolling" rolling xo-rolling;
         in
         {
           inherit latest rolling stable;
+          supply-protector = latestSupplyProtector;
+          supply-protector-latest = latestSupplyProtector;
+          supply-protector-stable = stableSupplyProtector;
+          supply-protector-rolling = rollingSupplyProtector;
           latest-upstream = rolling;
           xen-orchestra-ce = latest;
           xen-orchestra-ce-latest = latest;
@@ -246,6 +261,9 @@
           xo-latest = self.packages.${system}.latest;
           xo-stable = self.packages.${system}.stable;
           xo-rolling = self.packages.${system}.rolling;
+          supply-protector-latest = self.packages.${system}.supply-protector-latest;
+          supply-protector-stable = self.packages.${system}.supply-protector-stable;
+          supply-protector-rolling = self.packages.${system}.supply-protector-rolling;
           xen-orchestra-ce = self.packages.${system}.latest;
           xo-fuse-linkage = self.packages.${system}.latest;
           xo-server-service = import ./nix/tests/xo-server-service.nix {

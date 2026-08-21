@@ -8,6 +8,9 @@
     { "name": "xo-latest", "attribute": "checks.x86_64-linux.xo-latest", "requires": [] },
     { "name": "xo-stable", "attribute": "checks.x86_64-linux.xo-stable", "requires": [] },
     { "name": "xo-rolling", "attribute": "checks.x86_64-linux.xo-rolling", "requires": [] },
+    { "name": "supply-protector-latest", "attribute": "checks.x86_64-linux.supply-protector-latest", "requires": ["xo-latest"] },
+    { "name": "supply-protector-stable", "attribute": "checks.x86_64-linux.supply-protector-stable", "requires": ["xo-stable"] },
+    { "name": "supply-protector-rolling", "attribute": "checks.x86_64-linux.supply-protector-rolling", "requires": ["xo-rolling"] },
     { "name": "xo-fuse-linkage", "attribute": "checks.x86_64-linux.xo-fuse-linkage", "requires": ["xo-latest"] },
     { "name": "xo-server-service", "attribute": "checks.x86_64-linux.xo-server-service", "requires": ["xo-latest"] },
     { "name": "libvhdi", "attribute": "checks.x86_64-linux.libvhdi", "requires": [] },
@@ -23,7 +26,10 @@
   "publicationTargets": [
     { "name": "xo-latest", "attribute": "packages.x86_64-linux.latest" },
     { "name": "xo-stable", "attribute": "packages.x86_64-linux.stable" },
-    { "name": "xo-rolling", "attribute": "packages.x86_64-linux.rolling" }
+    { "name": "xo-rolling", "attribute": "packages.x86_64-linux.rolling" },
+    { "name": "supply-protector-latest", "attribute": "packages.x86_64-linux.supply-protector-latest" },
+    { "name": "supply-protector-stable", "attribute": "packages.x86_64-linux.supply-protector-stable" },
+    { "name": "supply-protector-rolling", "attribute": "packages.x86_64-linux.supply-protector-rolling" }
   ],
   "pathRules": [
     {
@@ -88,23 +94,28 @@
     },
     {
       "pattern": "^(default\\.nix|nix/(fetch-normalized-yarn-deps|prefetch-yarn-deps|yarn-platform-tools)\\.nix|nix/patches/)",
-      "validation": ["xo-latest", "xo-stable", "xo-rolling", "xo-fuse-linkage", "xo-server-service"],
-      "publication": ["xo-latest", "xo-stable", "xo-rolling"]
+      "validation": ["xo-latest", "xo-stable", "xo-rolling", "supply-protector-latest", "supply-protector-stable", "supply-protector-rolling", "xo-fuse-linkage", "xo-server-service"],
+      "publication": ["xo-latest", "xo-stable", "xo-rolling", "supply-protector-latest", "supply-protector-stable", "supply-protector-rolling"]
     },
     {
       "pattern": "^nix/sources/xen-orchestra\\.json$",
-      "validation": ["xo-latest", "xo-stable", "xo-rolling", "xo-fuse-linkage", "xo-server-service", "source-update-fixtures"],
-      "publication": ["xo-latest", "xo-stable", "xo-rolling"]
+      "validation": ["xo-latest", "xo-stable", "xo-rolling", "supply-protector-latest", "supply-protector-stable", "supply-protector-rolling", "xo-fuse-linkage", "xo-server-service", "source-update-fixtures"],
+      "publication": ["xo-latest", "xo-stable", "xo-rolling", "supply-protector-latest", "supply-protector-stable", "supply-protector-rolling"]
     },
     {
       "pattern": "^(nix/libvhdi\\.nix|nix/sources/libvhdi\\.json)$",
-      "validation": ["libvhdi", "source-update-fixtures"],
-      "publication": ["xo-latest", "xo-stable", "xo-rolling"]
+      "validation": ["libvhdi", "supply-protector-latest", "supply-protector-stable", "supply-protector-rolling", "source-update-fixtures"],
+      "publication": ["xo-latest", "xo-stable", "xo-rolling", "supply-protector-latest", "supply-protector-stable", "supply-protector-rolling"]
     },
     {
       "pattern": "^nix/source-pins\\.nix$",
-      "validation": ["xo-latest", "xo-stable", "xo-rolling", "xo-fuse-linkage", "xo-server-service", "libvhdi", "source-update-fixtures"],
-      "publication": ["xo-latest", "xo-stable", "xo-rolling"]
+      "validation": ["xo-latest", "xo-stable", "xo-rolling", "supply-protector-latest", "supply-protector-stable", "supply-protector-rolling", "xo-fuse-linkage", "xo-server-service", "libvhdi", "source-update-fixtures"],
+      "publication": ["xo-latest", "xo-stable", "xo-rolling", "supply-protector-latest", "supply-protector-stable", "supply-protector-rolling"]
+    },
+    {
+      "pattern": "^nix/supply-protector\\.(nix|sh)$",
+      "validation": ["repository-policy", "supply-protector-latest", "supply-protector-stable", "supply-protector-rolling", "classifier-fixtures"],
+      "publication": ["supply-protector-latest", "supply-protector-stable", "supply-protector-rolling"]
     },
     {
       "pattern": "^nix/tests/xo-server-service\\.nix$",

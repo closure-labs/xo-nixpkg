@@ -37,7 +37,12 @@ for channel in latest stable rolling; do
   rev=$(jq -er ".channels.$channel.rev" "$root/nix/sources/xen-orchestra.json")
   rg -F "url = \"github:vatesfr/xen-orchestra/$rev\";" "$root/flake.nix" >/dev/null
   rg -F "$channel = mkXo \"$channel\"" "$root/flake.nix" >/dev/null
+  rg -F "supply-protector-$channel" "$root/flake.nix" >/dev/null
 done
+
+rg -F 'exportReferencesGraph' "$root/nix/supply-protector.nix" >/dev/null
+rg -F 'xen-orchestra.spdx.json' "$root/nix/supply-protector.sh" >/dev/null
+rg -F 'xen-orchestra.cdx.json' "$root/nix/supply-protector.sh" >/dev/null
 
 jq -e '
   .name == "Protect main with an up-to-date CI gate" and

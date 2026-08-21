@@ -10,6 +10,11 @@ nix flake check --all-systems --no-build
 # Build every XO channel
 nix build .#latest .#stable .#rolling
 
+# Build and inspect the cacheable supply assertion for latest
+nix build .#supply-protector-latest
+jq .subject result/assertion.json
+sha256sum --check --strict result/SHA256SUMS
+
 # Validate the source-locked libvhdi package and FUSE3 linkage
 nix eval --raw .#packages.x86_64-linux.libvhdi.name
 nix eval --raw .#packages.x86_64-linux.libvhdi.fuseBackend
@@ -105,6 +110,8 @@ failure is collected. For local use, `.#ci` classifies the local event as a
 full run when no prepared output is supplied. CI checks:
 
 - independent package builds for `latest`, `stable`, and `rolling`
+- reproducible closure assertions and SPDX/CycloneDX documents for every XO
+  channel
 - upstream/install checks and exclusive FUSE3 linkage for `libvhdi`
 - XO `fuse-native` libfuse2 linkage and absence of bundled/prebuilt FUSE files
 - updater, trusted-queue, runtime-adapter, shell, and ruleset fixtures
