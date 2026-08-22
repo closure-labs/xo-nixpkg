@@ -19,7 +19,7 @@
       flake = false;
     };
     xo-rolling = {
-      url = "github:vatesfr/xen-orchestra/4235644950555ed5637f2352b684aaba398e61de";
+      url = "github:vatesfr/xen-orchestra/9ef53890b8f5166539ca34654d8e7e77c0b218f1";
       flake = false;
     };
   };
