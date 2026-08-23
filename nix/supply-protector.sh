@@ -94,7 +94,7 @@ jq -S -n \
     dataLicense: "CC0-1.0",
     SPDXID: "SPDXRef-DOCUMENT",
     name: ("xo-nixpkg-" + $channel + "-" + $version),
-    documentNamespace: ("https://github.com/declarative-dale/xo-nixpkg/supply/" + $sourceRev + "/" + $channel + "/" + $rootSpdx),
+    documentNamespace: ("https://github.com/closure-labs/xo-nixpkg/supply/" + $sourceRev + "/" + $channel + "/" + $rootSpdx),
     creationInfo: {
       created: $created,
       creators: ["Tool: xo-nixpkg-supply-protector"]
@@ -190,7 +190,7 @@ jq -S -n \
   --argjson relationshipCount "$relationship_count" '
   {
     schemaVersion: 1,
-    predicateType: "https://github.com/declarative-dale/xo-nixpkg/supply-protector/v1",
+    predicateType: "https://github.com/closure-labs/xo-nixpkg/supply-protector/v1",
     subject: {
       name: "xen-orchestra-ce",
       channel: $channel,

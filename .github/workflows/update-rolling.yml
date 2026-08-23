@@ -59,7 +59,7 @@ jobs:
           GH_TOKEN: ${{ steps.app-token.outputs.token }}
           UPDATE_BRANCH: automation/xo-rolling
           UPDATE_TITLE: "xen-orchestra-ce rolling: refresh upstream"
-          UPDATE_DRAFT: true
+          UPDATE_DRAFT: ${{ steps.prewarm.outcome != 'success' }}
           UPDATE_BODY: |-
             Automated rolling-channel candidate from Xen Orchestra upstream master.
 
@@ -67,8 +67,9 @@ jobs:
             Changed channels: `${{ steps.rolling.outputs.changed_channels }}`
             Candidate cache status: `${{ steps.prewarm.outcome == 'success' && 'prewarmed' || 'BROKEN — realization or Cachix upload failed' }}`
 
-            The normal pull-request CI is authoritative. A broken candidate remains
-            visible here and is replaced only when upstream advances.
+            The normal pull-request CI is authoritative. A prewarmed candidate is
+            eligible for the trusted merge queue; a broken candidate remains draft
+            and is replaced only when upstream advances.
         run: nix run .#open-update-pr -- flake.nix flake.lock nix/sources/xen-orchestra.json
 
       - name: Fail after preserving a broken rolling candidate
