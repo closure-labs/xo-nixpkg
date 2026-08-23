@@ -234,7 +234,6 @@
           prewarm-rolling-candidate = mkApp applications.prewarmRolling "Realize and publish the exact rolling candidate closure";
           update-xo-upstream = mkApp applications.updateXoRolling "Compatibility alias for the rolling XO updater";
           update-libvhdi = mkApp applications.updateLibvhdi "Update and validate the official libvhdi release";
-          forgejo-update = mkApp applications.forgejoUpdate "Create a validated Forgejo update pull request";
           open-update-pr = mkApp applications.openUpdatePr "Commit and open one allowlisted source update pull request";
           update-flake-lock = mkApp applications.updateFlakeLock "Refresh and validate the Nixpkgs lock";
         }

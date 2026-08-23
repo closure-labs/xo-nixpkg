@@ -18,8 +18,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Move live repository references to `closure-labs/xo-nixpkg`, require the
   repository merge queue, and make successfully prewarmed rolling candidates
   eligible for trusted auto-merge while retaining broken candidates as drafts.
-- Replace the dedicated NiXOA Updater GitHub App with narrowly scoped built-in
-  workflow tokens; trusted queue automation approves and waits for GitHub's
+- Remove the obsolete Forgejo updater and replace the retired updater GitHub
+  App with narrowly scoped built-in workflow tokens; trusted queue automation
+  approves and waits for GitHub's
   native approval-gated CI on bot-created pull requests before enrolling their
   exact head commit, using the normalized `github-actions` API login for author
   validation.

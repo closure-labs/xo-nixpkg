@@ -53,7 +53,7 @@
       "publication": []
     },
     {
-      "pattern": "^(\\.github/|\\.forgejo/)",
+      "pattern": "^\\.github/",
       "validation": ["repository-policy"],
       "publication": []
     },
@@ -83,7 +83,7 @@
       "publication": []
     },
     {
-      "pattern": "^(ci/(update-xo|update-libvhdi|update-flake-lock|forgejo-update|open-update-pr)\\.sh|scripts/|tests/(update-xo|update-libvhdi|update-noop)\\.sh)$",
+      "pattern": "^(ci/(update-xo|update-libvhdi|update-flake-lock|open-update-pr)\\.sh|scripts/|tests/(update-xo|update-libvhdi|update-noop)\\.sh)$",
       "validation": ["repository-policy", "source-update-fixtures", "application-composition"],
       "publication": []
     },

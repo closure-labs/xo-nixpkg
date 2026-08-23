@@ -219,15 +219,6 @@ rec {
       ++ [ updateLibvhdiSource ];
   };
 
-  forgejoUpdate = mkRepositoryApplication {
-    name = "xo-nixpkg-forgejo-update";
-    script = ../ci/forgejo-update.sh;
-    runtimeInputs = updateRuntimeInputs ++ [
-      updateLibvhdi
-      updateXoRelease
-    ];
-  };
-
   openUpdatePr = mkRepositoryApplication {
     name = "xo-nixpkg-open-update-pr";
     script = ../ci/open-update-pr.sh;

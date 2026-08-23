@@ -6,7 +6,7 @@
 
   inputs = {
     nixpkgs.url = "github:NixOS/nixpkgs/nixos-unstable";
-    xo-ce-nix.url = "git+ssh://git@codeberg.org/NiXOA/xen-orchestra-ce.git";
+    xo-ce-nix.url = "git+ssh://git@github.com/closure-labs/xo-nixpkg.git";
   };
 
   outputs =
@@ -29,7 +29,7 @@
               ];
 
               # Example: Basic xo-server systemd service
-              # Note: This is a minimal example. For production use, see NiXOA modules.
+              # Note: This is a minimal example. For an appliance, see Maestro.
               systemd.services.xo-server = {
                 description = "Xen Orchestra Server";
                 wantedBy = [ "multi-user.target" ];

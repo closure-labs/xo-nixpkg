@@ -69,13 +69,10 @@ let
           grep -F 'xo-nixpkg-classify-ci' source/ci/run.sh
           grep -F '/scripts/update.sh' source/ci/update-xo.sh
           grep -F 'xo-nixpkg-update-libvhdi-source' source/ci/update-libvhdi.sh
-          grep -F 'xo-nixpkg-update-xo-release' source/ci/forgejo-update.sh
-          grep -F 'xo-nixpkg-update-libvhdi' source/ci/forgejo-update.sh
           grep -F 'xo-nixpkg-trusted-update' source/ci/queue-automation.sh
           if rg '(ci|scripts)/[A-Za-z0-9._-]+\\.sh' \
             source/ci/run.sh \
             source/ci/update-libvhdi.sh \
-            source/ci/forgejo-update.sh \
             source/ci/queue-automation.sh; then
             echo 'Composed applications must invoke packaged sibling executables' >&2
             exit 1

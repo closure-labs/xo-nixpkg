@@ -1,11 +1,11 @@
 <!-- SPDX-License-Identifier: Apache-2.0 -->
 # Version Sync Tracking
 
-This document tracks synchronization between NiXOA core and this standalone package repository.
+This document tracks synchronization between Maestro and this standalone package repository.
 
 ## Current Status
 
-| Repository | Version | Last Sync | Core Version | Nixpkgs Status |
+| Repository | Version | Last Sync | Maestro Version | Nixpkgs Status |
 |------------|---------|-----------|--------------|----------------|
 | xo-nixpkg | v0.9.5 | 2026-08-20 | v1.3.1-dev.0+ | Packaging maintained here |
 
@@ -14,19 +14,19 @@ This document tracks synchronization between NiXOA core and this standalone pack
 ### 2026-08-20: Supply assertion trust chain (v0.9.5)
 - Published deterministic assertions, closure graphs, SPDX 2.3, CycloneDX 1.5, and checksums for every Xen Orchestra channel
 - Distributed the supply outputs through the signed Cachix cache while retaining each exact Xen Orchestra closure as a Nix reference
-- Established `supply-protector-latest` as a cryptographic dependency contract for NiXOA installer attestations
-- Enabled Core to verify the Nix store identity, Cachix trust root, and document hashes before adding a checksummed SPDX `DESCRIBED_BY` link
+- Established `supply-protector-latest` as a cryptographic dependency contract for Maestro installer attestations
+- Enabled Maestro to verify the Nix store identity, Cachix trust root, and document hashes before adding a checksummed SPDX `DESCRIBED_BY` link
 
 ### 2026-08-20: Nix-native release channels (v0.9.0)
 - Replaced moving channel tags with immutable `latest`, `stable`, and `rolling` package outputs
 - Replaced daily build-and-retry jobs with standing release and rolling candidate pull requests
 - Published all three Xen Orchestra closures from protected main, including libvhdi transitively
-- Updated NiXOA core to select the `latest` package output by default
+- Updated Maestro to select the `latest` package output by default
 
 ### 2026-08-18: Independent project releases (v0.8.0)
 - Introduced a repository-owned project version
 - Kept Xen Orchestra package versions aligned with their upstream release
-- Integrated the reusable flake-attribute CI planner consumed by core
+- Integrated the reusable flake-attribute CI planner consumed by Maestro
 - Organized quick-start, configuration, development, and testing documentation
 
 ### 2026-02-27: Submission-readiness cleanup (v1.1.0)
@@ -37,19 +37,19 @@ This document tracks synchronization between NiXOA core and this standalone pack
 
 ### 2026-01-10: Initial repository structure (v1.0.0)
 - Created standalone repository structure
-- Synced packages from NiXOA core v0.5
+- Synced packages from Maestro v0.5
 
 ## Sync Procedure
 
-### Core -> Standalone
+### Maestro -> Standalone
 
-When syncing Xen Orchestra package changes from core:
+When syncing Xen Orchestra package changes from Maestro:
 
 ```bash
-cd /path/to/NiXOA/core
+cd /path/to/maestro
 git log --oneline pkgs/xen-orchestra-ce/
 
-diff -u /path/to/NiXOA/core/pkgs/xen-orchestra-ce/default.nix \
+diff -u /path/to/maestro/pkgs/xen-orchestra-ce/default.nix \
         /path/to/xen-orchestra-ce-nix/default.nix
 ```
 
@@ -58,13 +58,13 @@ Then:
 2. Re-run checks.
 3. Update `CHANGELOG.md` and this file.
 
-### Standalone -> Core
+### Standalone -> Maestro
 
-When propagating standalone changes back to core:
+When propagating standalone changes back to Maestro:
 1. Compare `default.nix` logic.
 2. Port any helper script changes under `scripts/`.
-3. Validate in core system build.
-4. Update core changelog as needed.
+3. Validate in Maestro system build.
+4. Update Maestro changelog as needed.
 
 ## Sync Checklist
 
