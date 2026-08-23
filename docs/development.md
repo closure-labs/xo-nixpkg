@@ -102,16 +102,16 @@ nix eval --raw .#packages.x86_64-linux.libvhdi.fuseBackend
 nix build --no-link .#libvhdi
 ```
 
-## Syncing with NiXOA
+## Syncing with Maestro
 
-When syncing package changes with NiXOA:
+When syncing package changes with Maestro:
 
 ```bash
-# In the nixoa repo
+# In the Maestro repository
 git log --oneline pkgs/xen-orchestra-ce/
 
 # Compare package definitions
-diff -u /path/to/nixoa/pkgs/xen-orchestra-ce/default.nix \
+diff -u /path/to/maestro/pkgs/xen-orchestra-ce/default.nix \
         /path/to/xen-orchestra-ce-nix/default.nix
 ```
 

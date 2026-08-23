@@ -75,10 +75,10 @@ consumer that substitutes the assertion through the configured Cachix key can
 therefore compare its selected XO output with the asserted store path before
 building a broader system-level SBOM or provenance attestation.
 
-NiXOA separately retains `https://install.determinate.systems` for users
+Maestro separately retains `https://install.determinate.systems` for users
 loading its flake from an existing vanilla-nixpkgs NixOS VM. That consumer
 cache avoids compiling Determinate Nix and is not duplicated here because
-xo-nixpkg does not build NiXOA's Determinate input.
+xo-nixpkg does not build Maestro's Determinate input.
 
 ## Inspect source locks
 

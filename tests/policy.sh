@@ -69,9 +69,8 @@ for application in \
   prewarm-rolling-candidate \
   update-libvhdi \
   open-update-pr \
-  update-flake-lock \
-  forgejo-update; do
-  rg -F "nix run .#$application" "$root/.github/workflows" "$root/.forgejo/workflows" >/dev/null
+  update-flake-lock; do
+  rg -F "nix run .#$application" "$root/.github/workflows" >/dev/null
 done
 
 rg -F 'bash ci/classify.sh "$GITHUB_OUTPUT"' \
@@ -125,7 +124,7 @@ if rg -F 'gh workflow run "$ci_workflow"' "$root/ci/trusted-update.sh"; then
   exit 1
 fi
 
-if rg 'run:.*(\./ci/|\./scripts/)' "$root/.github/workflows" "$root/.forgejo/workflows"; then
+if rg 'run:.*(\./ci/|\./scripts/)' "$root/.github/workflows"; then
   echo 'Workflows must invoke repository automation through flake apps' >&2
   exit 1
 fi
@@ -137,8 +136,7 @@ while IFS= read -r action; do
   }
 done < <(yq -r '.. | .uses? | select(. != null)' \
   "$root"/.github/actions/*/*.yml \
-  "$root"/.github/workflows/*.yml \
-  "$root"/.forgejo/workflows/*.yml | grep -v '^---$')
+  "$root"/.github/workflows/*.yml | grep -v '^---$')
 
 yq -e '
   [.jobs[].steps[] | select(.uses == "actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1") |
