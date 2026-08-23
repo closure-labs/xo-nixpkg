@@ -110,8 +110,8 @@ if rg -F 'DeterminateSystems/update-flake-lock' "$root/.github"; then
   echo 'Lock updates must use flake-packaged automation' >&2
   exit 1
 fi
-if rg -F 'UPDATE_GITHUB_APP_ID' "$root/.github"; then
-  echo 'GitHub App automation must use the client ID' >&2
+if rg -F -e 'UPDATE_GITHUB_APP_' -e 'create-github-app-token' "$root/.github"; then
+  echo 'GitHub automation must use the scoped built-in token' >&2
   exit 1
 fi
 
