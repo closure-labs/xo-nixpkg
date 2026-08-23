@@ -17,7 +17,11 @@ if [[ "$1 $2" == 'pr view' ]]; then
     --arg repository "${FAKE_REPOSITORY:-example/xo-nixpkg}" \
     '{author:{login:$author},baseRefName:"main",headRefName:"automation/test",headRefOid:"abc123",headRepository:{nameWithOwner:$repository},mergeStateStatus:"CLEAN",state:"OPEN",title:"Trusted update",url:"https://example.invalid/pr/1"}'
 elif [[ "$1 $2" == 'run list' ]]; then
-  printf '42\n'
+  printf '[{"databaseId":42,"conclusion":"action_required"}]\n'
+elif [[ $1 == api ]]; then
+  printf '%s\n' "$*" >"$FAKE_APPROVE_LOG"
+elif [[ "$1 $2" == 'run watch' ]]; then
+  :
 elif [[ "$1 $2" == 'pr merge' ]]; then
   printf '%s\n' "$*" >"$FAKE_MERGE_LOG"
 else
@@ -36,10 +40,12 @@ trusted_env=(
   EXPECTED_AUTHOR=github-actions
   EXPECTED_HEAD_SHA=abc123
   DEFAULT_BRANCH=main
+  FAKE_APPROVE_LOG="$temporary/approve.log"
   FAKE_MERGE_LOG="$temporary/merge.log"
 )
 
 env PATH="$temporary/bin:$PATH" "${trusted_env[@]}" bash "$root/ci/trusted-update.sh"
+grep -Fq -- 'actions/runs/42/approve' "$temporary/approve.log"
 grep -Fq -- '--match-head-commit abc123' "$temporary/merge.log"
 
 if env PATH="$temporary/bin:$PATH" FAKE_AUTHOR=attacker "${trusted_env[@]}" \

@@ -19,8 +19,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   repository merge queue, and make successfully prewarmed rolling candidates
   eligible for trusted auto-merge while retaining broken candidates as drafts.
 - Replace the dedicated NiXOA Updater GitHub App with narrowly scoped built-in
-  workflow tokens; trusted queue automation dispatches CI for bot-created pull
-  requests before enrolling their exact head commit.
+  workflow tokens; trusted queue automation approves and waits for GitHub's
+  native approval-gated CI on bot-created pull requests before enrolling their
+  exact head commit, using the normalized `github-actions` API login for author
+  validation.
 - Stream paginated Xen Orchestra commit discovery through files to avoid
   process argument limits, update only semantically changed channels, and
   limit pull-request validation and publication to those channel outputs.

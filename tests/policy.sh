@@ -114,6 +114,16 @@ if rg -F -e 'UPDATE_GITHUB_APP_' -e 'create-github-app-token' "$root/.github"; t
   echo 'GitHub automation must use the scoped built-in token' >&2
   exit 1
 fi
+rg -F 'UPDATE_AUTHOR: github-actions' "$root/.github/workflows/queue-automation.yml" >/dev/null
+if rg -F 'UPDATE_AUTHOR: github-actions[bot]' "$root/.github/workflows/queue-automation.yml"; then
+  echo 'Trusted automation must compare the normalized GitHub Actions login' >&2
+  exit 1
+fi
+rg -F 'actions/runs/${run_id}/approve' "$root/ci/trusted-update.sh" >/dev/null
+if rg -F 'gh workflow run "$ci_workflow"' "$root/ci/trusted-update.sh"; then
+  echo 'Trusted automation must approve native pull-request CI instead of dispatching detached CI' >&2
+  exit 1
+fi
 
 if rg 'run:.*(\./ci/|\./scripts/)' "$root/.github/workflows" "$root/.forgejo/workflows"; then
   echo 'Workflows must invoke repository automation through flake apps' >&2
