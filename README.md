@@ -11,16 +11,16 @@ Build either package directly from GitHub:
 
 ```bash
 nix build --accept-flake-config \
-  github:declarative-dale/xo-nixpkg#xen-orchestra-ce
+  github:closure-labs/xo-nixpkg#xen-orchestra-ce
 nix build --accept-flake-config \
-  github:declarative-dale/xo-nixpkg#libvhdi
+  github:closure-labs/xo-nixpkg#libvhdi
 ```
 
 Or add the flake as an input:
 
 ```nix
 {
-  inputs.xo-nixpkg.url = "github:declarative-dale/xo-nixpkg";
+  inputs.xo-nixpkg.url = "github:closure-labs/xo-nixpkg";
 
   outputs = { nixpkgs, xo-nixpkg, ... }: {
     nixosConfigurations.example = nixpkgs.lib.nixosSystem {
@@ -39,7 +39,7 @@ Or add the flake as an input:
 ## Develop
 
 ```bash
-git clone https://github.com/declarative-dale/xo-nixpkg.git
+git clone https://github.com/closure-labs/xo-nixpkg.git
 cd xo-nixpkg
 nix develop --accept-flake-config
 nix run --accept-flake-config .#ci
@@ -71,17 +71,17 @@ the rolling closure in the existing `xen-orchestra-ce` Cachix.
 Select a channel by package attribute:
 
 ```bash
-nix build --accept-flake-config github:declarative-dale/xo-nixpkg#latest
-nix build --accept-flake-config github:declarative-dale/xo-nixpkg#stable
-nix build --accept-flake-config github:declarative-dale/xo-nixpkg#rolling
+nix build --accept-flake-config github:closure-labs/xo-nixpkg#latest
+nix build --accept-flake-config github:closure-labs/xo-nixpkg#stable
+nix build --accept-flake-config github:closure-labs/xo-nixpkg#rolling
 nix build --accept-flake-config \
-  github:declarative-dale/xo-nixpkg#supply-protector-latest
+  github:closure-labs/xo-nixpkg#supply-protector-latest
 ```
 
 As a flake input, keep one locked input and select its output:
 
 ```nix
-inputs.xo-nixpkg.url = "github:declarative-dale/xo-nixpkg";
+inputs.xo-nixpkg.url = "github:closure-labs/xo-nixpkg";
 
 environment.systemPackages = [
   inputs.xo-nixpkg.packages.x86_64-linux.stable

@@ -9,7 +9,7 @@ Use a locked flake input for reproducible deployments:
 {
   inputs = {
     nixpkgs.url = "github:NixOS/nixpkgs/nixos-unstable";
-    xo-nixpkg.url = "github:declarative-dale/xo-nixpkg";
+    xo-nixpkg.url = "github:closure-labs/xo-nixpkg";
   };
 }
 ```
@@ -75,10 +75,10 @@ consumer that substitutes the assertion through the configured Cachix key can
 therefore compare its selected XO output with the asserted store path before
 building a broader system-level SBOM or provenance attestation.
 
-NiXOA Core separately retains `https://install.determinate.systems` for users
+NiXOA separately retains `https://install.determinate.systems` for users
 loading its flake from an existing vanilla-nixpkgs NixOS VM. That consumer
 cache avoids compiling Determinate Nix and is not duplicated here because
-xo-nixpkg does not build Core's Determinate input.
+xo-nixpkg does not build NiXOA's Determinate input.
 
 ## Inspect source locks
 
@@ -116,7 +116,7 @@ Run the plan with the packaged validator:
 
 ```bash
 nix run --accept-flake-config \
-  github:declarative-dale/xo-nixpkg#run-ci-plan -- \
+  github:closure-labs/xo-nixpkg#run-ci-plan -- \
   --plan lib.ciPlans.x86_64-linux.validation
 ```
 

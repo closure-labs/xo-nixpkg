@@ -4,7 +4,7 @@
 ## Setup
 
 ```bash
-git clone https://github.com/declarative-dale/xo-nixpkg.git
+git clone https://github.com/closure-labs/xo-nixpkg.git
 cd xo-nixpkg
 nix develop --accept-flake-config
 ```
@@ -102,16 +102,16 @@ nix eval --raw .#packages.x86_64-linux.libvhdi.fuseBackend
 nix build --no-link .#libvhdi
 ```
 
-## Syncing with NiXOA Core
+## Syncing with NiXOA
 
-When syncing package changes with core:
+When syncing package changes with NiXOA:
 
 ```bash
-# In core repo
+# In the nixoa repo
 git log --oneline pkgs/xen-orchestra-ce/
 
 # Compare package definitions
-diff -u /path/to/NiXOA/core/pkgs/xen-orchestra-ce/default.nix \
+diff -u /path/to/nixoa/pkgs/xen-orchestra-ce/default.nix \
         /path/to/xen-orchestra-ce-nix/default.nix
 ```
 
@@ -154,20 +154,16 @@ The same publication plan pushes each channel's `supply-protector` store output.
 Those outputs retain the exact XO closure and package deterministic SPDX,
 CycloneDX, closure-graph, checksum, and assertion files for downstream flakes.
 
-## Public organization migration
+## Organization merge queue
 
-The workflow already listens for `merge_group`, but a personal repository
-cannot enable GitHub's merge queue. After transferring the still-public
-repository to the organization:
+The public `closure-labs/xo-nixpkg` repository requires GitHub's merge queue.
+Pull requests and synthetic merge groups must pass `CI gate`, and review
+conversations must be resolved. Successful rolling candidates are created ready
+for the trusted automation queue; failed prewarming leaves the candidate draft
+for diagnosis. Protected-main publication retains every pending run in its
+FIFO concurrency group and can reuse successful ancestral merge-group
+validation.
 
-1. Install the update GitHub App on the organization repository and verify the
-   release environment, App variables/secrets, Cachix token, and automation
-   token remain available.
-2. Replace the strict "up to date before merging" policy with "require merge
-   queue", retaining `CI gate` as the required status and conversation
-   resolution as required.
-3. Queue a documentation-only PR and a package-changing PR. Confirm both get a
-   `merge_group` gate and that the resulting main run reuses the successful
-   ancestral merge-group validation.
-4. Keep standard GitHub-hosted runners; they remain free while the repository
-   is public. Revisit runner and environment policy only if visibility changes.
+The update GitHub App, release environment, repository variables and secrets,
+and Cachix token are repository-scoped. Recheck their availability after any
+future transfer or visibility change.

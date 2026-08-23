@@ -14,7 +14,7 @@ This document tracks synchronization between NiXOA core and this standalone pack
 ### 2026-08-20: Supply assertion trust chain (v0.9.5)
 - Published deterministic assertions, closure graphs, SPDX 2.3, CycloneDX 1.5, and checksums for every Xen Orchestra channel
 - Distributed the supply outputs through the signed Cachix cache while retaining each exact Xen Orchestra closure as a Nix reference
-- Established `supply-protector-latest` as a cryptographic dependency contract for NiXOA Core installer attestations
+- Established `supply-protector-latest` as a cryptographic dependency contract for NiXOA installer attestations
 - Enabled Core to verify the Nix store identity, Cachix trust root, and document hashes before adding a checksummed SPDX `DESCRIBED_BY` link
 
 ### 2026-08-20: Nix-native release channels (v0.9.0)

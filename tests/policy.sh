@@ -45,13 +45,16 @@ rg -F 'xen-orchestra.spdx.json' "$root/nix/supply-protector.sh" >/dev/null
 rg -F 'xen-orchestra.cdx.json' "$root/nix/supply-protector.sh" >/dev/null
 
 jq -e '
-  .name == "Protect main with an up-to-date CI gate" and
+  .name == "Protect main with merge queue and CI gate" and
   .enforcement == "active" and
   ([.rules[].type] | index("deletion") != null) and
   ([.rules[].type] | index("non_fast_forward") != null) and
+  any(.rules[]; .type == "merge_queue" and
+    .parameters.merge_method == "MERGE" and
+    .parameters.max_entries_to_merge == 1) and
   any(.rules[]; .type == "pull_request" and .parameters.required_review_thread_resolution == true) and
   any(.rules[]; .type == "required_status_checks" and
-    .parameters.strict_required_status_checks_policy == true and
+    .parameters.strict_required_status_checks_policy == false and
     any(.parameters.required_status_checks[]; .context == "CI gate"))
 ' "$root/.github/rulesets/main.json" >/dev/null
 
