@@ -47,41 +47,36 @@ branch=$(jq -er .headRefName <<<"$pr")
 head_sha=$(jq -er .headRefOid <<<"$pr")
 pr_url=$(jq -er .url <<<"$pr")
 run_id=
+run_conclusion=
 for _ in {1..12}; do
-  run_id=$(gh run list \
+  run_json=$(gh run list \
     --repo "$GITHUB_REPOSITORY" \
     --workflow "$ci_workflow" \
     --event pull_request \
     --branch "$branch" \
     --commit "$head_sha" \
     --limit 1 \
-    --json databaseId \
-    --jq '.[0].databaseId // empty')
+    --json conclusion,databaseId)
+  run_id=$(jq -r '.[0].databaseId // empty' <<<"$run_json")
+  run_conclusion=$(jq -r '.[0].conclusion // empty' <<<"$run_json")
   [[ -z $run_id ]] || break
   sleep 5
 done
 
-if [[ -z $run_id ]]; then
-  gh workflow run "$ci_workflow" --repo "$GITHUB_REPOSITORY" --ref "$branch"
-  for _ in {1..24}; do
-    run_id=$(gh run list \
-      --repo "$GITHUB_REPOSITORY" \
-      --workflow "$ci_workflow" \
-      --event workflow_dispatch \
-      --branch "$branch" \
-      --commit "$head_sha" \
-      --limit 1 \
-      --json databaseId \
-      --jq '.[0].databaseId // empty')
-    [[ -z $run_id ]] || break
-    sleep 5
-  done
-fi
-
 [[ -n $run_id ]] || {
-  printf 'Could not locate CI for trusted update %s at %s.\n' "$PR_NUMBER" "$head_sha" >&2
+  printf 'Could not locate approval-gated pull-request CI for trusted update %s at %s.\n' \
+    "$PR_NUMBER" "$head_sha" >&2
   exit 1
 }
+
+if [[ $run_conclusion == action_required ]]; then
+  gh api --method POST \
+    "repos/${GITHUB_REPOSITORY}/actions/runs/${run_id}/approve" >/dev/null
+fi
+gh run watch "$run_id" --repo "$GITHUB_REPOSITORY" --exit-status
+
+pr=$(read_pr)
+validate_pr "$pr"
 gh pr merge \
   --repo "$GITHUB_REPOSITORY" \
   --auto \
