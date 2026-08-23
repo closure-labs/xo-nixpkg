@@ -7,7 +7,7 @@ set -euo pipefail
 : "${GH_TOKEN:?GH_TOKEN must be set}"
 : "${GITHUB_REPOSITORY:?GITHUB_REPOSITORY must be set}"
 
-update_author=${UPDATE_AUTHOR:-nixoa-updater}
+update_author=${UPDATE_AUTHOR:-github-actions}
 pull_requests=$(gh api --paginate \
   "repos/${GITHUB_REPOSITORY}/pulls?state=open&per_page=100" \
   --slurp)

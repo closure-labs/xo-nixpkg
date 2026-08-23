@@ -3,7 +3,7 @@
 
 set -euo pipefail
 
-: "${APP_TOKEN:?APP_TOKEN must be set}"
+: "${GH_TOKEN:?GH_TOKEN must be set}"
 : "${GATED_SHA:?GATED_SHA must be set}"
 : "${GITHUB_REPOSITORY:?GITHUB_REPOSITORY must be set}"
 
@@ -32,5 +32,5 @@ else
   git tag "$release_tag" "$GATED_SHA"
 fi
 
-git remote set-url origin "https://x-access-token:${APP_TOKEN}@github.com/${GITHUB_REPOSITORY}.git"
+git remote set-url origin "https://x-access-token:${GH_TOKEN}@github.com/${GITHUB_REPOSITORY}.git"
 git push origin "refs/tags/$release_tag"

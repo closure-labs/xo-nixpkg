@@ -29,8 +29,8 @@ if git diff --quiet -- "$@"; then
   exit 0
 fi
 
-git config user.name 'nixoa-updater[bot]'
-git config user.email 'nixoa-updater[bot]@users.noreply.github.com'
+git config user.name 'github-actions[bot]'
+git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
 git remote set-url origin "https://x-access-token:${GH_TOKEN}@github.com/${GITHUB_REPOSITORY}.git"
 remote_sha=$(git ls-remote --refs origin "refs/heads/$UPDATE_BRANCH" | cut -f1)
 candidate_published=false

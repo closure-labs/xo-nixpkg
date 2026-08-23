@@ -17,7 +17,7 @@ git() {
 }
 export REAL_GIT=$real_git
 export -f git
-export APP_TOKEN=fixture
+export GH_TOKEN=fixture
 export GITHUB_REPOSITORY=example/repository
 
 cd "$fixture/repository"

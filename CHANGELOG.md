@@ -18,6 +18,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Move live repository references to `closure-labs/xo-nixpkg`, require the
   repository merge queue, and make successfully prewarmed rolling candidates
   eligible for trusted auto-merge while retaining broken candidates as drafts.
+- Replace the dedicated NiXOA Updater GitHub App with narrowly scoped built-in
+  workflow tokens; trusted queue automation dispatches CI for bot-created pull
+  requests before enrolling their exact head commit.
 - Stream paginated Xen Orchestra commit discovery through files to avoid
   process argument limits, update only semantically changed channels, and
   limit pull-request validation and publication to those channel outputs.

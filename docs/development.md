@@ -164,6 +164,6 @@ for diagnosis. Protected-main publication retains every pending run in its
 FIFO concurrency group and can reuse successful ancestral merge-group
 validation.
 
-The update GitHub App, release environment, repository variables and secrets,
-and Cachix token are repository-scoped. Recheck their availability after any
-future transfer or visibility change.
+Update pull requests and releases use job-scoped built-in GitHub tokens. The
+release environment and Cachix secret remain repository-scoped; recheck their
+availability after any future transfer or visibility change.
