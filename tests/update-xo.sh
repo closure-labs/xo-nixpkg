@@ -24,7 +24,7 @@ stable_rev=$(jq -er '.channels.latest.rev' "$temporary/xo.json")
 cat >"$temporary/commits.json" <<JSON
 [
   {"sha":"1111111111111111111111111111111111111111","commit":{"message":"feat(lite): 0.25.0 (#11000)"}},
-  {"sha":"$latest_rev","commit":{"message":"feat: release 6.8.0 (#11001)\n\nNormal XO release"}},
+  {"sha":"$latest_rev","commit":{"message":"feat: release 6.8 (#11001)\n\nNormal XO release"}},
   {"sha":"$stable_rev","commit":{"message":"feat: release 6.7.1 (#10229)"}}
 ]
 JSON
@@ -44,7 +44,7 @@ run_update() {
 run_update --release
 jq -e --arg latest "$latest_rev" --arg stable "$stable_rev" '
   .schemaVersion == 2 and
-  .channels.latest.version == "6.8.0" and
+  .channels.latest.version == "6.8" and
   .channels.latest.rev == $latest and
   .channels.stable.version == "6.7.1" and
   .channels.stable.rev == $stable and
@@ -59,14 +59,14 @@ grep -F "github:vatesfr/xen-orchestra/$stable_rev" "$temporary/flake.nix" >/dev/
 XO_NIXPKG_PREFETCH_JSON="$temporary/missing-prefetch.json" run_update --release >/dev/null
 
 # XO-prefixed historical markers remain supported.
-sed 's/feat: release 6.8.0/feat: release XO 6.8.0/' "$temporary/commits.json" >"$temporary/historical.json"
+sed 's/feat: release 6.8/feat: release XO 6.8/' "$temporary/commits.json" >"$temporary/historical.json"
 XO_NIXPKG_COMMITS_JSON="$temporary/historical.json" run_update --release >/dev/null
 
 # Paginated responses larger than ARG_MAX stay in files instead of becoming
 # jq command-line arguments. Page one deliberately exceeds typical 2 MiB
 # process argument limits and page two completes the two-release selection.
 jq -n --arg latest_rev "$latest_rev" '
-  [{sha:$latest_rev,commit:{message:"feat: release 6.8.0 (#11001)"}}] +
+  [{sha:$latest_rev,commit:{message:"feat: release 6.8 (#11001)"}}] +
   [range(0; 35000) as $index | {
     sha:("f" * 40),
     commit:{message:("chore: large pagination fixture " + ($index | tostring) + ("x" * 80))}

@@ -165,5 +165,16 @@ FIFO concurrency group and can reuse successful ancestral merge-group
 validation.
 
 Update pull requests and releases use job-scoped built-in GitHub tokens. The
-release environment and Cachix secret remain repository-scoped; recheck their
-availability after any future transfer or visibility change.
+trusted queue is the exception: approving action-required workflow runs and
+enrolling an exact pull-request SHA requires the repository secret
+`MERGE_QUEUE_TOKEN`. It must be a fine-grained PAT restricted to
+`closure-labs/xo-nixpkg`, owned by an authorized automation identity, with
+Actions, Contents, and Pull requests read/write permissions. The workflow
+fails before checkout and Nix setup if that secret is absent; it never falls
+back to `github.token`.
+
+The release environment, `MERGE_QUEUE_TOKEN`, and `CACHIX_AUTH_TOKEN` remain
+repository-scoped; recheck their availability after any transfer or visibility
+change and rotate the PAT before its configured expiration. The cache name,
+URL, and public key are flake data exposed through `lib.binaryCache`, so there
+is no `CACHIX_CACHE_NAME` secret.

@@ -21,6 +21,24 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 180
     steps:
+      - name: Preflight merge-queue credential
+        env:
+          GH_TOKEN: ${{ secrets.MERGE_QUEUE_TOKEN }}
+        run: |
+          set -euo pipefail
+          if [[ -z ${GH_TOKEN:-} ]]; then
+            echo '::error title=Missing MERGE_QUEUE_TOKEN::Configure a fine-grained PAT scoped to this repository with Actions, Contents, and Pull requests write permissions.'
+            exit 1
+          fi
+          if ! gh api "repos/${GITHUB_REPOSITORY}/actions/runs?per_page=1" >/dev/null; then
+            echo '::error title=MERGE_QUEUE_TOKEN cannot read Actions::Check that the token is scoped to this repository and has Actions write permission.'
+            exit 1
+          fi
+          if ! gh api "repos/${GITHUB_REPOSITORY}/pulls?state=open&per_page=1" >/dev/null; then
+            echo '::error title=MERGE_QUEUE_TOKEN cannot read pull requests::Check that the token has Pull requests write permission.'
+            exit 1
+          fi
+
       - name: Checkout trusted automation
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -34,6 +52,6 @@ jobs:
       - name: Verify author, repository, branch, title, and SHA before auto-merge
         env:
           DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
-          GH_TOKEN: ${{ secrets.MERGE_QUEUE_TOKEN || github.token }}
+          GH_TOKEN: ${{ secrets.MERGE_QUEUE_TOKEN }}
           UPDATE_AUTHOR: github-actions
         run: nix run .#queue-automation

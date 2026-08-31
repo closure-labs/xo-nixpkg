@@ -8,10 +8,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## Unreleased
 
+## [0.10.0] - 2026-08-28
+
 ### Added
 
 - Prewarm the exact rolling candidate closure in the existing
   `xen-orchestra-ce` Cachix before preserving it in a draft pull request.
+- Add `packages.x86_64-linux.automation-runtime`, a reusable closure containing
+  the packaged CI, publication, trusted-queue, and updater applications.
 
 ### Changed
 
@@ -29,6 +33,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   limit pull-request validation and publication to those channel outputs.
 - Preserve broken rolling candidates for diagnosis while failing their update
   run when realization or Cachix publication fails.
+- Export one `lib.binaryCache` definition for the Cachix name, URL, and public
+  key; use it for flake trust, supply assertions, publication, and prewarming.
+- Keep the schema-v2 classifier and CI plans as the sole supported CI model.
+  Remove the pre-1.0 schema-v1 `ciWorkflows`, `mkCiWorkflow`,
+  `prepareCiWorkflow`, `evaluateCiWorkflowGate`, and `ciWorkflowSchemaVersion`
+  library interfaces and the `prepare-ci` and `ci-gate` apps. Consumers should
+  migrate to `lib.ciClassifier`, `lib.ciPlans`, `classify-ci`, `run-ci-plan`,
+  `ci`, and `publish`.
+
+### Fixed
+
+- Require a repository-scoped `MERGE_QUEUE_TOKEN` before installing Nix, and
+  diagnose missing Actions, Contents, or Pull requests write permission when
+  workflow approval or exact-SHA merge-queue enrollment is denied.
+- Retry transient update-branch pushes and pull-request mutations without
+  weakening force-with-lease or retrying persistent policy rejections.
+- Accept the flake's cache configuration during the initial shared Nix setup,
+  allowing scheduled apps to substitute the published automation runtime.
 
 ## [0.9.5] - 2026-08-20
 

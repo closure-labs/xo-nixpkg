@@ -8,7 +8,8 @@ temporary=$(mktemp -d "${TMPDIR:-/tmp}/classifier-test.XXXXXX")
 trap 'rm -rf -- "$temporary"' EXIT
 
 jq -e '
-  [.publicationTargets[].name] == ["xo-latest", "xo-stable", "xo-rolling", "supply-protector-latest", "supply-protector-stable", "supply-protector-rolling"] and
+  .schemaVersion == 2 and
+  [.publicationTargets[].name] == ["xo-latest", "xo-stable", "xo-rolling", "supply-protector-latest", "supply-protector-stable", "supply-protector-rolling", "automation-runtime"] and
   ([.pathRules[] |
     select(.pattern == "^(nix/libvhdi\\.nix|nix/sources/libvhdi\\.json)$") |
     .publication[]] == ["xo-latest", "xo-stable", "xo-rolling", "supply-protector-latest", "supply-protector-stable", "supply-protector-rolling"])
@@ -53,12 +54,25 @@ jq -e '
   .release.enabled == false
 ' <<<"$docs_plan" >/dev/null
 
+mkdir -p "$fixture/nix"
+printf 'runtime composition\n' >"$fixture/nix/applications.nix"
+git -C "$fixture" add nix/applications.nix
+git -C "$fixture" commit -qm runtime
+runtime_head=$(git -C "$fixture" rev-parse HEAD)
+jq -n --arg base "$docs_head" '{pull_request:{base:{sha:$base}}}' >"$temporary/event.json"
+runtime_plan=$(classify pull_request refs/pull/2/merge "$runtime_head")
+jq -e '
+  .schemaVersion == 2 and
+  any(.jobs.validate.plan.targets[]; .name == "automation-runtime") and
+  [.jobs.publish.plan.targets[].name] == ["automation-runtime"]
+' <<<"$runtime_plan" >/dev/null
+
 printf 'package change\n' >>"$fixture/default.nix"
 git -C "$fixture" add default.nix
 git -C "$fixture" commit -qm package
 package_head=$(git -C "$fixture" rev-parse HEAD)
-jq -n --arg base "$docs_head" '{pull_request:{base:{sha:$base}}}' >"$temporary/event.json"
-package_plan=$(classify pull_request refs/pull/2/merge "$package_head")
+jq -n --arg base "$runtime_head" '{pull_request:{base:{sha:$base}}}' >"$temporary/event.json"
+package_plan=$(classify pull_request refs/pull/3/merge "$package_head")
 jq -e '
   [.jobs.validate.plan.targets[].name] ==
     ["xo-latest", "xo-stable", "xo-rolling", "supply-protector-latest", "supply-protector-stable", "supply-protector-rolling", "xo-fuse-linkage", "xo-server-service"]
@@ -68,7 +82,7 @@ jq -e '
 # shellcheck disable=SC2016
 printf '#!%s\nprintf "%%s\\n" "$FAKE_MERGE_GROUP_SHA"\n' "$(command -v bash)" >"$temporary/gh"
 chmod +x "$temporary/gh"
-jq -n --arg before "$docs_head" '{before:$before}' >"$temporary/event.json"
+jq -n --arg before "$runtime_head" '{before:$before}' >"$temporary/event.json"
 FAKE_MERGE_GROUP_SHA="$package_head" export FAKE_MERGE_GROUP_SHA
 push_plan=$(classify push refs/heads/main "$package_head")
 jq -e '
@@ -83,7 +97,7 @@ printf 'more docs\n' >>"$fixture/docs/index.md"
 git -C "$fixture" add docs/index.md
 git -C "$fixture" commit -qm docs-delta
 delta_head=$(git -C "$fixture" rev-parse HEAD)
-jq -n --arg before "$docs_head" '{before:$before}' >"$temporary/event.json"
+jq -n --arg before "$runtime_head" '{before:$before}' >"$temporary/event.json"
 delta_plan=$(classify push refs/heads/main "$delta_head")
 jq -e '
   .classification.reason == "merge-group-ancestor-plus-delta" and
@@ -147,7 +161,7 @@ git -C "$semantic" commit -qm rolling
 semantic_head=$(git -C "$semantic" rev-parse HEAD)
 fixture=$semantic
 jq -n --arg base "$semantic_base" '{pull_request:{base:{sha:$base}}}' >"$temporary/event.json"
-semantic_plan=$(classify pull_request refs/pull/3/merge "$semantic_head")
+semantic_plan=$(classify pull_request refs/pull/4/merge "$semantic_head")
 jq -e '
   .classification.reason == "semantic-xo-channel-update" and
   [.jobs.validate.plan.targets[].name] ==

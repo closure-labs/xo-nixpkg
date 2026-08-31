@@ -4,6 +4,7 @@
 set -euo pipefail
 
 : "${CACHIX_AUTH_TOKEN:?CACHIX_AUTH_TOKEN must be set}"
+: "${XO_NIXPKG_CACHIX_CACHE_NAME:?XO_NIXPKG_CACHIX_CACHE_NAME must be set}"
 : "${PREPARED_CI_WORKFLOW:?PREPARED_CI_WORKFLOW must be set}"
 
 publish_plan=$(mktemp)
@@ -25,4 +26,4 @@ if [[ ${#package_paths[@]} -lt 1 ]]; then
   exit 1
 fi
 
-cachix push xen-orchestra-ce "${package_paths[@]}"
+cachix push "$XO_NIXPKG_CACHIX_CACHE_NAME" "${package_paths[@]}"

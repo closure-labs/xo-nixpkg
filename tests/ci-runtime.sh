@@ -8,31 +8,6 @@ temporary_directory=$(mktemp -d)
 trap 'rm -rf -- "$temporary_directory"' EXIT
 mkdir -p "$temporary_directory/bin"
 
-prepared_pull_request=$(jq -cn '{
-  schemaVersion: 1,
-  name: "fixture-ci",
-  system: "x86_64-linux",
-  source: {attribute: "lib.ciWorkflows.x86_64-linux"},
-  event: {name: "pull_request", ref: "refs/pull/14/merge"},
-  jobs: {
-    validate: {
-      gate: true,
-      plan: "lib.ciPlans.x86_64-linux.validation",
-      enabled: true
-    },
-    publish: {
-      gate: true,
-      plan: "lib.ciPlans.x86_64-linux.publish",
-      when: {event: "push", ref: "refs/heads/main"},
-      enabled: false
-    }
-  },
-  release: {
-    when: {event: "push", ref: "refs/heads/main"},
-    enabled: false
-  },
-  gate: {requiredJobs: ["validate"]}
-}')
 prepared_lifecycle=$(jq -cn '{
   schemaVersion: 2,
   event: {name: "pull_request", ref: "refs/pull/14/merge", headSha: "fixture"},
@@ -57,33 +32,14 @@ prepared_lifecycle=$(jq -cn '{
           {name: "xo-rolling", attribute: "packages.x86_64-linux.rolling"},
           {name: "supply-protector-latest", attribute: "packages.x86_64-linux.supply-protector-latest"},
           {name: "supply-protector-stable", attribute: "packages.x86_64-linux.supply-protector-stable"},
-          {name: "supply-protector-rolling", attribute: "packages.x86_64-linux.supply-protector-rolling"}
+          {name: "supply-protector-rolling", attribute: "packages.x86_64-linux.supply-protector-rolling"},
+          {name: "automation-runtime", attribute: "packages.x86_64-linux.automation-runtime"}
         ]
       }
     }
   },
   release: {enabled: false}
 }')
-
-printf '#!%s\n' "$BASH" >"$temporary_directory/bin/runtime-nix"
-cat >>"$temporary_directory/bin/runtime-nix" <<'EOF'
-set -euo pipefail
-printf '%s\n' "$FAKE_PREPARED_CI_WORKFLOW"
-EOF
-chmod +x "$temporary_directory/bin/runtime-nix"
-
-output_file="$temporary_directory/github-output"
-XO_NIXPKG_RUNTIME_NIX="$temporary_directory/bin/runtime-nix" \
-FAKE_PREPARED_CI_WORKFLOW="$prepared_pull_request" \
-  "$PREPARE_CI_APP" "$output_file"
-[[ $(cut -d= -f1 "$output_file") == workflow ]]
-[[ $(cut -d= -f2- "$output_file") == "$prepared_pull_request" ]]
-if XO_NIXPKG_RUNTIME_NIX="$temporary_directory/bin/runtime-nix" \
-  FAKE_PREPARED_CI_WORKFLOW="$prepared_pull_request" \
-  "$PREPARE_CI_APP" one two >/dev/null 2>&1; then
-  echo 'prepare-ci accepted too many arguments' >&2
-  exit 1
-fi
 
 printf '#!%s\n' "$BASH" >"$temporary_directory/bin/classify-ci"
 cat >>"$temporary_directory/bin/classify-ci" <<'EOF'
@@ -115,7 +71,7 @@ while (( $# > 0 )); do
 done
 printf '\n'
 if [[ -n $manifest ]]; then
-  printf '%s\n' '{"results":[{"outputs":["/nix/store/xo-latest"]},{"outputs":["/nix/store/xo-stable"]},{"outputs":["/nix/store/xo-rolling"]},{"outputs":["/nix/store/supply-latest"]},{"outputs":["/nix/store/supply-stable"]},{"outputs":["/nix/store/supply-rolling"]}]}' >"$manifest"
+  printf '%s\n' '{"results":[{"outputs":["/nix/store/xo-latest"]},{"outputs":["/nix/store/xo-stable"]},{"outputs":["/nix/store/xo-rolling"]},{"outputs":["/nix/store/supply-latest"]},{"outputs":["/nix/store/supply-stable"]},{"outputs":["/nix/store/supply-rolling"]},{"outputs":["/nix/store/runtime-bin","/nix/store/runtime-lib","/nix/store/runtime-doc"]}]}' >"$manifest"
 fi
 EOF
 chmod +x "$temporary_directory/bin/flake-plan-runner"
@@ -139,11 +95,12 @@ XO_NIXPKG_SOURCE_ROOT="$root" \
 
 PATH="$temporary_directory/bin:$PATH" \
 CACHIX_AUTH_TOKEN=fixture \
+XO_NIXPKG_CACHIX_CACHE_NAME=fixture-cache \
 PREPARED_CI_WORKFLOW="$prepared_lifecycle" \
   bash "$root/ci/publish.sh" >"$temporary_directory/publish-log"
 [[ $(<"$temporary_directory/publish-log") == \
   *'<--plan-file>'* ]]
 [[ $(<"$temporary_directory/publish-log") == \
-  *'cachix <push> <xen-orchestra-ce> </nix/store/xo-latest> </nix/store/xo-stable> </nix/store/xo-rolling> </nix/store/supply-latest> </nix/store/supply-stable> </nix/store/supply-rolling>'* ]]
+  *'cachix <push> <fixture-cache> </nix/store/xo-latest> </nix/store/xo-stable> </nix/store/xo-rolling> </nix/store/supply-latest> </nix/store/supply-stable> </nix/store/supply-rolling> </nix/store/runtime-bin> </nix/store/runtime-lib> </nix/store/runtime-doc>'* ]]
 
 printf 'CI runtime fixtures passed\n'

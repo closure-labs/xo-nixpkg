@@ -1,4 +1,6 @@
 {
+  cachePublicKey,
+  cacheUrl,
   channel,
   package,
   pkgs,
@@ -37,8 +39,8 @@ pkgs.runCommand "xo-${channel}-supply-protector-${version}"
     VERSION = version;
     SOURCE_REV = sourceRev;
     SOURCE_TIMESTAMP = toString sourceTimestamp;
-    CACHE_URL = "https://xen-orchestra-ce.cachix.org";
-    CACHE_PUBLIC_KEY = "xen-orchestra-ce.cachix.org-1:WAOajkFLXWTaFiwMbLidlGa5kWB7Icu29eJnYbeMG7E=";
+    CACHE_URL = cacheUrl;
+    CACHE_PUBLIC_KEY = cachePublicKey;
     SPDX_SCHEMA = spdxSchema;
     CYCLONEDX_SCHEMA = cyclonedxSchema;
     CYCLONEDX_JSF_SCHEMA = cyclonedxJsfSchema;

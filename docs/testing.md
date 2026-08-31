@@ -25,13 +25,12 @@ nix eval --json .#lib.ciPlans.x86_64-linux.validation
 nix run .#run-ci-plan -- \
   --plan lib.ciPlans.x86_64-linux.validation
 
-# Inspect the workflow definition, or prepare it for a pull request
-nix eval --json .#lib.ciWorkflows.x86_64-linux
-GITHUB_EVENT_NAME=pull_request GITHUB_REF=refs/pull/1/merge \
-  nix run .#prepare-ci
-
-# Inspect the fast lifecycle classifier (local events select the full plan)
+# Inspect the schema-v2 classifier contract and its local lifecycle output
+nix eval --json .#lib.ciClassifier
 nix run .#classify-ci
+
+# Build the reusable packaged automation closure
+nix build --no-link .#automation-runtime
 ```
 
 ## Runtime Smoke Tests
@@ -95,11 +94,11 @@ preFixup = ''
 
 ## CI Coverage
 
-`ci/classifier.json` is the shared hosted-CI target graph and
-`lib.ciWorkflows.x86_64-linux` remains the reusable pure workflow API. The
-classifier emits one schema-v2 lifecycle document containing the exact
-validation and publication plans. Workflow conditions, the lightweight gate,
-`nix run .#ci`, and `nix run .#publish` consume that document directly.
+`ci/classifier.json` is the schema-v2 hosted-CI target graph exported as
+`lib.ciClassifier`; `lib.ciPlans` is the reusable pure plan API. The classifier
+emits one schema-v2 lifecycle document containing the exact validation and
+publication plans. Workflow conditions, the lightweight gate, `nix run .#ci`,
+and `nix run .#publish` consume that document directly.
 
 Classifier fixtures cover documentation-only changes, component target
 selection, dependency expansion, exact and ancestral merge-group reuse,
@@ -114,7 +113,13 @@ full run when no prepared output is supplied. CI checks:
   channel
 - upstream/install checks and exclusive FUSE3 linkage for `libvhdi`
 - XO `fuse-native` libfuse2 linkage and absence of bundled/prebuilt FUSE files
-- updater, trusted-queue, runtime-adapter, shell, and ruleset fixtures
+- updater, trusted-queue, schema-v2 runtime, shell, and ruleset fixtures
+- merge-queue credential preflight and permission-denial diagnostics
+- transient update-branch push retry without pull-request mutation after a
+  persistent failure
+- cache configuration consistency and `automation-runtime` selection
+- file-backed release discovery above process argument limits and publication
+  manifests with arbitrary positive output counts
 - closure-composition checks for packaged child commands
 - `nix flake check`
 - basic binary execution smoke tests
@@ -122,3 +127,19 @@ full run when no prepared output is supplied. CI checks:
 `nix flake check` is the canonical aggregate check graph; there is no separate
 shell test aggregator. `nix run .#ci` is the supported end-to-end entrypoint
 that evaluates the flake and executes every validation-plan target.
+
+## Merge-queue acceptance
+
+Create `MERGE_QUEUE_TOKEN` from a fine-grained PAT owned by an authorized
+automation identity and restricted to `closure-labs/xo-nixpkg`. Grant Actions,
+Contents, and Pull requests read/write repository permissions. The queue
+workflow deliberately has no built-in-token fallback, and its credential
+preflight runs before checkout or Nix installation. `CACHIX_CACHE_NAME` is not
+used; only `CACHIX_AUTH_TOKEN` remains necessary for publication.
+
+After installing or rotating the token, manually dispatch `Queue trusted
+automation updates`. For PR #32 acceptance, verify that the workflow validates
+its exact head SHA, approves any action-required pull-request CI, enrolls the PR
+in the merge queue, observes a successful merge-group `CI gate`, and completes
+protected-main publication. The following scheduled automation run should
+substitute `automation-runtime` without cache-trust or credential warnings.

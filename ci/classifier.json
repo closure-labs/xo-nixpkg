@@ -1,5 +1,5 @@
 {
-  "schemaVersion": 1,
+  "schemaVersion": 2,
   "lifecycle": {
     "publish": { "event": "push", "ref": "refs/heads/main" },
     "release": { "event": "push", "ref": "refs/heads/main" }
@@ -15,9 +15,9 @@
     { "name": "xo-server-service", "attribute": "checks.x86_64-linux.xo-server-service", "requires": ["xo-latest"] },
     { "name": "libvhdi", "attribute": "checks.x86_64-linux.libvhdi", "requires": [] },
     { "name": "repository-policy", "attribute": "checks.x86_64-linux.repository-policy", "requires": [] },
-    { "name": "ci-workflow-contract", "attribute": "checks.x86_64-linux.ci-workflow-contract", "requires": [] },
-    { "name": "ci-runtime-fixtures", "attribute": "checks.x86_64-linux.ci-runtime-fixtures", "requires": ["ci-workflow-contract"] },
+    { "name": "ci-runtime-fixtures", "attribute": "checks.x86_64-linux.ci-runtime-fixtures", "requires": [] },
     { "name": "application-composition", "attribute": "checks.x86_64-linux.application-composition", "requires": [] },
+    { "name": "automation-runtime", "attribute": "checks.x86_64-linux.automation-runtime", "requires": [] },
     { "name": "source-update-fixtures", "attribute": "checks.x86_64-linux.source-update-fixtures", "requires": [] },
     { "name": "automation-fixtures", "attribute": "checks.x86_64-linux.automation-fixtures", "requires": [] },
     { "name": "plan-runner-fixtures", "attribute": "checks.x86_64-linux.plan-runner-fixtures", "requires": [] },
@@ -29,7 +29,8 @@
     { "name": "xo-rolling", "attribute": "packages.x86_64-linux.rolling" },
     { "name": "supply-protector-latest", "attribute": "packages.x86_64-linux.supply-protector-latest" },
     { "name": "supply-protector-stable", "attribute": "packages.x86_64-linux.supply-protector-stable" },
-    { "name": "supply-protector-rolling", "attribute": "packages.x86_64-linux.supply-protector-rolling" }
+    { "name": "supply-protector-rolling", "attribute": "packages.x86_64-linux.supply-protector-rolling" },
+    { "name": "automation-runtime", "attribute": "packages.x86_64-linux.automation-runtime" }
   ],
   "pathRules": [
     {
@@ -44,8 +45,8 @@
     },
     {
       "pattern": "^VERSION$",
-      "validation": ["repository-policy", "automation-fixtures", "xo-latest", "xo-stable", "xo-rolling", "libvhdi"],
-      "publication": ["xo-latest", "xo-stable", "xo-rolling"]
+      "validation": ["repository-policy", "automation-fixtures", "automation-runtime", "xo-latest", "xo-stable", "xo-rolling", "libvhdi"],
+      "publication": ["xo-latest", "xo-stable", "xo-rolling", "automation-runtime"]
     },
     {
       "pattern": "^\\.github/workflows/(ci|publish)\\.yml$",
@@ -58,38 +59,73 @@
       "publication": []
     },
     {
-      "pattern": "^(ci/classif|tests/classif|nix/ci-classifier)",
-      "validation": ["repository-policy", "classifier-fixtures", "ci-runtime-fixtures"],
+      "pattern": "^ci/classif",
+      "validation": ["repository-policy", "classifier-fixtures", "ci-runtime-fixtures", "automation-runtime"],
+      "publication": ["automation-runtime"]
+    },
+    {
+      "pattern": "^tests/classifier\\.sh$",
+      "validation": ["repository-policy", "classifier-fixtures"],
       "publication": []
     },
     {
-      "pattern": "^(nix/ci-plan\\.nix|nix/flake-plan-runner\\.(nix|sh)|tests/flake-plan-runner\\.sh)$",
-      "validation": ["repository-policy", "plan-runner-fixtures", "ci-runtime-fixtures"],
+      "pattern": "^(nix/ci-plan\\.nix|nix/flake-plan-runner\\.(nix|sh))$",
+      "validation": ["repository-policy", "plan-runner-fixtures", "ci-runtime-fixtures", "automation-runtime"],
+      "publication": ["automation-runtime"]
+    },
+    {
+      "pattern": "^tests/flake-plan-runner\\.sh$",
+      "validation": ["repository-policy", "plan-runner-fixtures"],
       "publication": []
     },
     {
-      "pattern": "^(nix/ci-workflow(-tests)?\\.nix|nix/(prepare-ci|ci-gate)-runtime\\.nix|tests/ci-runtime\\.sh)$",
-      "validation": ["repository-policy", "ci-workflow-contract", "ci-runtime-fixtures"],
+      "pattern": "^tests/ci-runtime\\.sh$",
+      "validation": ["repository-policy", "ci-runtime-fixtures"],
       "publication": []
     },
     {
       "pattern": "^(ci/(run|publish)\\.sh)$",
-      "validation": ["repository-policy", "ci-runtime-fixtures", "application-composition"],
+      "validation": ["repository-policy", "ci-runtime-fixtures", "application-composition", "automation-runtime"],
+      "publication": ["automation-runtime"]
+    },
+    {
+      "pattern": "^ci/(tag-release|publish-release|trusted-update|queue-automation)\\.sh$",
+      "validation": ["repository-policy", "automation-fixtures", "application-composition", "automation-runtime"],
+      "publication": ["automation-runtime"]
+    },
+    {
+      "pattern": "^tests/(open-update-pr|publish-release|tag-release|trusted-update)\\.sh$",
+      "validation": ["repository-policy", "automation-fixtures"],
       "publication": []
     },
     {
-      "pattern": "^(ci/(tag-release|publish-release|trusted-update|queue-automation)\\.sh|tests/(tag-release|publish-release|trusted-update)\\.sh)$",
-      "validation": ["repository-policy", "automation-fixtures", "application-composition"],
+      "pattern": "^(ci/(update-xo|update-libvhdi|update-flake-lock|open-update-pr)\\.sh|scripts/)",
+      "validation": ["repository-policy", "source-update-fixtures", "application-composition", "automation-runtime"],
+      "publication": ["automation-runtime"]
+    },
+    {
+      "pattern": "^tests/(update-xo|update-effects|update-libvhdi|update-noop)\\.sh$",
+      "validation": ["repository-policy", "source-update-fixtures"],
       "publication": []
     },
     {
-      "pattern": "^(ci/(update-xo|update-libvhdi|update-flake-lock|open-update-pr)\\.sh|scripts/|tests/(update-xo|update-libvhdi|update-noop)\\.sh)$",
-      "validation": ["repository-policy", "source-update-fixtures", "application-composition"],
+      "pattern": "^ci/prewarm-rolling\\.sh$",
+      "validation": ["repository-policy", "source-update-fixtures", "application-composition", "automation-runtime"],
+      "publication": ["automation-runtime"]
+    },
+    {
+      "pattern": "^tests/prewarm-rolling\\.sh$",
+      "validation": ["repository-policy", "source-update-fixtures"],
       "publication": []
     },
     {
       "pattern": "^nix/applications\\.nix$",
-      "validation": ["repository-policy", "ci-runtime-fixtures", "application-composition", "source-update-fixtures", "automation-fixtures"],
+      "validation": ["repository-policy", "ci-runtime-fixtures", "application-composition", "source-update-fixtures", "automation-fixtures", "automation-runtime"],
+      "publication": ["automation-runtime"]
+    },
+    {
+      "pattern": "^tests/policy\\.sh$",
+      "validation": ["repository-policy"],
       "publication": []
     },
     {
