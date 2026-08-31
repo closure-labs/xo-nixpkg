@@ -2,7 +2,7 @@
 # xo-nixpkg
 
 Reproducible Nix packages for Xen Orchestra Community Edition and libvhdi.
-The project releases independently as `v0.9.5`; each package keeps its own
+The project releases independently as `v0.10.0`; each package keeps its own
 upstream version.
 
 ## Quick start
@@ -68,6 +68,9 @@ tags:
 aliases. `latest-upstream` is a compatibility output alias for `rolling`.
 Automation also exposes `rolling-candidate` as an exact alias used to prewarm
 the rolling closure in the existing `xen-orchestra-ce` Cachix.
+`automation-runtime` contains the packaged CI, publication, trusted-queue, and
+updater commands and is published to the same cache when its composition
+changes.
 Select a channel by package attribute:
 
 ```bash

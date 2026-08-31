@@ -1,7 +1,9 @@
-{
+rec {
   description = "Xen Orchestra CE and libvhdi packages for NixOS";
 
   nixConfig = {
+    # Flake configuration is security-sensitive and Nix requires these values
+    # to be literal (imported or interpolated values are rejected as thunks).
     extra-substituters = [ "https://xen-orchestra-ce.cachix.org" ];
     extra-trusted-public-keys = [
       "xen-orchestra-ce.cachix.org-1:WAOajkFLXWTaFiwMbLidlGa5kWB7Icu29eJnYbeMG7E="
@@ -37,58 +39,38 @@
       supportedSystems = [
         "x86_64-linux"
       ];
+      binaryCache = {
+        name = "xen-orchestra-ce";
+        url = builtins.head nixConfig.extra-substituters;
+        publicKey = builtins.head nixConfig.extra-trusted-public-keys;
+      };
       forAllSystems = nixpkgs.lib.genAttrs supportedSystems;
       ciLib = import ./nix/ci-plan.nix { lib = nixpkgs.lib; };
-      ciWorkflowLib = import ./nix/ci-workflow.nix { lib = nixpkgs.lib; };
       classifierContract = builtins.fromJSON (builtins.readFile ./ci/classifier.json);
       sourcePins = import ./nix/source-pins.nix { lib = nixpkgs.lib; };
     in
     {
-      lib =
-        ciLib
-        // ciWorkflowLib
-        // {
-          projectVersion = nixpkgs.lib.removeSuffix "\n" (builtins.readFile ./VERSION);
-          inherit sourcePins;
-          ciClassifier = classifierContract;
-          ciPlans = forAllSystems (system: {
-            validation = ciLib.mkCiPlan {
-              name = "xo-nixpkg-validation";
-              targets = map (target: {
-                inherit (target) name;
-                attribute = builtins.replaceStrings [ "x86_64-linux" ] [ system ] target.attribute;
-              }) classifierContract.validationTargets;
-            };
-            publish = ciLib.mkCiPlan {
-              name = "xo-nixpkg-publish";
-              targets = map (target: {
-                inherit (target) name;
-                attribute = builtins.replaceStrings [ "x86_64-linux" ] [ system ] target.attribute;
-              }) classifierContract.publicationTargets;
-            };
-          });
-          ciWorkflows = forAllSystems (
-            system:
-            let
-              protectedMain = classifierContract.lifecycle.publish;
-            in
-            ciWorkflowLib.mkCiWorkflow {
-              name = "xo-nixpkg-ci";
-              jobs = {
-                validate = {
-                  gate = true;
-                  plan = "lib.ciPlans.${system}.validation";
-                };
-                publish = {
-                  gate = true;
-                  plan = "lib.ciPlans.${system}.publish";
-                  when = protectedMain;
-                };
-              };
-              release.when = classifierContract.lifecycle.release;
-            }
-          );
-        };
+      lib = ciLib // {
+        projectVersion = nixpkgs.lib.removeSuffix "\n" (builtins.readFile ./VERSION);
+        inherit binaryCache sourcePins;
+        ciClassifier = classifierContract;
+        ciPlans = forAllSystems (system: {
+          validation = ciLib.mkCiPlan {
+            name = "xo-nixpkg-validation";
+            targets = map (target: {
+              inherit (target) name;
+              attribute = builtins.replaceStrings [ "x86_64-linux" ] [ system ] target.attribute;
+            }) classifierContract.validationTargets;
+          };
+          publish = ciLib.mkCiPlan {
+            name = "xo-nixpkg-publish";
+            targets = map (target: {
+              inherit (target) name;
+              attribute = builtins.replaceStrings [ "x86_64-linux" ] [ system ] target.attribute;
+            }) classifierContract.publicationTargets;
+          };
+        });
+      };
 
       packages = forAllSystems (
         system:
@@ -110,6 +92,8 @@
           mkSupplyProtector =
             channel: package: source:
             pkgs.callPackage ./nix/supply-protector.nix {
+              cachePublicKey = binaryCache.publicKey;
+              cacheUrl = binaryCache.url;
               inherit channel package;
               inherit (sourcePins.xenOrchestra.channels.${channel}) version;
               sourceRev = source.rev;
@@ -118,6 +102,17 @@
           latestSupplyProtector = mkSupplyProtector "latest" latest xo-latest;
           stableSupplyProtector = mkSupplyProtector "stable" stable xo-stable;
           rollingSupplyProtector = mkSupplyProtector "rolling" rolling xo-rolling;
+          flakePlanRunner = pkgs.callPackage ./nix/flake-plan-runner.nix { };
+          applications = import ./nix/applications.nix {
+            inherit binaryCache pkgs;
+            nixpkgsPath = nixpkgs.outPath;
+            planRunner = flakePlanRunner;
+          };
+          automationRuntime = pkgs.symlinkJoin {
+            name = "xo-nixpkg-automation-runtime-${self.lib.projectVersion}";
+            paths = [ flakePlanRunner ] ++ builtins.attrValues applications;
+            meta.description = "Packaged xo-nixpkg CI, publication, queue, and updater applications";
+          };
         in
         {
           inherit latest rolling stable;
@@ -132,6 +127,7 @@
           xen-orchestra-ce-stable = stable;
           xen-orchestra-ce-rolling = rolling;
           xen-orchestra-ce-latest-upstream = rolling;
+          automation-runtime = automationRuntime;
           libvhdi = pkgs.callPackage ./nix/libvhdi.nix {
             inherit (sourcePins.libvhdi) version;
             source = pkgs.fetchzip {
@@ -139,7 +135,7 @@
               extension = "tar";
             };
           };
-          flake-plan-runner = pkgs.callPackage ./nix/flake-plan-runner.nix { };
+          flake-plan-runner = flakePlanRunner;
           default = latest;
         }
       );
@@ -206,7 +202,7 @@
         let
           pkgs = nixpkgs.legacyPackages.${system};
           applications = import ./nix/applications.nix {
-            inherit pkgs;
+            inherit binaryCache pkgs;
             nixpkgsPath = nixpkgs.outPath;
             planRunner = self.packages.${system}.flake-plan-runner;
           };
@@ -219,8 +215,6 @@
         {
           classify-ci = mkApp applications.classifyCi "Classify a CI event into exact validation and publication plans";
           ci = mkApp applications.ci "Run the complete repository validation pipeline";
-          prepare-ci = mkApp applications.prepareCi "Prepare the Nix-defined CI workflow";
-          ci-gate = mkApp applications.ciGate "Gate the prepared CI workflow results";
           run-ci-plan =
             mkApp self.packages.${system}.flake-plan-runner
               "Validate and execute a schema-v2 pure flake CI plan";
@@ -244,14 +238,13 @@
         let
           pkgs = nixpkgs.legacyPackages.${system};
           applications = import ./nix/applications.nix {
-            inherit pkgs;
+            inherit binaryCache pkgs;
             nixpkgsPath = nixpkgs.outPath;
             planRunner = self.packages.${system}.flake-plan-runner;
           };
           repositoryChecks = import ./nix/repository-checks.nix {
             inherit
               applications
-              ciWorkflowLib
               pkgs
               self
               ;

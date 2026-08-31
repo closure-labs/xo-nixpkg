@@ -151,11 +151,22 @@ source_path_from_prefetch() {
   jq -er '.storePath | select(type == "string")'
 }
 
+release_versions_match() {
+  local release_version=$1 changelog_version=$2
+  while [[ $release_version == *.*.0 ]]; do
+    release_version=${release_version%.0}
+  done
+  while [[ $changelog_version == *.*.0 ]]; do
+    changelog_version=${changelog_version%.0}
+  done
+  [[ $release_version == "$changelog_version" ]]
+}
+
 release_source() {
   local version=$1 rev=$2 source_path changelog_version
   source_path=$(prefetch_source "$rev" | source_path_from_prefetch)
   changelog_version=$(sed -nE 's/^## \*\*([0-9]+(\.[0-9]+)+)\*\*.*/\1/p' "$source_path/CHANGELOG.md" | head -n 1)
-  [[ $changelog_version == "$version" ]] || {
+  release_versions_match "$version" "$changelog_version" || {
     printf 'Release marker %s does not match root changelog version %s\n' "$version" "${changelog_version:-missing}" >&2
     return 1
   }

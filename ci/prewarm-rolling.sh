@@ -4,6 +4,7 @@
 set -euo pipefail
 
 : "${CACHIX_AUTH_TOKEN:?CACHIX_AUTH_TOKEN must be set}"
+: "${XO_NIXPKG_CACHIX_CACHE_NAME:?XO_NIXPKG_CACHIX_CACHE_NAME must be set}"
 
 repo_root=${XO_NIXPKG_SOURCE_ROOT:-$PWD}
 flake_ref="git+file://$repo_root"
@@ -30,7 +31,7 @@ fi
 
 closure_path_count=$(nix path-info --recursive "$candidate_path" | wc -l)
 (( closure_path_count > 0 ))
-cachix push xen-orchestra-ce "$candidate_path"
+cachix push "$XO_NIXPKG_CACHIX_CACHE_NAME" "$candidate_path"
 
 if [[ -n $output_file ]]; then
   printf 'candidate_path=%s\nclosure_path_count=%s\n' \

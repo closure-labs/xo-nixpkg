@@ -7,9 +7,15 @@ This document tracks synchronization between Maestro and this standalone package
 
 | Repository | Version | Last Sync | Maestro Version | Nixpkgs Status |
 |------------|---------|-----------|--------------|----------------|
-| xo-nixpkg | v0.9.5 | 2026-08-20 | v1.3.1-dev.0+ | Packaging maintained here |
+| xo-nixpkg | v0.10.0 | 2026-08-28 | v1.3.1-dev.0+ | Packaging maintained here |
 
 ## Sync History
+
+### 2026-08-28: Nix-centric CI reliability (v0.10.0)
+
+- Published the packaged automation runtime and centralized Cachix metadata.
+- Removed the unused schema-v1 workflow API in favor of schema-v2 plans.
+- Required a dedicated credential for trusted merge-queue automation.
 
 ### 2026-08-20: Supply assertion trust chain (v0.9.5)
 - Published deterministic assertions, closure graphs, SPDX 2.3, CycloneDX 1.5, and checksums for every Xen Orchestra channel

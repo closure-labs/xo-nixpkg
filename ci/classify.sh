@@ -15,7 +15,7 @@ jq -e '
   . as $contract |
   [.validationTargets[].name] as $validationNames |
   [.publicationTargets[].name] as $publicationNames |
-  .schemaVersion == 1 and
+  .schemaVersion == 2 and
   (.lifecycle.publish | keys | sort) == ["event", "ref"] and
   (.lifecycle.release | keys | sort) == ["event", "ref"] and
   (.validationTargets | type == "array" and length > 0) and

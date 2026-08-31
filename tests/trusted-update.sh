@@ -19,10 +19,18 @@ if [[ "$1 $2" == 'pr view' ]]; then
 elif [[ "$1 $2" == 'run list' ]]; then
   printf '[{"databaseId":42,"conclusion":"action_required"}]\n'
 elif [[ $1 == api ]]; then
+  if [[ ${FAKE_APPROVE_FAILURE:-false} == true ]]; then
+    echo 'GraphQL: Resource not accessible by integration' >&2
+    exit 1
+  fi
   printf '%s\n' "$*" >"$FAKE_APPROVE_LOG"
 elif [[ "$1 $2" == 'run watch' ]]; then
   :
 elif [[ "$1 $2" == 'pr merge' ]]; then
+  if [[ ${FAKE_MERGE_FAILURE:-false} == true ]]; then
+    echo 'GraphQL: Pull request is not mergeable' >&2
+    exit 1
+  fi
   printf '%s\n' "$*" >"$FAKE_MERGE_LOG"
 else
   printf 'unexpected gh call: %s\n' "$*" >&2
@@ -47,6 +55,24 @@ trusted_env=(
 env PATH="$temporary/bin:$PATH" "${trusted_env[@]}" bash "$root/ci/trusted-update.sh"
 grep -Fq -- 'actions/runs/42/approve' "$temporary/approve.log"
 grep -Fq -- '--match-head-commit abc123' "$temporary/merge.log"
+
+if env PATH="$temporary/bin:$PATH" FAKE_APPROVE_FAILURE=true "${trusted_env[@]}" \
+  bash "$root/ci/trusted-update.sh" >"$temporary/approve.stdout" 2>"$temporary/approve.stderr"; then
+  echo 'Trusted queue accepted a denied action-required workflow approval' >&2
+  exit 1
+fi
+grep -F 'Could not approve action-required CI run 42 for PR 1 at abc123.' \
+  "$temporary/approve.stderr" >/dev/null
+grep -F 'Actions write permission' "$temporary/approve.stderr" >/dev/null
+
+if env PATH="$temporary/bin:$PATH" FAKE_MERGE_FAILURE=true "${trusted_env[@]}" \
+  bash "$root/ci/trusted-update.sh" >"$temporary/merge.stdout" 2>"$temporary/merge.stderr"; then
+  echo 'Trusted queue accepted an auto-merge denial' >&2
+  exit 1
+fi
+grep -F 'Could not enroll PR 1 at validated head abc123 in the merge queue.' \
+  "$temporary/merge.stderr" >/dev/null
+grep -F 'Contents and Pull requests write permissions' "$temporary/merge.stderr" >/dev/null
 
 if env PATH="$temporary/bin:$PATH" FAKE_AUTHOR=attacker "${trusted_env[@]}" \
   bash "$root/ci/trusted-update.sh" >/dev/null 2>&1; then

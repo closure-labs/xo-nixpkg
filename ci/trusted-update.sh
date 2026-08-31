@@ -70,16 +70,31 @@ done
 }
 
 if [[ $run_conclusion == action_required ]]; then
-  gh api --method POST \
-    "repos/${GITHUB_REPOSITORY}/actions/runs/${run_id}/approve" >/dev/null
+  if ! approval_error=$(gh api --method POST \
+    "repos/${GITHUB_REPOSITORY}/actions/runs/${run_id}/approve" 2>&1); then
+    printf 'Could not approve action-required CI run %s for PR %s at %s.\n' \
+      "$run_id" "$PR_NUMBER" "$head_sha" >&2
+    printf '%s\n' \
+      'MERGE_QUEUE_TOKEN must be a repository-scoped fine-grained PAT with Actions write permission.' >&2
+    printf 'GitHub response: %s\n' "$approval_error" >&2
+    exit 1
+  fi
 fi
 gh run watch "$run_id" --repo "$GITHUB_REPOSITORY" --exit-status
 
 pr=$(read_pr)
 validate_pr "$pr"
-gh pr merge \
+if ! merge_error=$(gh pr merge \
   --repo "$GITHUB_REPOSITORY" \
   --auto \
   --merge \
   --match-head-commit "$head_sha" \
-  "$pr_url"
+  "$pr_url" 2>&1); then
+  printf 'Could not enroll PR %s at validated head %s in the merge queue.\n' \
+    "$PR_NUMBER" "$head_sha" >&2
+  printf '%s\n' \
+    'Verify MERGE_QUEUE_TOKEN has Contents and Pull requests write permissions and that repository auto-merge and merge-queue policy permit this PR.' >&2
+  printf 'GitHub response: %s\n' "$merge_error" >&2
+  exit 1
+fi
+[[ -z $merge_error ]] || printf '%s\n' "$merge_error"

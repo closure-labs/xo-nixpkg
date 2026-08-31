@@ -28,18 +28,20 @@ chmod +x "$temporary/bin/nix" "$temporary/bin/cachix"
 : >"$temporary/nix.log"
 
 CACHIX_AUTH_TOKEN=fixture \
+XO_NIXPKG_CACHIX_CACHE_NAME=fixture-cache \
 PREWARM_NIX_LOG="$temporary/nix.log" \
 PREWARM_CACHIX_LOG="$temporary/cachix.log" \
 PATH="$temporary/bin:$PATH" \
 XO_NIXPKG_SOURCE_ROOT="$root" \
   bash "$root/ci/prewarm-rolling.sh" "$temporary/output"
-grep -Fx 'cachix push xen-orchestra-ce /nix/store/rolling-candidate' \
+grep -Fx 'cachix push fixture-cache /nix/store/rolling-candidate' \
   < <(sed 's/^/cachix /' "$temporary/cachix.log") >/dev/null
 grep -Fx 'candidate_path=/nix/store/rolling-candidate' "$temporary/output" >/dev/null
 grep -Fx 'closure_path_count=2' "$temporary/output" >/dev/null
 grep -F '#rolling-candidate' "$temporary/nix.log" >/dev/null
 
 if CACHIX_AUTH_TOKEN=fixture \
+  XO_NIXPKG_CACHIX_CACHE_NAME=fixture-cache \
   FAKE_ROLLING_PATH=/nix/store/not-the-candidate \
   PREWARM_NIX_LOG="$temporary/nix.log" \
   PREWARM_CACHIX_LOG="$temporary/cachix.log" \

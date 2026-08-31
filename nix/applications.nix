@@ -1,4 +1,5 @@
 {
+  binaryCache,
   pkgs,
   nixpkgsPath,
   planRunner,
@@ -37,6 +38,9 @@ let
     jq
     nix
   ];
+  cachePrelude = ''
+    export XO_NIXPKG_CACHIX_CACHE_NAME=${pkgs.lib.escapeShellArg binaryCache.name}
+  '';
 in
 rec {
   classifyCi = mkRepositoryApplication {
@@ -50,39 +54,6 @@ rec {
       gnused
       jq
     ];
-  };
-
-  prepareCi = pkgs.writeShellApplication {
-    name = "xo-nixpkg-prepare-ci";
-    runtimeInputs = with pkgs; [ nix ];
-    text = ''
-      if (( $# > 1 )); then
-        echo 'usage: xo-nixpkg-prepare-ci [GITHUB_OUTPUT]' >&2
-        exit 2
-      fi
-
-      runtime_nix="''${XO_NIXPKG_RUNTIME_NIX:-nix}"
-      prepared=$("$runtime_nix" eval --impure --json --file ${./prepare-ci-runtime.nix})
-      if (( $# == 1 )); then
-        printf 'workflow=%s\n' "$prepared" >>"$1"
-      else
-        printf '%s\n' "$prepared"
-      fi
-    '';
-  };
-
-  ciGate = pkgs.writeShellApplication {
-    name = "xo-nixpkg-ci-gate";
-    runtimeInputs = with pkgs; [ nix ];
-    text = ''
-      if (( $# != 0 )); then
-        echo 'usage: xo-nixpkg-ci-gate' >&2
-        exit 2
-      fi
-
-      runtime_nix="''${XO_NIXPKG_RUNTIME_NIX:-nix}"
-      exec "$runtime_nix" eval --impure --raw --file ${./ci-gate-runtime.nix}
-    '';
   };
 
   ci = mkRepositoryApplication {
@@ -114,6 +85,7 @@ rec {
         nix
       ]
       ++ [ planRunner ];
+    prelude = cachePrelude;
   };
 
   publishRelease = mkRepositoryApplication {
@@ -192,6 +164,7 @@ rec {
       coreutils
       nix
     ];
+    prelude = cachePrelude;
   };
 
   updateLibvhdiSource = mkRepositoryApplication {

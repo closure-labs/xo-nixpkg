@@ -29,6 +29,8 @@ Commit the resulting `flake.lock`. The input exposes these primary packages on
 - `packages.x86_64-linux.xen-orchestra-ce`: compatibility alias for `latest`
 - `packages.x86_64-linux.libvhdi`
 - `packages.x86_64-linux.flake-plan-runner`
+- `packages.x86_64-linux.automation-runtime`: packaged CI, publication,
+  trusted-queue, and updater applications
 
 The descriptive aliases `xen-orchestra-ce-latest`,
 `xen-orchestra-ce-stable`, and `xen-orchestra-ce-rolling` resolve to the same
@@ -56,9 +58,11 @@ device and grant its service users the required FUSE permissions.
 ## Binary cache
 
 The flake declares the public `xen-orchestra-ce.cachix.org` substituter and its
-trusted key. Pass `--accept-flake-config` when consuming it interactively. A
-NixOS host can instead declare the same substituter and key in its trusted Nix
-configuration.
+trusted key from the single `lib.binaryCache` definition. Pass
+`--accept-flake-config` when consuming it interactively. The shared GitHub Nix
+setup enables `accept-flake-config`, so the cache is trusted from the first
+`nix run`. A NixOS host can instead declare the same substituter and key in its
+trusted Nix configuration.
 
 GitHub Actions consumes the same public cache graph. The protected-main
 lifecycle publishes only package closures selected by the path classifier and
@@ -124,27 +128,26 @@ The runner evaluates the selected plan once, verifies schema version 2 and
 target uniqueness, builds each attribute in a separate process, and reports
 all target results before returning.
 
-## Reuse the CI workflow contract
+## Reuse the CI classifier contract
 
-`lib.mkCiWorkflow` combines named plans with event/ref conditions and declares
-which enabled jobs must pass the gate. This repository exposes the concrete
-definition at `lib.ciWorkflows.x86_64-linux`. Downstream flakes can call
-`lib.prepareCiWorkflow` to produce the versioned prepared schema for an event,
-then call `lib.evaluateCiWorkflowGate` with GitHub-style job results to obtain
-the gate decision and required-job summary. Both operations are pure Nix
-functions and reject malformed workflow data.
+The schema-v2 hosted classifier uses `ci/classifier.json` as its versioned
+source of truth, exported as `lib.ciClassifier`. Nix imports the same target
+catalog to construct `lib.ciPlans`, while the classifier resolves changed
+paths, dependency edges, validation plans, publication plans, and release
+lifecycle state without installing Nix. Unknown paths and invalid Git ancestry
+select the complete validation plan.
 
-The hosted workflow's faster event adapter uses `ci/classifier.json` as its
-versioned source of truth. Nix imports the same target catalog to construct
-`lib.ciPlans`, while the adapter resolves changed paths, dependency edges, and
-publication targets without installing Nix. Unknown paths and invalid Git
-ancestry select the complete validation plan.
+`classify-ci` emits the schema-v2 lifecycle document. `ci` and `publish`
+consume its embedded plans, and `run-ci-plan` validates and executes a reusable
+pure `lib.ciPlans` value. Classification and final gates stay on
+`ubuntu-slim`; Nix is installed only for jobs that evaluate or build flake
+outputs. The `automation-runtime` package retains all packaged commands so its
+closure can be reused by scheduled workflows through Cachix.
 
-The `prepare-ci` and `ci-gate` apps are generated runtime adapters: they read
-only the selected flake and non-secret GitHub context, delegate policy to those
-pure functions, and optionally write the existing `GITHUB_OUTPUT` format.
-Composed apps invoke packaged sibling executables from their Nix closures.
-`classify-ci` exposes the hosted adapter for local fixtures and diagnostics.
+Version 0.10.0 removed the unused schema-v1 workflow library interfaces and
+the `prepare-ci` and `ci-gate` adapters. Downstream consumers should replace
+them with `lib.ciClassifier`, `lib.ciPlans`, `classify-ci`, `run-ci-plan`,
+`ci`, and `publish` as appropriate.
 
 Imperative network, Git, release, source-lock mutation, plan execution, and
 Cachix operations remain checked-in shell programs under `ci/` and `scripts/`.

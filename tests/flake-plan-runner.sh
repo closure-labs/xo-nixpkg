@@ -22,6 +22,9 @@ case "$command" in
     installable=${!#}
     [[ $installable != *checks.x86_64-linux.failing ]]
     printf '/nix/store/%s\n' "${installable##*.}"
+    if [[ $installable == *packages.x86_64-linux.last ]]; then
+      printf '/nix/store/%s-dev\n' "${installable##*.}"
+    fi
     ;;
   *) exit 2 ;;
 esac
@@ -83,7 +86,10 @@ FAKE_NIX_PLAN="$temporary/success.json" \
     --plan-file "$temporary/success.json" \
     --manifest "$temporary/direct-manifest.json"
 [[ $(grep -c '^eval ' "$temporary/nix.log" || true) -eq 0 ]]
-jq -e '.targetCount == 2 and .failureCount == 0' \
+jq -e '
+  .targetCount == 2 and .failureCount == 0 and
+  .results[1].outputs == ["/nix/store/last", "/nix/store/last-dev"]
+' \
   "$temporary/direct-manifest.json" >/dev/null
 
 jq '.targets[1].name = .targets[0].name' \

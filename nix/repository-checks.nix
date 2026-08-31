@@ -1,6 +1,5 @@
 {
   applications,
-  ciWorkflowLib,
   self,
   pkgs,
 }:
@@ -20,6 +19,8 @@ let
       '';
 
   checks = {
+    automation-runtime = self.packages.${pkgs.stdenv.hostPlatform.system}.automation-runtime;
+
     repository-policy =
       mkCheck "repository-policy"
         (with pkgs; [
@@ -37,10 +38,6 @@ let
           bash source/tests/policy.sh
         '';
 
-    ci-workflow-contract = import ./ci-workflow-tests.nix {
-      inherit ciWorkflowLib pkgs;
-    };
-
     ci-runtime-fixtures =
       mkCheck "ci-runtime-fixtures"
         (with pkgs; [
@@ -49,8 +46,7 @@ let
           jq
         ])
         ''
-          PREPARE_CI_APP=${pkgs.lib.getExe applications.prepareCi} \
-            bash source/tests/ci-runtime.sh
+          bash source/tests/ci-runtime.sh
         '';
 
     application-composition =
@@ -65,7 +61,11 @@ let
           grep -F -- '${pkgs.lib.getExe applications.updateXo} --rolling' \
             ${pkgs.lib.getExe applications.updateXoRolling}
           grep -F 'rolling-candidate' ${pkgs.lib.getExe applications.prewarmRolling}
-          grep -F 'cachix push xen-orchestra-ce' source/ci/prewarm-rolling.sh
+          grep -F 'cachix push "$XO_NIXPKG_CACHIX_CACHE_NAME"' \
+            source/ci/prewarm-rolling.sh source/ci/publish.sh
+          grep -F 'XO_NIXPKG_CACHIX_CACHE_NAME' \
+            ${pkgs.lib.getExe applications.prewarmRolling} \
+            ${pkgs.lib.getExe applications.publish}
           grep -F 'xo-nixpkg-classify-ci' source/ci/run.sh
           grep -F '/scripts/update.sh' source/ci/update-xo.sh
           grep -F 'xo-nixpkg-update-libvhdi-source' source/ci/update-libvhdi.sh
@@ -110,6 +110,7 @@ let
         ])
         ''
           bash source/tests/trusted-update.sh
+          bash source/tests/open-update-pr.sh
           bash source/tests/tag-release.sh
           bash source/tests/publish-release.sh
         '';
