@@ -21,6 +21,8 @@ cp "$root/flake.nix" "$temporary/flake.nix"
 
 latest_rev=3333333333333333333333333333333333333333
 stable_rev=$(jq -er '.channels.latest.rev' "$temporary/xo.json")
+latest_yarn_hash=$(jq -er '.channels.latest.yarnHash' "$temporary/xo.json")
+latest_docs_yarn_hash=$(jq -er '.channels.latest.docsYarnHash' "$temporary/xo.json")
 cat >"$temporary/commits.json" <<JSON
 [
   {"sha":"1111111111111111111111111111111111111111","commit":{"message":"feat(lite): 0.25.0 (#11000)"}},
@@ -42,13 +44,18 @@ run_update() {
 }
 
 run_update --release
-jq -e --arg latest "$latest_rev" --arg stable "$stable_rev" '
+jq -e \
+  --arg latest "$latest_rev" \
+  --arg stable "$stable_rev" \
+  --arg yarnHash "$latest_yarn_hash" \
+  --arg docsYarnHash "$latest_docs_yarn_hash" '
   .schemaVersion == 2 and
   .channels.latest.version == "6.8" and
   .channels.latest.rev == $latest and
   .channels.stable.version == "6.7.1" and
   .channels.stable.rev == $stable and
-  .channels.latest.yarnHash == "sha256-8qv/ak3fYY2ODpWN3WZO5wrXokiK6CH8vGq49cmZlvA=" and
+  .channels.latest.yarnHash == $yarnHash and
+  .channels.latest.docsYarnHash == $docsYarnHash and
   (.channels.latest | has("platformTools") | not) and
   (.channels.latest | has("hash") | not)
 ' "$temporary/xo.json" >/dev/null

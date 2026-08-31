@@ -4,14 +4,14 @@
   "repo": "xen-orchestra",
   "channels": {
     "latest": {
-      "version": "6.7.1",
-      "rev": "40dede9e11c90562df5cb46c6a83a9d91efedae1",
-      "yarnHash": "sha256-8qv/ak3fYY2ODpWN3WZO5wrXokiK6CH8vGq49cmZlvA=",
-      "docsYarnHash": "sha256-v5h1lb7zlW926EKpjK+c5CTtqczvgMDZhyQzkWdattE="
+      "version": "6.8",
+      "rev": "faf6745471d7b2a00d774d98428873455e9539dc",
+      "yarnHash": "sha256-shh9i5ziSzcNb/gEfrRrhcNoE/5V9N55P6jnbkpvlA4=",
+      "docsYarnHash": "sha256-g/rB7fqBHgv94XI3OakCIaebzNe6pyK6Wmlx0cLWNSk="
     },
     "stable": {
-      "version": "6.7.0",
-      "rev": "1a795970f9c60396967d9510e3d2a29b56f2da1d",
+      "version": "6.7.1",
+      "rev": "40dede9e11c90562df5cb46c6a83a9d91efedae1",
       "yarnHash": "sha256-8qv/ak3fYY2ODpWN3WZO5wrXokiK6CH8vGq49cmZlvA=",
       "docsYarnHash": "sha256-v5h1lb7zlW926EKpjK+c5CTtqczvgMDZhyQzkWdattE="
     },
