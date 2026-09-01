@@ -56,6 +56,40 @@ jobs:
       - name: Run the selected flake-defined targets
         run: nix run .#ci
 
+  fix-hashes:
+    name: Repair Dependabot Nix hashes
+    needs: validate
+    if: >-
+      always() &&
+      needs.validate.result == 'failure' &&
+      github.event_name == 'pull_request' &&
+      github.event.pull_request.user.login == 'dependabot[bot]' &&
+      github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    permissions:
+      contents: write
+    steps:
+      - name: Checkout trusted hash-fixer automation
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          ref: ${{ github.event.pull_request.base.sha }}
+
+      - name: Set up Nix
+        uses: ./.github/actions/setup-nix
+        with:
+          github-token: ${{ github.token }}
+
+      - name: Repair and push tracked Nix hashes
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR_AUTHOR: ${{ github.event.pull_request.user.login }}
+          PR_HEAD_REF: ${{ github.event.pull_request.head.ref }}
+          PR_HEAD_REPOSITORY: ${{ github.event.pull_request.head.repo.full_name }}
+          PR_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: nix run .#fix-nix-hashes
+
   gate:
     name: CI gate
     if: always()

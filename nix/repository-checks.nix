@@ -70,6 +70,8 @@ let
           grep -F '/scripts/update.sh' source/ci/update-xo.sh
           grep -F 'xo-nixpkg-update-libvhdi-source' source/ci/update-libvhdi.sh
           grep -F 'xo-nixpkg-trusted-update' source/ci/queue-automation.sh
+          grep -F 'determinate-nixd fix hashes --auto-apply' \
+            ${pkgs.lib.getExe applications.fixNixHashes}
           if rg '(ci|scripts)/[A-Za-z0-9._-]+\\.sh' \
             source/ci/run.sh \
             source/ci/update-libvhdi.sh \
@@ -110,6 +112,7 @@ let
         ])
         ''
           bash source/tests/trusted-update.sh
+          bash source/tests/fix-nix-hashes.sh
           bash source/tests/open-update-pr.sh
           bash source/tests/tag-release.sh
           bash source/tests/publish-release.sh

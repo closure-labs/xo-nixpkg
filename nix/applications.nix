@@ -99,6 +99,16 @@ rec {
     ];
   };
 
+  fixNixHashes = mkRepositoryApplication {
+    name = "xo-nixpkg-fix-nix-hashes";
+    script = ../ci/fix-nix-hashes.sh;
+    runtimeInputs = with pkgs; [
+      coreutils
+      gh
+      git
+    ];
+  };
+
   tagRelease = mkRepositoryApplication {
     name = "xo-nixpkg-tag-release";
     script = ../ci/tag-release.sh;

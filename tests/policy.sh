@@ -60,6 +60,7 @@ jq -e '
 
 for application in \
   ci \
+  fix-nix-hashes \
   publish \
   publish-release \
   tag-release \
@@ -72,6 +73,19 @@ for application in \
   update-flake-lock; do
   rg -F "nix run .#$application" "$root/.github/workflows" >/dev/null
 done
+
+# shellcheck disable=SC2016
+yq -e '
+  .jobs."fix-hashes".permissions.contents == "write" and
+  (.jobs."fix-hashes".if | contains("dependabot[bot]")) and
+  (.jobs."fix-hashes".if | contains("head.repo.full_name == github.repository")) and
+  (.jobs."fix-hashes".steps[0].with.ref == "${{ github.event.pull_request.base.sha }}") and
+  (.jobs."fix-hashes".steps[0].with."persist-credentials" == false)
+' "$root/.github/workflows/ci.yml" >/dev/null
+rg -F 'determinate-nixd fix hashes --auto-apply' "$root/ci/fix-nix-hashes.sh" >/dev/null
+rg -F 'unset GH_TOKEN GITHUB_TOKEN' "$root/ci/fix-nix-hashes.sh" >/dev/null
+rg -F -- '--force-with-lease="refs/heads/$PR_HEAD_REF:$PR_HEAD_SHA"' \
+  "$root/ci/fix-nix-hashes.sh" >/dev/null
 
 rg -F 'bash ci/classify.sh "$GITHUB_OUTPUT"' \
   "$root/.github/workflows/ci.yml" "$root/.github/workflows/publish.yml" >/dev/null
