@@ -45,6 +45,15 @@ nix develop --accept-flake-config
 nix run --accept-flake-config .#ci
 ```
 
+The same toolchain is available through [devenv](https://devenv.sh/). It
+automatically configures the public `xen-orchestra-ce` Cachix substituter and
+pins its signing key for Nix commands run inside the shell:
+
+```bash
+devenv shell
+devenv test
+```
+
 Inspect the project and package versions independently:
 
 ```bash

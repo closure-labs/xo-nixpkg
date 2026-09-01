@@ -10,6 +10,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- Add a locked Devenv contributor environment that shares the flake's
+  development toolchain and pins the public Xen Orchestra Cachix URL and
+  signing key for nested Nix commands.
 - Tag each newly gated `latest` Xen Orchestra release at its downstream pin
   commit, normalizing upstream versions such as `6.8` to the immutable
   lightweight tag `v6.8.0` without moving independent project release tags.
