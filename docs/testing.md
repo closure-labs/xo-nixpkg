@@ -114,6 +114,8 @@ full run when no prepared output is supplied. CI checks:
 - upstream/install checks and exclusive FUSE3 linkage for `libvhdi`
 - XO `fuse-native` libfuse2 linkage and absence of bundled/prebuilt FUSE files
 - updater, trusted-queue, schema-v2 runtime, shell, and ruleset fixtures
+- immutable XO package-tag fixtures covering version normalization, channel
+  no-ops, idempotency, conflicts, ancestry, and gated-checkout validation
 - merge-queue credential preflight and permission-denial diagnostics
 - transient update-branch push retry without pull-request mutation after a
   persistent failure

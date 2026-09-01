@@ -86,7 +86,7 @@ jobs:
           fi
 
   release:
-    name: Tag gated project release
+    name: Tag gated releases
     if: >-
       needs.classify.result == 'success' &&
       needs.gate.result == 'success' &&
@@ -110,6 +110,14 @@ jobs:
         uses: ./.github/actions/setup-nix
         with:
           github-token: ${{ github.token }}
+
+      - name: Create the immutable XO package tag
+        env:
+          BASE_SHA: ${{ github.event.before }}
+          GH_TOKEN: ${{ github.token }}
+          GATED_SHA: ${{ github.sha }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
+        run: nix run .#tag-xo-release
 
       - name: Create the immutable project tag
         env:

@@ -72,6 +72,8 @@ let
           grep -F 'xo-nixpkg-trusted-update' source/ci/queue-automation.sh
           grep -F 'determinate-nixd fix hashes --auto-apply' \
             ${pkgs.lib.getExe applications.fixNixHashes}
+          grep -F '.channels.latest.version' \
+            ${pkgs.lib.getExe applications.tagXoRelease}
           if rg '(ci|scripts)/[A-Za-z0-9._-]+\\.sh' \
             source/ci/run.sh \
             source/ci/update-libvhdi.sh \
@@ -115,6 +117,7 @@ let
           bash source/tests/fix-nix-hashes.sh
           bash source/tests/open-update-pr.sh
           bash source/tests/tag-release.sh
+          bash source/tests/tag-xo-release.sh
           bash source/tests/publish-release.sh
         '';
 

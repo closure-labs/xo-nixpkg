@@ -64,6 +64,7 @@ for application in \
   publish \
   publish-release \
   tag-release \
+  tag-xo-release \
   queue-automation \
   update-xo-release \
   update-xo-rolling \
@@ -73,6 +74,20 @@ for application in \
   update-flake-lock; do
   rg -F "nix run .#$application" "$root/.github/workflows" >/dev/null
 done
+
+# shellcheck disable=SC2016
+yq -e '
+  .jobs.release.name == "Tag gated releases" and
+  (.jobs.release.needs | length) == 2 and
+  .jobs.release.needs[0] == "classify" and
+  .jobs.release.needs[1] == "gate" and
+  ([.jobs.release.steps[] |
+    select(.run == "nix run .#tag-xo-release") |
+    select(.env.BASE_SHA == "${{ github.event.before }}") |
+    select(.env.GATED_SHA == "${{ github.sha }}") |
+    select(.env.GITHUB_REPOSITORY == "${{ github.repository }}")] |
+    length) == 1
+' "$root/.github/workflows/publish.yml" >/dev/null
 
 # shellcheck disable=SC2016
 yq -e '

@@ -89,12 +89,12 @@
       "publication": ["automation-runtime"]
     },
     {
-      "pattern": "^ci/(fix-nix-hashes|tag-release|publish-release|trusted-update|queue-automation)\\.sh$",
+      "pattern": "^ci/(fix-nix-hashes|tag-release|tag-xo-release|publish-release|trusted-update|queue-automation)\\.sh$",
       "validation": ["repository-policy", "automation-fixtures", "application-composition", "automation-runtime"],
       "publication": ["automation-runtime"]
     },
     {
-      "pattern": "^tests/(fix-nix-hashes|open-update-pr|publish-release|tag-release|trusted-update)\\.sh$",
+      "pattern": "^tests/(fix-nix-hashes|open-update-pr|publish-release|tag-release|tag-xo-release|trusted-update)\\.sh$",
       "validation": ["repository-policy", "automation-fixtures"],
       "publication": []
     },
