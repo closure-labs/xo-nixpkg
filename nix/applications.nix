@@ -119,6 +119,16 @@ rec {
     ];
   };
 
+  tagXoRelease = mkRepositoryApplication {
+    name = "xo-nixpkg-tag-xo-release";
+    script = ../ci/tag-xo-release.sh;
+    runtimeInputs = with pkgs; [
+      coreutils
+      git
+      jq
+    ];
+  };
+
   trustedUpdate = mkRepositoryApplication {
     name = "xo-nixpkg-trusted-update";
     script = ../ci/trusted-update.sh;

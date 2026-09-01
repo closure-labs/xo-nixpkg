@@ -91,9 +91,15 @@ environment.systemPackages = [
 ];
 ```
 
-The immutable project `v*` tags remain available for repository releases. No
-automation moves `latest`, `stable`, or `latest-upstream` Git tags. Commit the
-resolved `flake.lock` when reproducing a rolling-channel investigation.
+Two independent kinds of immutable `v*` tag remain available: project release
+tags come from `VERSION` (for example, `v0.10.0`), while XO package tags come
+from the gated `latest` upstream pin (for example, upstream `6.8` becomes
+`v6.8.0`). Both point to downstream commits in this repository, and XO package
+tags are additive rather than replacements for project releases. The
+`latest`, `stable`, `rolling`, and compatibility `latest-upstream` names are
+flake output aliases, not Git tags, and automation never moves similarly named
+legacy tags. Commit the resolved `flake.lock` when reproducing a
+rolling-channel investigation.
 
 Each channel has a matching `supply-protector-<channel>` output containing a
 reproducible closure assertion, the exported Nix reference graph, and SPDX 2.3

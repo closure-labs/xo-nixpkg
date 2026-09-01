@@ -136,12 +136,16 @@ To prepare a project release:
 3. Confirm `nix run --accept-flake-config .#ci` passes.
 4. Commit and push through the protected `main` workflow.
 
-After the gated main build succeeds, automation creates only the immutable
-project tag. The same gated job idempotently publishes that semantic-version
-tag as a GitHub Release using only the tagged commit's matching changelog
-section. Re-running the workflow never rewrites an existing tag or duplicates
-a published release. The XO `latest`, `stable`, and `rolling` names are flake
-package outputs and are unrelated to project-release tags.
+After validation and selected Cachix publication succeed, the gated job
+maintains two independent tag streams. It creates the immutable project tag
+from `VERSION` and idempotently publishes that tag as a GitHub Release using
+only the tagged commit's matching changelog section. When the push changes the
+`latest` XO version or revision, it also creates an immutable lightweight XO
+package tag on that downstream pin commit; two-component upstream versions are
+normalized (`6.8` becomes `v6.8.0`) and three-component versions are retained
+(`6.8.1` becomes `v6.8.1`). Existing tags are never moved, and XO package tags
+do not create GitHub Release objects. The XO `latest`, `stable`, and `rolling`
+names remain non-tagged flake package outputs.
 
 Protected-main publication runs in a FIFO concurrency group and retains every
 pending run. Validation and Cachix publication share one runner and Nix store;

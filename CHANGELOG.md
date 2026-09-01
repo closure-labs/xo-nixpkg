@@ -8,6 +8,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## Unreleased
 
+### Added
+
+- Tag each newly gated `latest` Xen Orchestra release at its downstream pin
+  commit, normalizing upstream versions such as `6.8` to the immutable
+  lightweight tag `v6.8.0` without moving independent project release tags.
+
 ### Fixed
 
 - Let failed same-repository Dependabot validation invoke a flake-packaged

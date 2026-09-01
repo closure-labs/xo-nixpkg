@@ -222,6 +222,7 @@ rec {
           fix-nix-hashes = mkApp applications.fixNixHashes "Repair stale Nix hashes on a trusted Dependabot pull request";
           publish-release = mkApp applications.publishRelease "Publish the immutable project tag as a GitHub release";
           tag-release = mkApp applications.tagRelease "Tag a successfully gated main release";
+          tag-xo-release = mkApp applications.tagXoRelease "Tag a newly gated Xen Orchestra latest package release";
           trusted-update = mkApp applications.trustedUpdate "Validate and merge one trusted update";
           queue-automation = mkApp applications.queueAutomation "Queue trusted automation updates";
           update-xo-release = mkApp applications.updateXoRelease "Refresh the latest and stable XO release channels";
