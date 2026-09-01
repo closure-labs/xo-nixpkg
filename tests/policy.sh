@@ -150,6 +150,22 @@ rg -F 'cacheUrl = binaryCache.url' "$root/flake.nix" >/dev/null
 rg -F 'cachePublicKey = binaryCache.publicKey' "$root/flake.nix" >/dev/null
 rg -F 'XO_NIXPKG_CACHIX_CACHE_NAME' \
   "$root/nix/applications.nix" "$root/ci/publish.sh" "$root/ci/prewarm-rolling.sh" >/dev/null
+
+yq -e '
+  .require_version == ">= 2.2" and
+  .inputs.nixpkgs.url == "github:NixOS/nixpkgs/nixos-unstable"
+' "$root/devenv.yaml" >/dev/null
+rg -F 'import ./nix/development-environment.nix' \
+  "$root/flake.nix" "$root/devenv.nix" >/dev/null
+rg -F 'cachix.pull = [ "xen-orchestra-ce" ];' "$root/devenv.nix" >/dev/null
+rg -F 'extra-substituters = https://xen-orchestra-ce.cachix.org' \
+  "$root/devenv.nix" >/dev/null
+rg -F 'extra-trusted-public-keys = xen-orchestra-ce.cachix.org-1:WAOajkFLXWTaFiwMbLidlGa5kWB7Icu29eJnYbeMG7E=' \
+  "$root/devenv.nix" >/dev/null
+if rg -F 'cachix.push' "$root/devenv.nix"; then
+  echo 'The shared Devenv environment must not publish without local opt-in' >&2
+  exit 1
+fi
 [[ $(rg -o 'https://[^" ]+\.cachix\.org' "$root/flake.nix" | sort -u | wc -l) == 1 ]]
 [[ $(rg -o '[A-Za-z0-9.-]+\.cachix\.org-1:[A-Za-z0-9+/=]+' \
   "$root/flake.nix" | sort -u | wc -l) == 1 ]]

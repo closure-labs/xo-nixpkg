@@ -13,6 +13,20 @@ The plain `mkShellNoCC` toolchain includes Node.js 22, Yarn classic, Valkey,
 native Node build helpers, update tools, Nix linters, actionlint, ShellCheck,
 and zizmor. Evaluation is pure.
 
+The repository also exposes the same toolchain as a Devenv environment:
+
+```bash
+devenv shell
+devenv test
+```
+
+Devenv's Cachix integration pulls from `https://xen-orchestra-ce.cachix.org`
+with the public key
+`xen-orchestra-ce.cachix.org-1:WAOajkFLXWTaFiwMbLidlGa5kWB7Icu29eJnYbeMG7E=`.
+The shell also exports both values through `NIX_CONFIG`, so nested `nix`
+commands use the pinned trust root. The cache stays read-only unless a
+developer explicitly configures a local `cachix.push` value.
+
 ```bash
 valkey-server --bind 127.0.0.1
 ```

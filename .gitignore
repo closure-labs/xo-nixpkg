@@ -4,6 +4,8 @@ result-*
 .direnv/
 .devenv/
 .envrc
+devenv.local.nix
+devenv.local.yaml
 
 # Editor
 .vscode/
