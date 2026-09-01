@@ -8,6 +8,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## Unreleased
 
+### Fixed
+
+- Let failed same-repository Dependabot validation invoke a flake-packaged
+  Determinate Nix hash repair command and push only tracked fixes back to the
+  exact pull-request head with force-with-lease protection.
+
 ## [0.10.0] - 2026-08-28
 
 ### Added

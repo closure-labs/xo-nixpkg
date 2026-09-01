@@ -219,6 +219,7 @@ rec {
             mkApp self.packages.${system}.flake-plan-runner
               "Validate and execute a schema-v2 pure flake CI plan";
           publish = mkApp applications.publish "Publish final package closures to Cachix";
+          fix-nix-hashes = mkApp applications.fixNixHashes "Repair stale Nix hashes on a trusted Dependabot pull request";
           publish-release = mkApp applications.publishRelease "Publish the immutable project tag as a GitHub release";
           tag-release = mkApp applications.tagRelease "Tag a successfully gated main release";
           trusted-update = mkApp applications.trustedUpdate "Validate and merge one trusted update";
