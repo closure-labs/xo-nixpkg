@@ -40,13 +40,17 @@ jobs:
         if: steps.release.outputs.changed == 'true'
         env:
           GH_TOKEN: ${{ github.token }}
-          UPDATE_BRANCH: automation/xo-release-channels
-          UPDATE_TITLE: "xen-orchestra-ce channels: refresh official releases"
+          UPDATE_BRANCH: automation/xo-release-${{ steps.release.outputs.version }}
+          UPDATE_TITLE: "xen-orchestra-ce: update to ${{ steps.release.outputs.version }}"
+          UPDATE_REVIEWER: declarative-dale
           UPDATE_BODY: |-
-            Automated refresh of the latest and stable Xen Orchestra release outputs.
+            Xen Orchestra `${{ steps.release.outputs.version }}` was detected upstream and is ready for review.
 
             Upstream commit: `vatesfr/xen-orchestra@${{ steps.release.outputs.rev }}`
             Changed channels: `${{ steps.release.outputs.changed_channels }}`
+            Stable channel: `${{ steps.release.outputs.stable_version }}` (`${{ steps.release.outputs.stable_rev }}`)
 
-            Pull-request CI builds only the affected channel outputs before this can merge.
+            Approve this pull request after reviewing the channel selection. Once approved and CI is green,
+            trusted automation will enroll it in the merge queue. The gated main build then creates the immutable
+            package tag and refreshes the `latest` and `stable` moving tags.
         run: nix run .#open-update-pr -- flake.nix flake.lock nix/sources/xen-orchestra.json

@@ -15,18 +15,21 @@ LOCK
 cp "$temporary/current/yarn.lock" "$temporary/candidate/yarn.lock"
 printf '%s\n' docs-lock >"$temporary/current/docs/yarn.lock"
 cp "$temporary/current/docs/yarn.lock" "$temporary/candidate/docs/yarn.lock"
-printf '## **6.8.0** (2026-08-20)\n' >"$temporary/candidate/CHANGELOG.md"
-cp "$root/nix/sources/xen-orchestra.json" "$temporary/xo.json"
+printf '## **6.8.1** (2026-09-02)\n' >"$temporary/candidate/CHANGELOG.md"
+jq '.channels.latest = .channels.stable' \
+  "$root/nix/sources/xen-orchestra.json" >"$temporary/xo.json"
 cp "$root/flake.nix" "$temporary/flake.nix"
 
 latest_rev=3333333333333333333333333333333333333333
-stable_rev=$(jq -er '.channels.latest.rev' "$temporary/xo.json")
+excluded_stable_rev=2222222222222222222222222222222222222222
+stable_rev=$(jq -er '.channels.stable.rev' "$temporary/xo.json")
 latest_yarn_hash=$(jq -er '.channels.latest.yarnHash' "$temporary/xo.json")
 latest_docs_yarn_hash=$(jq -er '.channels.latest.docsYarnHash' "$temporary/xo.json")
 cat >"$temporary/commits.json" <<JSON
 [
   {"sha":"1111111111111111111111111111111111111111","commit":{"message":"feat(lite): 0.25.0 (#11000)"}},
-  {"sha":"$latest_rev","commit":{"message":"feat: release 6.8 (#11001)\n\nNormal XO release"}},
+  {"sha":"$latest_rev","commit":{"message":"feat: release 6.8.1 (#11002)\n\nNormal XO release"}},
+  {"sha":"$excluded_stable_rev","commit":{"message":"feat: release 6.8 (#11001)"}},
   {"sha":"$stable_rev","commit":{"message":"feat: release 6.7.1 (#10229)"}}
 ]
 JSON
@@ -50,7 +53,8 @@ jq -e \
   --arg yarnHash "$latest_yarn_hash" \
   --arg docsYarnHash "$latest_docs_yarn_hash" '
   .schemaVersion == 2 and
-  .channels.latest.version == "6.8" and
+  .excludedStableVersions == ["6.8"] and
+  .channels.latest.version == "6.8.1" and
   .channels.latest.rev == $latest and
   .channels.stable.version == "6.7.1" and
   .channels.stable.rev == $stable and
@@ -66,14 +70,17 @@ grep -F "github:vatesfr/xen-orchestra/$stable_rev" "$temporary/flake.nix" >/dev/
 XO_NIXPKG_PREFETCH_JSON="$temporary/missing-prefetch.json" run_update --release >/dev/null
 
 # XO-prefixed historical markers remain supported.
-sed 's/feat: release 6.8/feat: release XO 6.8/' "$temporary/commits.json" >"$temporary/historical.json"
+sed 's/feat: release 6.8.1/feat: release XO 6.8.1/' "$temporary/commits.json" >"$temporary/historical.json"
 XO_NIXPKG_COMMITS_JSON="$temporary/historical.json" run_update --release >/dev/null
 
 # Paginated responses larger than ARG_MAX stay in files instead of becoming
 # jq command-line arguments. Page one deliberately exceeds typical 2 MiB
 # process argument limits and page two completes the two-release selection.
-jq -n --arg latest_rev "$latest_rev" '
-  [{sha:$latest_rev,commit:{message:"feat: release 6.8 (#11001)"}}] +
+jq -n --arg latest_rev "$latest_rev" --arg excluded_stable_rev "$excluded_stable_rev" '
+  [
+    {sha:$latest_rev,commit:{message:"feat: release 6.8.1 (#11002)"}},
+    {sha:$excluded_stable_rev,commit:{message:"feat: release 6.8 (#11001)"}}
+  ] +
   [range(0; 35000) as $index | {
     sha:("f" * 40),
     commit:{message:("chore: large pagination fixture " + ($index | tostring) + ("x" * 80))}
@@ -122,7 +129,7 @@ fi
 # The latest release marker and root changelog must agree.
 jq --arg rev "$stable_rev" '.channels.latest.version = "6.7.1" | .channels.latest.rev = $rev' \
   "$root/nix/sources/xen-orchestra.json" >"$temporary/xo.json"
-printf '## **6.8.1** (2026-08-20)\n' >"$temporary/candidate/CHANGELOG.md"
+printf '## **6.8.2** (2026-09-03)\n' >"$temporary/candidate/CHANGELOG.md"
 if run_update --release >/dev/null 2>&1; then
   echo 'Mismatched XO release marker and changelog were accepted' >&2
   exit 1
@@ -138,7 +145,7 @@ fi
 # Changed rolling lockfiles exercise both fixed-output hash calculations.
 cp "$root/nix/sources/xen-orchestra.json" "$temporary/xo.json"
 cp "$root/flake.nix" "$temporary/flake.nix"
-printf '## **6.8.0** (2026-08-20)\n' >"$temporary/candidate/CHANGELOG.md"
+printf '## **6.8.1** (2026-09-02)\n' >"$temporary/candidate/CHANGELOG.md"
 printf '\n# root lock changed\n' >>"$temporary/candidate/yarn.lock"
 printf '\n# docs lock changed\n' >>"$temporary/candidate/docs/yarn.lock"
 mkdir -p "$temporary/bin"

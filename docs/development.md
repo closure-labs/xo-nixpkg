@@ -59,8 +59,10 @@ nix eval --accept-flake-config --json .#checks.x86_64-linux --apply builtins.att
 Use the release updater to refresh both official package outputs. Discovery
 searches commits that changed upstream's root `CHANGELOG.md`, accepts only
 unscoped `feat: release VERSION` markers, assigns the newest match to `latest`,
-and assigns the next match to `stable`. Scoped `feat(lite):` commits and XO
-Lite tags belong to a separate upstream product and are ignored.
+and assigns the newest non-excluded predecessor to `stable`. Known-bad stable
+candidates are recorded in `excludedStableVersions` in the XO source lock;
+currently `6.8` is excluded. Scoped `feat(lite):` commits and XO Lite tags belong
+to a separate upstream product and are ignored.
 
 ```bash
 nix run .#update-xo-release
@@ -76,6 +78,12 @@ files did not change. Commit discovery streams paginated GitHub responses
 through temporary files, so long upstream histories cannot exceed the process
 argument limit. CI recognizes this generated pin/flake/lock cohort and builds
 only the changed channels.
+
+Each newly detected release gets a version-specific pull request with a review
+request. A human approval is required before trusted automation enrolls it in
+the merge queue. After the gated merge, the immutable XO package tag is created
+and the moving `latest` and `stable` Git tags are updated to their corresponding
+immutable package-tag commits.
 
 To refresh `rolling` to upstream HEAD for troubleshooting, run:
 

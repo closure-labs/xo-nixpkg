@@ -2,10 +2,13 @@
   "schemaVersion": 2,
   "owner": "vatesfr",
   "repo": "xen-orchestra",
+  "excludedStableVersions": [
+    "6.8"
+  ],
   "channels": {
     "latest": {
-      "version": "6.8",
-      "rev": "faf6745471d7b2a00d774d98428873455e9539dc",
+      "version": "6.8.1",
+      "rev": "bca8f02b8a3a4475eca49dc6e9327dbe09b20263",
       "yarnHash": "sha256-shh9i5ziSzcNb/gEfrRrhcNoE/5V9N55P6jnbkpvlA4=",
       "docsYarnHash": "sha256-g/rB7fqBHgv94XI3OakCIaebzNe6pyK6Wmlx0cLWNSk="
     },

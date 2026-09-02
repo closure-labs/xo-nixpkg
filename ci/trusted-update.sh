@@ -17,7 +17,7 @@ ci_workflow=${CI_WORKFLOW:-ci.yml}
 read_pr() {
   gh pr view "$PR_NUMBER" \
     --repo "$GITHUB_REPOSITORY" \
-    --json author,baseRefName,headRefName,headRefOid,headRepository,mergeStateStatus,state,title,url
+    --json author,baseRefName,headRefName,headRefOid,headRepository,mergeStateStatus,reviewDecision,state,title,url
 }
 
 validate_pr() {
@@ -37,10 +37,18 @@ validate_pr() {
 
 pr=$(read_pr)
 validate_pr "$pr"
+if [[ $(jq -r '.reviewDecision // ""' <<<"$pr") != APPROVED ]]; then
+  printf 'Trusted update PR %s is waiting for human approval.\n' "$PR_NUMBER"
+  exit 0
+fi
 if [[ $(jq -er .mergeStateStatus <<<"$pr") == BEHIND ]]; then
   gh pr update-branch "$PR_NUMBER" --repo "$GITHUB_REPOSITORY"
   pr=$(read_pr)
   validate_pr "$pr"
+  [[ $(jq -r '.reviewDecision // ""' <<<"$pr") == APPROVED ]] || {
+    printf 'Trusted update PR %s requires approval again after its branch update.\n' "$PR_NUMBER"
+    exit 0
+  }
 fi
 
 branch=$(jq -er .headRefName <<<"$pr")

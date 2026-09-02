@@ -21,6 +21,8 @@ assert lib.assertMsg (
   xo.schemaVersion == 2
   && xo.owner == "vatesfr"
   && xo.repo == "xen-orchestra"
+  && builtins.isList xo.excludedStableVersions
+  && lib.all (version: builtins.match "[0-9]+(\\.[0-9]+)+" version != null) xo.excludedStableVersions
   && builtins.isAttrs xo.channels
   &&
     builtins.attrNames xo.channels == [
