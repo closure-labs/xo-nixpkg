@@ -9,10 +9,15 @@ set -euo pipefail
 : "${UPDATE_TITLE:?UPDATE_TITLE must be set}"
 : "${UPDATE_BODY:?UPDATE_BODY must be set}"
 update_draft=${UPDATE_DRAFT:-false}
+update_reviewer=${UPDATE_REVIEWER:-}
 retry_attempts=${XO_NIXPKG_RETRY_ATTEMPTS:-3}
 retry_delay_seconds=${XO_NIXPKG_RETRY_DELAY_SECONDS:-2}
 [[ $update_draft == true || $update_draft == false ]] || {
   echo 'UPDATE_DRAFT must be true or false' >&2
+  exit 2
+}
+[[ -z $update_reviewer || $update_reviewer =~ ^[A-Za-z0-9][A-Za-z0-9-]*$ ]] || {
+  echo 'UPDATE_REVIEWER must be a GitHub username' >&2
   exit 2
 }
 [[ $retry_attempts =~ ^[1-9][0-9]*$ && $retry_delay_seconds =~ ^[0-9]+$ ]] || {
@@ -71,9 +76,13 @@ git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
 git remote set-url origin "https://x-access-token:${GH_TOKEN}@github.com/${GITHUB_REPOSITORY}.git"
 remote_sha=$(git ls-remote --refs origin "refs/heads/$UPDATE_BRANCH" | cut -f1)
 candidate_published=false
-if [[ -n $remote_sha ]] && git diff --quiet "$remote_sha" -- "$@"; then
-  echo 'The candidate is already published on the update branch'
-  candidate_published=true
+if [[ -n $remote_sha ]]; then
+  retry_transient "Fetch existing update candidate $UPDATE_BRANCH" \
+    git fetch --no-tags --depth=1 origin "$remote_sha"
+  if git diff --quiet "$remote_sha" -- "$@"; then
+    echo 'The candidate is already published on the update branch'
+    candidate_published=true
+  fi
 fi
 if [[ $candidate_published == false ]]; then
   git switch -C "$UPDATE_BRANCH"
@@ -89,17 +98,21 @@ open_pr_json=$(gh pr list --repo "$GITHUB_REPOSITORY" --state open --head "$UPDA
   --json isDraft,number --jq '.[0] // {}')
 open_pr=$(jq -r '.number // empty' <<<"$open_pr_json")
 if [[ -n $open_pr ]]; then
+  edit_args=(--title "$UPDATE_TITLE" --body "$UPDATE_BODY")
+  [[ -z $update_reviewer ]] || edit_args+=(--add-reviewer "$update_reviewer")
   retry_transient "Edit update PR $open_pr" \
     gh pr edit "$open_pr" --repo "$GITHUB_REPOSITORY" \
-      --title "$UPDATE_TITLE" --body "$UPDATE_BODY"
+      "${edit_args[@]}"
   if [[ $update_draft == true && $(jq -r '.isDraft' <<<"$open_pr_json") == false ]]; then
     retry_transient "Convert update PR $open_pr to draft" \
       gh pr ready --undo "$open_pr" --repo "$GITHUB_REPOSITORY"
   fi
 else
   draft_args=()
+  reviewer_args=()
   [[ $update_draft == false ]] || draft_args+=(--draft)
+  [[ -z $update_reviewer ]] || reviewer_args+=(--reviewer "$update_reviewer")
   retry_transient "Create update PR for $UPDATE_BRANCH" \
     gh pr create --repo "$GITHUB_REPOSITORY" --base main --head "$UPDATE_BRANCH" \
-      --title "$UPDATE_TITLE" --body "$UPDATE_BODY" "${draft_args[@]}"
+      --title "$UPDATE_TITLE" --body "$UPDATE_BODY" "${draft_args[@]}" "${reviewer_args[@]}"
 fi

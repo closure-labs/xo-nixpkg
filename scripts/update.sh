@@ -53,7 +53,9 @@ github_api() {
 }
 
 select_releases() {
-  jq -ce '
+  local excluded_stable_versions
+  excluded_stable_versions=$(jq -ce '.excludedStableVersions // []' "$pin_file")
+  jq -ce --argjson excluded_stable_versions "$excluded_stable_versions" '
     [
       .[]
       | .commit.message as $message
@@ -65,7 +67,17 @@ select_releases() {
     | unique_by(.version)
     | sort_by(.version | split(".") | map(tonumber))
     | reverse
-    | .[0:2]
+    | . as $releases
+    | ($releases[0] // null) as $latest
+    | [
+        $latest,
+        first(
+          $releases[]
+          | select(.version != $latest.version)
+          | select(.version as $version | ($excluded_stable_versions | index($version)) == null)
+        )
+      ]
+    | map(select(. != null))
   '
 }
 
@@ -246,6 +258,8 @@ done
 cd "$repo_root"
 jq -e '
   .schemaVersion == 2 and
+  (.excludedStableVersions | type == "array") and
+  all(.excludedStableVersions[]; type == "string" and test("^[0-9]+(\\.[0-9]+)+$")) and
   (.channels | keys == ["latest", "rolling", "stable"]) and
   all(.channels[];
     (.rev | test("^[a-f0-9]{40}$")) and

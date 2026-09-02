@@ -16,12 +16,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Tag each newly gated `latest` Xen Orchestra release at its downstream pin
   commit, normalizing upstream versions such as `6.8` to the immutable
   lightweight tag `v6.8.0` without moving independent project release tags.
+- Request human review on version-specific Xen Orchestra release pull requests
+  and enroll them in the merge queue only after approval.
+
+### Changed
+
+- Refresh the moving `latest` and `stable` Git tags through their corresponding
+  immutable XO package tags after a gated release merge.
+- Keep known-bad `6.8` out of the stable channel, retaining `6.7.1` until a
+  supported successor can be promoted.
 
 ### Fixed
 
 - Let failed same-repository Dependabot validation invoke a flake-packaged
   Determinate Nix hash repair command and push only tracked fixes back to the
   exact pull-request head with force-with-lease protection.
+- Keep release-update fixtures independent of the repository's current latest
+  version so a successful source update cannot break its own pull-request CI.
 
 ## [0.10.0] - 2026-08-28
 

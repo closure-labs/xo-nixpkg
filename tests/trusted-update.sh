@@ -15,7 +15,8 @@ if [[ "$1 $2" == 'pr view' ]]; then
   jq -n \
     --arg author "${FAKE_AUTHOR:-github-actions[bot]}" \
     --arg repository "${FAKE_REPOSITORY:-example/xo-nixpkg}" \
-    '{author:{login:$author},baseRefName:"main",headRefName:"automation/test",headRefOid:"abc123",headRepository:{nameWithOwner:$repository},mergeStateStatus:"CLEAN",state:"OPEN",title:"Trusted update",url:"https://example.invalid/pr/1"}'
+    --arg review_decision "${FAKE_REVIEW_DECISION-APPROVED}" \
+    '{author:{login:$author},baseRefName:"main",headRefName:"automation/test",headRefOid:"abc123",headRepository:{nameWithOwner:$repository},mergeStateStatus:"CLEAN",reviewDecision:$review_decision,state:"OPEN",title:"Trusted update",url:"https://example.invalid/pr/1"}'
 elif [[ "$1 $2" == 'run list' ]]; then
   printf '[{"databaseId":42,"conclusion":"action_required"}]\n'
 elif [[ $1 == api ]]; then
@@ -55,6 +56,12 @@ trusted_env=(
 env PATH="$temporary/bin:$PATH" "${trusted_env[@]}" bash "$root/ci/trusted-update.sh"
 grep -Fq -- 'actions/runs/42/approve' "$temporary/approve.log"
 grep -Fq -- '--match-head-commit abc123' "$temporary/merge.log"
+
+rm -f "$temporary/approve.log" "$temporary/merge.log"
+env PATH="$temporary/bin:$PATH" FAKE_REVIEW_DECISION='' "${trusted_env[@]}" \
+  bash "$root/ci/trusted-update.sh" >"$temporary/unapproved.stdout"
+grep -F 'waiting for human approval' "$temporary/unapproved.stdout" >/dev/null
+[[ ! -e $temporary/approve.log && ! -e $temporary/merge.log ]]
 
 if env PATH="$temporary/bin:$PATH" FAKE_APPROVE_FAILURE=true "${trusted_env[@]}" \
   bash "$root/ci/trusted-update.sh" >"$temporary/approve.stdout" 2>"$temporary/approve.stderr"; then

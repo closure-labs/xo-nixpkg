@@ -49,13 +49,17 @@ channel=latest
 [[ $mode == --release ]] || channel=rolling
 version=$(jq -er ".channels.$channel.version" "$pin_file")
 rev=$(jq -er ".channels.$channel.rev" "$pin_file")
+stable_version=$(jq -er '.channels.stable.version' "$pin_file")
+stable_rev=$(jq -er '.channels.stable.rev' "$pin_file")
 [[ $version =~ ^([0-9]+(\.[0-9]+)+|unstable-[0-9]{4}-[0-9]{2}-[0-9]{2})$ ]]
 [[ $rev =~ ^[a-f0-9]{40}$ ]]
+[[ $stable_version =~ ^[0-9]+(\.[0-9]+)+$ ]]
+[[ $stable_rev =~ ^[a-f0-9]{40}$ ]]
 
 if (( $# == 1 )); then
-  printf 'changed=%s\nchanged_channels=%s\nversion=%s\nrev=%s\n' \
-    "$changed" "$changed_channels" "$version" "$rev" >>"$1"
+  printf 'changed=%s\nchanged_channels=%s\nversion=%s\nrev=%s\nstable_version=%s\nstable_rev=%s\n' \
+    "$changed" "$changed_channels" "$version" "$rev" "$stable_version" "$stable_rev" >>"$1"
 else
-  printf 'changed=%s\nchanged_channels=%s\nversion=%s\nrev=%s\n' \
-    "$changed" "$changed_channels" "$version" "$rev"
+  printf 'changed=%s\nchanged_channels=%s\nversion=%s\nrev=%s\nstable_version=%s\nstable_rev=%s\n' \
+    "$changed" "$changed_channels" "$version" "$rev" "$stable_version" "$stable_rev"
 fi

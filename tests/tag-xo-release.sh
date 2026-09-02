@@ -27,17 +27,18 @@ git config user.name Fixture
 git config user.email fixture@example.invalid
 
 write_pin() {
-  local latest_version=$1 latest_revision=$2 stable_revision=$3 rolling_revision=$4
+  local latest_version=$1 latest_revision=$2 stable_version=$3 stable_revision=$4 rolling_revision=$5
   jq -n \
     --arg latest_version "$latest_version" \
     --arg latest_revision "$latest_revision" \
+    --arg stable_version "$stable_version" \
     --arg stable_revision "$stable_revision" \
     --arg rolling_revision "$rolling_revision" '
     {
       schemaVersion: 2,
       channels: {
         latest: {version: $latest_version, rev: $latest_revision},
-        stable: {version: "6.7", rev: $stable_revision},
+        stable: {version: $stable_version, rev: $stable_revision},
         rolling: {version: "unstable-2026-09-01", rev: $rolling_revision}
       }
     }
@@ -70,61 +71,71 @@ stable_b=5555555555555555555555555555555555555555
 rolling_a=6666666666666666666666666666666666666666
 rolling_b=7777777777777777777777777777777777777777
 
-write_pin 6.7.1 "$rev_671" "$stable_a" "$rolling_a"
+write_pin 6.7.1 "$rev_671" 6.7 "$stable_a" "$rolling_a"
 base=$(commit_pin base)
+git tag v6.7.0 "$base"
+git tag v6.7.1 "$base"
 
-write_pin 6.7.1 "$rev_671" "$stable_b" "$rolling_a"
+write_pin 6.7.1 "$rev_671" 6.7 "$stable_b" "$rolling_a"
 stable_only=$(commit_pin stable-only)
 run_tagger "$base" "$stable_only" >/dev/null
-[[ -z $(git tag --list 'v*') ]]
+[[ $(git tag --list 'v*' | wc -l) == 2 ]]
+[[ $(git rev-list -n 1 latest) == "$base" ]]
+[[ $(git rev-list -n 1 stable) == "$base" ]]
 
-write_pin 6.7.1 "$rev_671" "$stable_b" "$rolling_b"
+write_pin 6.7.1 "$rev_671" 6.7 "$stable_b" "$rolling_b"
 rolling_only=$(commit_pin rolling-only)
 run_tagger "$stable_only" "$rolling_only" >/dev/null
-[[ -z $(git tag --list 'v*') ]]
+[[ $(git tag --list 'v*' | wc -l) == 2 ]]
 
 printf 'documentation\n' >README.md
 git add README.md
 git commit -qm unrelated
 unrelated=$(git rev-parse HEAD)
 run_tagger "$rolling_only" "$unrelated" >/dev/null
-[[ -z $(git tag --list 'v*') ]]
+[[ $(git tag --list 'v*' | wc -l) == 2 ]]
 
 jq '.channels.latest.yarnHash = "fixture"' \
   nix/sources/xen-orchestra.json >"$fixture/pin.json"
 mv "$fixture/pin.json" nix/sources/xen-orchestra.json
 unchanged_latest=$(commit_pin unchanged-latest)
 run_tagger "$unrelated" "$unchanged_latest" >/dev/null
-[[ -z $(git tag --list 'v*') ]]
+[[ $(git tag --list 'v*' | wc -l) == 2 ]]
 
-write_pin 6.8 "$rev_68" "$stable_b" "$rolling_b"
+write_pin 6.8 "$rev_68" 6.7.1 "$rev_671" "$rolling_b"
 release_68=$(commit_pin release-6.8)
 run_tagger "$unchanged_latest" "$release_68"
 [[ $(git rev-list -n 1 v6.8.0) == "$release_68" ]]
 [[ $(git cat-file -t v6.8.0) == commit ]]
+[[ $(git rev-list -n 1 latest) == "$release_68" ]]
+[[ $(git rev-list -n 1 stable) == "$base" ]]
 
 # Rerunning the same gated push is idempotent.
 tag_before=$(git show-ref --hash refs/tags/v6.8.0)
 run_tagger "$unchanged_latest" "$release_68" >/dev/null
 [[ $(git show-ref --hash refs/tags/v6.8.0) == "$tag_before" ]]
 
-write_pin 6.8.1 "$rev_681" "$stable_b" "$rolling_b"
+write_pin 6.8.1 "$rev_681" 6.7.1 "$rev_671" "$rolling_b"
 release_681=$(commit_pin release-6.8.1)
 run_tagger "$release_68" "$release_681"
 [[ $(git rev-list -n 1 v6.8.1) == "$release_681" ]]
+[[ $(git rev-list -n 1 latest) == "$release_681" ]]
+[[ $(git rev-list -n 1 stable) == "$base" ]]
 
 # An existing immutable XO package tag is reported and never moved.
 git tag v6.9.0 "$base"
-write_pin 6.9 8888888888888888888888888888888888888888 "$stable_b" "$rolling_b"
+write_pin 6.9 8888888888888888888888888888888888888888 6.8.1 "$rev_681" "$rolling_b"
 release_69=$(commit_pin release-6.9)
 run_tagger "$release_681" "$release_69" >/dev/null
 [[ $(git rev-list -n 1 v6.9.0) == "$base" ]]
+[[ $(git rev-list -n 1 latest) == "$base" ]]
+[[ $(git rev-list -n 1 stable) == "$release_681" ]]
 
 expect_failure run_tagger invalid "$release_69"
 expect_failure run_tagger "$release_681" invalid
 expect_failure run_tagger "$base" "$release_681"
 
-write_pin 6.9.0.1 9999999999999999999999999999999999999999 "$stable_b" "$rolling_b"
+write_pin 6.9.0.1 9999999999999999999999999999999999999999 6.8.1 "$rev_681" "$rolling_b"
 malformed=$(commit_pin malformed-version)
 expect_failure run_tagger "$release_69" "$malformed"
 

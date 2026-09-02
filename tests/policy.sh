@@ -24,6 +24,7 @@ jq -e '
   .schemaVersion == 2 and
   .owner == "vatesfr" and
   .repo == "xen-orchestra" and
+  .excludedStableVersions == ["6.8"] and
   (.channels | keys == ["latest", "rolling", "stable"]) and
   (.channels.latest.version | test("^[0-9]+(\\.[0-9]+)+$")) and
   (.channels.stable.version | test("^[0-9]+(\\.[0-9]+)+$")) and
@@ -214,6 +215,7 @@ if rg -F 'UPDATE_AUTHOR: github-actions[bot]' "$root/.github/workflows/queue-aut
   exit 1
 fi
 rg -F 'actions/runs/${run_id}/approve' "$root/ci/trusted-update.sh" >/dev/null
+rg -F 'reviewDecision' "$root/ci/trusted-update.sh" >/dev/null
 if rg -F 'MERGE_QUEUE_TOKEN || github.token' "$root/.github/workflows/queue-automation.yml"; then
   echo 'Merge queue must not fall back to the built-in GitHub token' >&2
   exit 1
@@ -223,6 +225,12 @@ mapfile -t queue_steps < <(yq -r '.jobs.enqueue.steps[].name' \
 [[ ${queue_steps[0]} == 'Preflight merge-queue credential' ]]
 [[ ${queue_steps[1]} == 'Checkout trusted automation' ]]
 [[ ${queue_steps[2]} == 'Set up Nix' ]]
+yq -e '
+  (.["on"].pull_request_review.types | length) == 1 and
+  .["on"].pull_request_review.types[0] == "submitted" and
+  (.jobs.enqueue.if | contains("github.event.review.state")) and
+  (.jobs.enqueue.if | contains("approved"))
+' "$root/.github/workflows/queue-automation.yml" >/dev/null
 preflight=$(yq -r '.jobs.enqueue.steps[0].run' \
   "$root/.github/workflows/queue-automation.yml")
 preflight_output=$(mktemp)

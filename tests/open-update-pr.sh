@@ -71,6 +71,7 @@ run_fixture() {
       UPDATE_BRANCH=automation/test \
       UPDATE_TITLE='Fixture update' \
       UPDATE_BODY='Fixture body' \
+      UPDATE_REVIEWER=declarative-dale \
       XO_NIXPKG_RETRY_DELAY_SECONDS=0 \
       bash "$root/ci/open-update-pr.sh" update
   )
@@ -84,6 +85,7 @@ make_repository "$transient_repository"
 run_fixture "$transient_repository" 1 "$transient_push_count" "$transient_gh_log"
 [[ $(<"$transient_push_count") == 2 ]]
 [[ $(grep -c '^pr create ' "$transient_gh_log") == 1 ]]
+grep -F -- '--reviewer declarative-dale' "$transient_gh_log" >/dev/null
 
 persistent_repository=$temporary/persistent
 persistent_push_count=$temporary/persistent-push-count

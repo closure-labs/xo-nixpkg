@@ -18,7 +18,8 @@ Commit the resulting `flake.lock`. The input exposes these primary packages on
 `x86_64-linux`:
 
 - `packages.x86_64-linux.latest`: newest official XO release
-- `packages.x86_64-linux.stable`: preceding official XO release
+- `packages.x86_64-linux.stable`: newest supported predecessor of the latest
+  official XO release
 - `packages.x86_64-linux.rolling`: newest admitted upstream `master` commit
 - `packages.x86_64-linux.supply-protector-latest`: signed-cache supply
   assertion and closure documents for `latest`
