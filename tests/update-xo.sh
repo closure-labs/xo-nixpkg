@@ -7,34 +7,74 @@ root=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)
 temporary=$(mktemp -d)
 trap 'rm -rf "$temporary"' EXIT
 
+old_stable_rev=0000000000000000000000000000000000000000
+old_latest_rev=1111111111111111111111111111111111111111
+excluded_stable_rev=2222222222222222222222222222222222222222
+latest_rev=3333333333333333333333333333333333333333
+old_rolling_rev=4444444444444444444444444444444444444444
+latest_yarn_hash=sha256-AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=
+latest_docs_yarn_hash=sha256-BBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBB=
+
+write_initial_state() {
+  jq -n \
+    --arg old_stable_rev "$old_stable_rev" \
+    --arg old_latest_rev "$old_latest_rev" \
+    --arg old_rolling_rev "$old_rolling_rev" \
+    --arg latest_yarn_hash "$latest_yarn_hash" \
+    --arg latest_docs_yarn_hash "$latest_docs_yarn_hash" '
+    {
+      schemaVersion: 2,
+      owner: "vatesfr",
+      repo: "xen-orchestra",
+      excludedStableVersions: ["9.2"],
+      channels: {
+        latest: {
+          version: "9.1.0", rev: $old_latest_rev,
+          yarnHash: $latest_yarn_hash, docsYarnHash: $latest_docs_yarn_hash
+        },
+        stable: {
+          version: "9.0.0", rev: $old_stable_rev,
+          yarnHash: "sha256-CCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCC=",
+          docsYarnHash: "sha256-DDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDD="
+        },
+        rolling: {
+          version: "unstable-2026-08-01", rev: $old_rolling_rev,
+          yarnHash: "sha256-EEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEE=",
+          docsYarnHash: "sha256-FFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFF="
+        }
+      }
+    }
+  ' >"$temporary/xo.json"
+
+  {
+    printf '%s\n' '{' '  inputs = {'
+    printf '    xo-latest = {\n      url = "github:vatesfr/xen-orchestra/%s";\n      flake = false;\n    };\n' "$old_latest_rev"
+    printf '    xo-stable = {\n      url = "github:vatesfr/xen-orchestra/%s";\n      flake = false;\n    };\n' "$old_stable_rev"
+    printf '    xo-rolling = {\n      url = "github:vatesfr/xen-orchestra/%s";\n      flake = false;\n    };\n' "$old_rolling_rev"
+    printf '%s\n' '  };' '}'
+  } >"$temporary/flake.nix"
+}
+
 mkdir -p "$temporary/current/docs" "$temporary/candidate/docs"
-cat >"$temporary/current/yarn.lock" <<'LOCK'
-"@turbo/linux-64@2.9.17":
-  version "2.9.17"
-LOCK
+printf '%s\n' '"@turbo/linux-64@2.9.17":' '  version "2.9.17"' \
+  >"$temporary/current/yarn.lock"
 cp "$temporary/current/yarn.lock" "$temporary/candidate/yarn.lock"
 printf '%s\n' docs-lock >"$temporary/current/docs/yarn.lock"
 cp "$temporary/current/docs/yarn.lock" "$temporary/candidate/docs/yarn.lock"
-printf '## **6.8.1** (2026-09-02)\n' >"$temporary/candidate/CHANGELOG.md"
-jq '.channels.latest = .channels.stable' \
-  "$root/nix/sources/xen-orchestra.json" >"$temporary/xo.json"
-cp "$root/flake.nix" "$temporary/flake.nix"
+printf '## **9.2.1** (2026-09-02)\n' >"$temporary/candidate/CHANGELOG.md"
+write_initial_state
 
-latest_rev=3333333333333333333333333333333333333333
-excluded_stable_rev=2222222222222222222222222222222222222222
-stable_rev=$(jq -er '.channels.stable.rev' "$temporary/xo.json")
-latest_yarn_hash=$(jq -er '.channels.latest.yarnHash' "$temporary/xo.json")
-latest_docs_yarn_hash=$(jq -er '.channels.latest.docsYarnHash' "$temporary/xo.json")
 cat >"$temporary/commits.json" <<JSON
 [
-  {"sha":"1111111111111111111111111111111111111111","commit":{"message":"feat(lite): 0.25.0 (#11000)"}},
-  {"sha":"$latest_rev","commit":{"message":"feat: release 6.8.1 (#11002)\n\nNormal XO release"}},
-  {"sha":"$excluded_stable_rev","commit":{"message":"feat: release 6.8 (#11001)"}},
-  {"sha":"$stable_rev","commit":{"message":"feat: release 6.7.1 (#10229)"}}
+  {"sha":"5555555555555555555555555555555555555555","commit":{"message":"feat(lite): 0.25.0 (#11000)"}},
+  {"sha":"$latest_rev","commit":{"message":"feat: release 9.2.1 (#11002)\n\nNormal XO release"}},
+  {"sha":"$excluded_stable_rev","commit":{"message":"feat: release 9.2 (#11001)"}},
+  {"sha":"$old_latest_rev","commit":{"message":"feat: release 9.1.0 (#10229)"}}
 ]
 JSON
 jq -cn --arg storePath "$temporary/candidate" \
-  '{hash:"sha256-BBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBB=",storePath:$storePath}' >"$temporary/prefetch.json"
+  '{hash:"sha256-GGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGG=",storePath:$storePath}' \
+  >"$temporary/prefetch.json"
 
 run_update() {
   XO_NIXPKG_SOURCE_ROOT="$root" \
@@ -49,14 +89,14 @@ run_update() {
 run_update --release
 jq -e \
   --arg latest "$latest_rev" \
-  --arg stable "$stable_rev" \
+  --arg stable "$old_latest_rev" \
   --arg yarnHash "$latest_yarn_hash" \
   --arg docsYarnHash "$latest_docs_yarn_hash" '
   .schemaVersion == 2 and
-  .excludedStableVersions == ["6.8"] and
-  .channels.latest.version == "6.8.1" and
+  .excludedStableVersions == ["9.2"] and
+  .channels.latest.version == "9.2.1" and
   .channels.latest.rev == $latest and
-  .channels.stable.version == "6.7.1" and
+  .channels.stable.version == "9.1.0" and
   .channels.stable.rev == $stable and
   .channels.latest.yarnHash == $yarnHash and
   .channels.latest.docsYarnHash == $docsYarnHash and
@@ -64,30 +104,30 @@ jq -e \
   (.channels.latest | has("hash") | not)
 ' "$temporary/xo.json" >/dev/null
 grep -F "github:vatesfr/xen-orchestra/$latest_rev" "$temporary/flake.nix" >/dev/null
-grep -F "github:vatesfr/xen-orchestra/$stable_rev" "$temporary/flake.nix" >/dev/null
+grep -F "github:vatesfr/xen-orchestra/$old_latest_rev" "$temporary/flake.nix" >/dev/null
 
 # Exact current channels are no-ops and do not prefetch or build anything.
 XO_NIXPKG_PREFETCH_JSON="$temporary/missing-prefetch.json" run_update --release >/dev/null
 
 # XO-prefixed historical markers remain supported.
-sed 's/feat: release 6.8.1/feat: release XO 6.8.1/' "$temporary/commits.json" >"$temporary/historical.json"
+sed 's/feat: release 9.2.1/feat: release XO 9.2.1/' \
+  "$temporary/commits.json" >"$temporary/historical.json"
 XO_NIXPKG_COMMITS_JSON="$temporary/historical.json" run_update --release >/dev/null
 
 # Paginated responses larger than ARG_MAX stay in files instead of becoming
-# jq command-line arguments. Page one deliberately exceeds typical 2 MiB
-# process argument limits and page two completes the two-release selection.
+# jq command-line arguments. Page two completes the two-release selection.
 jq -n --arg latest_rev "$latest_rev" --arg excluded_stable_rev "$excluded_stable_rev" '
   [
-    {sha:$latest_rev,commit:{message:"feat: release 6.8.1 (#11002)"}},
-    {sha:$excluded_stable_rev,commit:{message:"feat: release 6.8 (#11001)"}}
+    {sha:$latest_rev,commit:{message:"feat: release 9.2.1 (#11002)"}},
+    {sha:$excluded_stable_rev,commit:{message:"feat: release 9.2 (#11001)"}}
   ] +
   [range(0; 35000) as $index | {
     sha:("f" * 40),
     commit:{message:("chore: large pagination fixture " + ($index | tostring) + ("x" * 80))}
   }]
 ' >"$temporary/page-1.json"
-jq -n --arg stable_rev "$stable_rev" \
-  '[{sha:$stable_rev,commit:{message:"feat: release 6.7.1 (#10229)"}}]' \
+jq -n --arg stable_rev "$old_latest_rev" \
+  '[{sha:$stable_rev,commit:{message:"feat: release 9.1.0 (#10229)"}}]' \
   >"$temporary/page-2.json"
 mkdir -p "$temporary/bin"
 printf '#!%s\n' "$BASH" >"$temporary/bin/curl"
@@ -119,43 +159,43 @@ if XO_NIXPKG_COMMITS_JSON="$temporary/malformed.json" run_update --release >/dev
 fi
 
 # Lite and technical markers cannot form the two official release channels.
-jq '[.[0], {sha:"2222222222222222222222222222222222222222",commit:{message:"feat: technical release (#10999)"}}]' \
+jq '[.[0], {sha:"6666666666666666666666666666666666666666",commit:{message:"feat: technical release (#10999)"}}]' \
   "$temporary/commits.json" >"$temporary/non-xo.json"
 if XO_NIXPKG_COMMITS_JSON="$temporary/non-xo.json" run_update --release >/dev/null 2>&1; then
   echo 'XO Lite or technical releases were accepted as official channels' >&2
   exit 1
 fi
 
-# The latest release marker and root changelog must agree.
-jq --arg rev "$stable_rev" '.channels.latest.version = "6.7.1" | .channels.latest.rev = $rev' \
-  "$root/nix/sources/xen-orchestra.json" >"$temporary/xo.json"
-printf '## **6.8.2** (2026-09-03)\n' >"$temporary/candidate/CHANGELOG.md"
+# The latest release marker and root changelog must agree. This fixture is
+# synthetic so a real upstream release cannot silently invalidate CI.
+write_initial_state
+printf '## **9.2.2** (2026-09-03)\n' >"$temporary/candidate/CHANGELOG.md"
 if run_update --release >/dev/null 2>&1; then
   echo 'Mismatched XO release marker and changelog were accepted' >&2
   exit 1
 fi
 
 # A discovered release older than the current latest cannot downgrade channels.
-jq '.channels.latest.version = "6.9.0"' "$root/nix/sources/xen-orchestra.json" >"$temporary/xo.json"
+write_initial_state
+jq '.channels.latest.version = "99.0.0"' "$temporary/xo.json" \
+  >"$temporary/downgrade.json"
+mv "$temporary/downgrade.json" "$temporary/xo.json"
 if run_update --release >/dev/null 2>&1; then
   echo 'Older XO release was not rejected' >&2
   exit 1
 fi
 
 # Changed rolling lockfiles exercise both fixed-output hash calculations.
-cp "$root/nix/sources/xen-orchestra.json" "$temporary/xo.json"
-cp "$root/flake.nix" "$temporary/flake.nix"
-printf '## **6.8.1** (2026-09-02)\n' >"$temporary/candidate/CHANGELOG.md"
+write_initial_state
 printf '\n# root lock changed\n' >>"$temporary/candidate/yarn.lock"
 printf '\n# docs lock changed\n' >>"$temporary/candidate/docs/yarn.lock"
-mkdir -p "$temporary/bin"
 printf '#!%s\n' "$(command -v bash)" >"$temporary/bin/nix-build"
 cat >>"$temporary/bin/nix-build" <<'SH'
 set -euo pipefail
 printf '%s\n' "$*" >>"$PREFETCH_NIX_LOG"
 case " $* " in
-  *' --arg normalized true '*) hash='sha256-CCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCC=' ;;
-  *' --arg normalized false '*) hash='sha256-DDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDD=' ;;
+  *' --arg normalized true '*) hash='sha256-HHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHH=' ;;
+  *' --arg normalized false '*) hash='sha256-IIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIII=' ;;
   *) echo 'missing normalized argument' >&2; exit 2 ;;
 esac
 printf 'error: hash mismatch\n  got:    %s\n' "$hash" >&2
@@ -175,8 +215,8 @@ XO_NIXPKG_UPSTREAM_DATE=2026-08-20 \
 jq -e --arg rev "$rolling_rev" '
   .channels.rolling.version == "unstable-2026-08-20" and
   .channels.rolling.rev == $rev and
-  .channels.rolling.yarnHash == "sha256-CCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCC=" and
-  .channels.rolling.docsYarnHash == "sha256-DDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDD="
+  .channels.rolling.yarnHash == "sha256-HHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHH=" and
+  .channels.rolling.docsYarnHash == "sha256-IIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIII="
 ' "$temporary/xo.json" >/dev/null
 grep -F "github:vatesfr/xen-orchestra/$rolling_rev" "$temporary/flake.nix" >/dev/null
 grep -F -- "$root/nix/prefetch-yarn-deps.nix" "$temporary/prefetch-nix.log" >/dev/null

@@ -52,5 +52,5 @@ jobs:
 
             Approve this pull request after reviewing the channel selection. Once approved and CI is green,
             trusted automation will enroll it in the merge queue. The gated main build then creates the immutable
-            package tag and refreshes the `latest` and `stable` moving tags.
+            package tag; the `latest` and `stable` names remain flake output channels rather than moving Git tags.
         run: nix run .#open-update-pr -- flake.nix flake.lock nix/sources/xen-orchestra.json

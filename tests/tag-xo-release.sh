@@ -75,6 +75,8 @@ write_pin 6.7.1 "$rev_671" 6.7 "$stable_a" "$rolling_a"
 base=$(commit_pin base)
 git tag v6.7.0 "$base"
 git tag v6.7.1 "$base"
+git tag latest "$base"
+git tag stable "$base"
 
 write_pin 6.7.1 "$rev_671" 6.7 "$stable_b" "$rolling_a"
 stable_only=$(commit_pin stable-only)
@@ -107,7 +109,7 @@ release_68=$(commit_pin release-6.8)
 run_tagger "$unchanged_latest" "$release_68"
 [[ $(git rev-list -n 1 v6.8.0) == "$release_68" ]]
 [[ $(git cat-file -t v6.8.0) == commit ]]
-[[ $(git rev-list -n 1 latest) == "$release_68" ]]
+[[ $(git rev-list -n 1 latest) == "$base" ]]
 [[ $(git rev-list -n 1 stable) == "$base" ]]
 
 # Rerunning the same gated push is idempotent.
@@ -119,17 +121,17 @@ write_pin 6.8.1 "$rev_681" 6.7.1 "$rev_671" "$rolling_b"
 release_681=$(commit_pin release-6.8.1)
 run_tagger "$release_68" "$release_681"
 [[ $(git rev-list -n 1 v6.8.1) == "$release_681" ]]
-[[ $(git rev-list -n 1 latest) == "$release_681" ]]
+[[ $(git rev-list -n 1 latest) == "$base" ]]
 [[ $(git rev-list -n 1 stable) == "$base" ]]
 
-# An existing immutable XO package tag is reported and never moved.
+# An existing immutable XO package tag on another commit is a hard failure.
 git tag v6.9.0 "$base"
 write_pin 6.9 8888888888888888888888888888888888888888 6.8.1 "$rev_681" "$rolling_b"
 release_69=$(commit_pin release-6.9)
-run_tagger "$release_681" "$release_69" >/dev/null
+expect_failure run_tagger "$release_681" "$release_69"
 [[ $(git rev-list -n 1 v6.9.0) == "$base" ]]
 [[ $(git rev-list -n 1 latest) == "$base" ]]
-[[ $(git rev-list -n 1 stable) == "$release_681" ]]
+[[ $(git rev-list -n 1 stable) == "$base" ]]
 
 expect_failure run_tagger invalid "$release_69"
 expect_failure run_tagger "$release_681" invalid

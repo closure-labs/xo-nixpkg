@@ -142,15 +142,21 @@ cp "$root/nix/sources/xen-orchestra.json" "$semantic/nix/sources/xen-orchestra.j
 git -C "$semantic" add .
 git -C "$semantic" commit -qm base
 semantic_base=$(git -C "$semantic" rev-parse HEAD)
-old_rolling=$(jq -er '.channels.rolling.rev' "$semantic/nix/sources/xen-orchestra.json")
 new_rolling=4444444444444444444444444444444444444444
 jq --arg rev "$new_rolling" '
   .channels.rolling.rev = $rev |
   .channels.rolling.version = "unstable-2026-08-21"
 ' "$semantic/nix/sources/xen-orchestra.json" >"$temporary/semantic-pin.json"
 mv "$temporary/semantic-pin.json" "$semantic/nix/sources/xen-orchestra.json"
-sed -i "s|github:vatesfr/xen-orchestra/$old_rolling|github:vatesfr/xen-orchestra/$new_rolling|" \
-  "$semantic/flake.nix"
+awk -v rev="$new_rolling" '
+  $0 ~ /^    xo-rolling = \{/ { inInput = 1 }
+  inInput && $0 ~ /url = "github:vatesfr\/xen-orchestra\/[a-f0-9]+";/ {
+    sub(/[a-f0-9]{40}";/, rev "\";")
+    inInput = 0
+  }
+  { print }
+' "$semantic/flake.nix" >"$temporary/semantic-flake.nix"
+mv "$temporary/semantic-flake.nix" "$semantic/flake.nix"
 jq --arg rev "$new_rolling" '
   .nodes["xo-rolling"].locked.rev = $rev |
   .nodes["xo-rolling"].original.rev = $rev
