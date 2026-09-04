@@ -41,8 +41,22 @@ cat >>"$temporary/bin/gh" <<'EOF'
 set -euo pipefail
 printf '%s\n' "$*" >>"$FAKE_GH_LOG"
 case "$1 $2" in
-  'pr list') printf '{}\n' ;;
+  'pr list')
+    if [[ -n ${FAKE_OPEN_PR_JSON:-} ]]; then
+      printf '%s\n' "$FAKE_OPEN_PR_JSON"
+    else
+      printf '{}\n'
+    fi
+    ;;
+  'pr edit') printf 'https://example.invalid/pull/17\n' ;;
   'pr create') printf 'https://example.invalid/pull/1\n' ;;
+  'api graphql')
+    if [[ $* == *dequeuePullRequest* ]]; then
+      printf '{"data":{"dequeuePullRequest":{"clientMutationId":null}}}\n'
+    else
+      printf '%s\n' "${FAKE_QUEUE_ENTRY:-}"
+    fi
+    ;;
   *) printf 'unexpected gh call: %s\n' "$*" >&2; exit 1 ;;
 esac
 EOF
@@ -65,6 +79,8 @@ run_fixture() {
   local repository=$1 failures=$2 push_count=$3 gh_log=$4
   local push_error=${5:-fatal: unable to access repository: HTTP 502 Bad Gateway}
   local remote_sha=${6:-}
+  local open_pr_json=${7:-'{}'}
+  local queue_entry=${8:-}
   (
     cd "$repository"
     env \
@@ -75,6 +91,8 @@ run_fixture() {
       FAKE_PUSH_ERROR="$push_error" \
       FAKE_REMOTE_SHA="$remote_sha" \
       FAKE_GH_LOG="$gh_log" \
+      FAKE_OPEN_PR_JSON="$open_pr_json" \
+      FAKE_QUEUE_ENTRY="$queue_entry" \
       GH_TOKEN=fixture \
       GITHUB_REPOSITORY=example/xo-nixpkg \
       UPDATE_BRANCH=automation/test \
@@ -105,6 +123,19 @@ run_fixture "$commit_refs_repository" 1 "$commit_refs_push_count" \
   "$commit_refs_gh_log" 'remote: fatal error in commit_refs'
 [[ $(<"$commit_refs_push_count") == 2 ]]
 [[ $(grep -c '^pr create ' "$commit_refs_gh_log") == 1 ]]
+
+queue_repository=$temporary/queue
+queue_push_count=$temporary/queue-push-count
+queue_gh_log=$temporary/queue-gh-log
+make_repository "$queue_repository"
+: >"$queue_gh_log"
+run_fixture "$queue_repository" 1 "$queue_push_count" "$queue_gh_log" \
+  'remote: A pull request for this branch has been added to a merge queue. Branches that are queued for merging cannot be updated.' \
+  '' '{"id":"PR_fixture","number":17}' 'MQE_fixture'
+[[ $(<"$queue_push_count") == 2 ]]
+[[ $(grep -c '^api graphql .*dequeuePullRequest' "$queue_gh_log") == 1 ]]
+[[ $(grep -c '^pr edit 17 ' "$queue_gh_log") == 1 ]]
+[[ $(grep -c '^pr create ' "$queue_gh_log") == 0 ]]
 
 # A candidate with the same allowlisted update but an older base tree is
 # republished so GitHub emits fresh exact-head pull-request CI.
