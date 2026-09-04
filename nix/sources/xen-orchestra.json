@@ -7,16 +7,16 @@
   ],
   "channels": {
     "latest": {
-      "version": "6.8.1",
-      "rev": "bca8f02b8a3a4475eca49dc6e9327dbe09b20263",
+      "version": "6.8.2",
+      "rev": "4416d55d7afe6d3bb20c7755fae1f63b7fdfb132",
       "yarnHash": "sha256-shh9i5ziSzcNb/gEfrRrhcNoE/5V9N55P6jnbkpvlA4=",
       "docsYarnHash": "sha256-g/rB7fqBHgv94XI3OakCIaebzNe6pyK6Wmlx0cLWNSk="
     },
     "stable": {
-      "version": "6.7.1",
-      "rev": "40dede9e11c90562df5cb46c6a83a9d91efedae1",
-      "yarnHash": "sha256-8qv/ak3fYY2ODpWN3WZO5wrXokiK6CH8vGq49cmZlvA=",
-      "docsYarnHash": "sha256-v5h1lb7zlW926EKpjK+c5CTtqczvgMDZhyQzkWdattE="
+      "version": "6.8.1",
+      "rev": "bca8f02b8a3a4475eca49dc6e9327dbe09b20263",
+      "yarnHash": "sha256-shh9i5ziSzcNb/gEfrRrhcNoE/5V9N55P6jnbkpvlA4=",
+      "docsYarnHash": "sha256-g/rB7fqBHgv94XI3OakCIaebzNe6pyK6Wmlx0cLWNSk="
     },
     "rolling": {
       "version": "unstable-2026-09-02",
