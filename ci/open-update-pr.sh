@@ -64,6 +64,82 @@ retry_transient() {
   done
 }
 
+is_merge_queue_lock_failure() {
+  local output=$1
+  [[ $output == *'added to a merge queue'* && $output == *'cannot be updated'* ]]
+}
+
+dequeue_update_pr_if_needed() {
+  local pr_json pr_id pr_number queue_entry queue_query dequeue_mutation
+  # shellcheck disable=SC2016
+  queue_query='query($pr: ID!) { node(id: $pr) { ... on PullRequest { mergeQueueEntry { id } } } }'
+  # shellcheck disable=SC2016
+  dequeue_mutation='mutation($pr: ID!) { dequeuePullRequest(input: {id: $pr}) { clientMutationId } }'
+  pr_json=$(retry_transient "Find queued update PR for $UPDATE_BRANCH" \
+    gh pr list --repo "$GITHUB_REPOSITORY" --state open --head "$UPDATE_BRANCH" \
+      --json id,number --jq '.[0] // {}')
+  pr_id=$(jq -r '.id // empty' <<<"$pr_json")
+  pr_number=$(jq -r '.number // empty' <<<"$pr_json")
+  [[ -n $pr_id && -n $pr_number ]] || {
+    echo "GitHub reported that $UPDATE_BRANCH is queued, but no matching open PR was found" >&2
+    return 1
+  }
+
+  queue_entry=$(retry_transient "Read merge-queue state for update PR $pr_number" \
+    gh api graphql -F pr="$pr_id" \
+      -f query="$queue_query" \
+      --jq '.data.node.mergeQueueEntry.id // empty')
+  if [[ -z $queue_entry ]]; then
+    echo "Update PR $pr_number is no longer queued; retrying the branch update"
+    return 0
+  fi
+
+  retry_transient "Dequeue update PR $pr_number" \
+    gh api graphql -F pr="$pr_id" \
+      -f query="$dequeue_mutation"
+  echo "Dequeued update PR $pr_number so the newer exact candidate can replace it"
+}
+
+push_update_branch() {
+  local attempt output status exponent delay jitter
+  for ((attempt = 1; attempt <= retry_attempts; attempt += 1)); do
+    if output=$(git push --force-with-lease="refs/heads/$UPDATE_BRANCH:$remote_sha" \
+      origin "HEAD:refs/heads/$UPDATE_BRANCH" 2>&1); then
+      [[ -z $output ]] || printf '%s\n' "$output"
+      return 0
+    else
+      status=$?
+    fi
+
+    if ! is_merge_queue_lock_failure "$output"; then
+      if ((attempt == retry_attempts)) || ! is_transient_failure "$output"; then
+        printf '%s\n' "$output" >&2
+        printf 'Push update branch %s failed after %s attempt(s)\n' \
+          "$UPDATE_BRANCH" "$attempt" >&2
+        return "$status"
+      fi
+      printf 'Push update branch %s hit a transient failure on attempt %s/%s; retrying\n' \
+        "$UPDATE_BRANCH" "$attempt" "$retry_attempts" >&2
+    else
+      printf '%s\n' "$output" >&2
+      if ((attempt == retry_attempts)); then
+        printf 'Push update branch %s remained merge-queue locked after %s attempt(s)\n' \
+          "$UPDATE_BRANCH" "$attempt" >&2
+        return "$status"
+      fi
+      dequeue_update_pr_if_needed
+    fi
+
+    exponent=$((attempt - 1))
+    ((exponent <= 6)) || exponent=6
+    delay=$((retry_delay_seconds * (1 << exponent)))
+    ((delay <= 60)) || delay=60
+    jitter=0
+    ((retry_delay_seconds == 0)) || jitter=$((RANDOM % (retry_delay_seconds + 1)))
+    sleep "$((delay + jitter))"
+  done
+}
+
 (($# > 0)) || { echo 'usage: open-update-pr PATH...' >&2; exit 2; }
 git check-ref-format --branch "$UPDATE_BRANCH" >/dev/null
 [[ $UPDATE_BRANCH != main ]] || { echo 'Refusing to update main directly' >&2; exit 2; }
@@ -99,9 +175,7 @@ if [[ $candidate_published == false ]]; then
   git add -- "$@"
   git diff --cached --quiet && { echo 'No allowlisted update changes to publish'; exit 0; }
   git commit -m "$UPDATE_TITLE"
-  retry_transient "Push update branch $UPDATE_BRANCH" \
-    git push --force-with-lease="refs/heads/$UPDATE_BRANCH:$remote_sha" \
-      origin "HEAD:refs/heads/$UPDATE_BRANCH"
+  push_update_branch
 fi
 
 open_pr_json=$(retry_transient "Find update PR for $UPDATE_BRANCH" \
