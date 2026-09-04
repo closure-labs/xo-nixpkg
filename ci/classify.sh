@@ -89,6 +89,24 @@ select_xo_channel() {
   fi
 }
 
+update_expected_flake_input() {
+  local input=$1 rev=$2 file=$3 temporary
+  temporary=$(mktemp "$(dirname "$file")/.expected-flake.XXXXXX")
+  awk -v input="$input" -v rev="$rev" '
+    $0 ~ "^    " input " = \\{" { inInput = 1 }
+    inInput && $0 ~ /url = "github:vatesfr\/xen-orchestra\/[a-f0-9]+";/ {
+      sub(/[a-f0-9]{40}";/, rev "\";")
+      inInput = 0
+    }
+    { print }
+  ' "$file" >"$temporary"
+  if cmp -s "$file" "$temporary"; then
+    rm -f "$temporary"
+    return 1
+  fi
+  mv "$temporary" "$file"
+}
+
 classify_xo_channel_update() {
   local base=$1 head=$2 path channel old_rev new_rev temporary expected_flake channels_json
   shift 2
@@ -149,7 +167,14 @@ classify_xo_channel_update() {
       rm -rf "$temporary"
       return 1
     }
-    sed -i "s|github:vatesfr/xen-orchestra/$old_rev|github:vatesfr/xen-orchestra/$new_rev|" "$expected_flake"
+    [[ $old_rev != "$new_rev" ]] || {
+      rm -rf "$temporary"
+      return 1
+    }
+    update_expected_flake_input "xo-$channel" "$new_rev" "$expected_flake" || {
+      rm -rf "$temporary"
+      return 1
+    }
   done
   cmp -s "$expected_flake" "$temporary/after-flake.nix" || {
     rm -rf "$temporary"

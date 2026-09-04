@@ -16,13 +16,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Tag each newly gated `latest` Xen Orchestra release at its downstream pin
   commit, normalizing upstream versions such as `6.8` to the immutable
   lightweight tag `v6.8.0` without moving independent project release tags.
-- Request human review on version-specific Xen Orchestra release pull requests
-  and enroll them in the merge queue only after approval.
+- Require an approval on the exact current head from a repository maintainer
+  before version-specific Xen Orchestra release pull requests enter the merge
+  queue, while enrolling successful rolling updates without human approval.
 
 ### Changed
 
-- Refresh the moving `latest` and `stable` Git tags through their corresponding
-  immutable XO package tags after a gated release merge.
+- Reconcile trusted update pull requests after updater, CI, and review events
+  instead of occupying a runner while CI completes. Treat pending CI, failed CI,
+  and missing release approval as candidate state while keeping policy and API
+  failures visible as failed automation runs.
 - Keep known-bad `6.8` out of the stable channel, retaining `6.7.1` until a
   supported successor can be promoted.
 
@@ -33,6 +36,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   exact pull-request head with force-with-lease protection.
 - Keep release-update fixtures independent of the repository's current latest
   version so a successful source update cannot break its own pull-request CI.
+- Retry GitHub's transient `commit_refs` failures when publishing update
+  branches, republish candidates whose base tree has changed so they receive
+  fresh CI, and validate candidate paths before any trusted PR enters the queue.
+- Create only immutable XO version tags after gated publication, leaving legacy
+  `latest` and `stable` Git refs untouched and failing on immutable-tag conflicts.
 
 ## [0.10.0] - 2026-08-28
 

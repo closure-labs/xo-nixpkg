@@ -215,7 +215,14 @@ if rg -F 'UPDATE_AUTHOR: github-actions[bot]' "$root/.github/workflows/queue-aut
   exit 1
 fi
 rg -F 'actions/runs/${run_id}/approve' "$root/ci/trusted-update.sh" >/dev/null
-rg -F 'reviewDecision' "$root/ci/trusted-update.sh" >/dev/null
+rg -F 'pulls/${PR_NUMBER}/reviews?per_page=100' "$root/ci/trusted-update.sh" >/dev/null
+rg -F 'collaborators/${reviewer}/permission' "$root/ci/trusted-update.sh" >/dev/null
+rg -F 'APPROVAL_POLICY == trusted-maintainer' "$root/ci/trusted-update.sh" >/dev/null
+if rg -F -e 'reviewDecision' -e 'gh run watch' -e 'gh pr update-branch' \
+  "$root/ci/trusted-update.sh"; then
+  echo 'Trusted automation must reconcile exact-head state without blocking or using aggregate review state' >&2
+  exit 1
+fi
 if rg -F 'MERGE_QUEUE_TOKEN || github.token' "$root/.github/workflows/queue-automation.yml"; then
   echo 'Merge queue must not fall back to the built-in GitHub token' >&2
   exit 1
@@ -228,9 +235,23 @@ mapfile -t queue_steps < <(yq -r '.jobs.enqueue.steps[].name' \
 yq -e '
   (.["on"].pull_request_review.types | length) == 1 and
   .["on"].pull_request_review.types[0] == "submitted" and
+  (.["on"].workflow_run.types | length) == 1 and
+  .["on"].workflow_run.types[0] == "completed" and
   (.jobs.enqueue.if | contains("github.event.review.state")) and
-  (.jobs.enqueue.if | contains("approved"))
+  (.jobs.enqueue.if | contains("approved")) and
+  .jobs.enqueue["timeout-minutes"] == 20 and
+  .permissions.actions == "read" and
+  .permissions.contents == "read" and
+  .permissions["pull-requests"] == "read"
 ' "$root/.github/workflows/queue-automation.yml" >/dev/null
+mapfile -t queue_workflows < <(yq -r '.["on"].workflow_run.workflows[]' \
+  "$root/.github/workflows/queue-automation.yml")
+[[ ${#queue_workflows[@]} == 5 ]]
+[[ ${queue_workflows[0]} == CI ]]
+[[ ${queue_workflows[1]} == 'Check for XO release updates' ]]
+[[ ${queue_workflows[2]} == 'Refresh XO rolling channel' ]]
+[[ ${queue_workflows[3]} == 'Refresh flake inputs' ]]
+[[ ${queue_workflows[4]} == 'Refresh libvhdi source' ]]
 preflight=$(yq -r '.jobs.enqueue.steps[0].run' \
   "$root/.github/workflows/queue-automation.yml")
 preflight_output=$(mktemp)
@@ -243,6 +264,12 @@ grep -F 'Missing MERGE_QUEUE_TOKEN' "$preflight_output" >/dev/null
 rm -f "$preflight_output"
 if rg -F 'gh workflow run "$ci_workflow"' "$root/ci/trusted-update.sh"; then
   echo 'Trusted automation must approve native pull-request CI instead of dispatching detached CI' >&2
+  exit 1
+fi
+
+if rg -F -e 'refs/tags/latest' -e 'refs/tags/stable' -e 'git tag -f' \
+  "$root/ci/tag-xo-release.sh"; then
+  echo 'XO publication must create immutable version tags without moving legacy channel tags' >&2
   exit 1
 fi
 

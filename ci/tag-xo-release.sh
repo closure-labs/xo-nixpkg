@@ -36,20 +36,16 @@ after_pin=$temporary/after-pin.json
 git show "$BASE_SHA:nix/sources/xen-orchestra.json" >"$before_pin"
 git show "$GATED_SHA:nix/sources/xen-orchestra.json" >"$after_pin"
 
-validate_release_pins() {
+validate_latest_pin() {
   local pin=$1
   jq -e '
     .schemaVersion == 2 and
     (.channels.latest.version | type == "string" and
       test("^[0-9]+\\.[0-9]+(\\.[0-9]+)?$")) and
     (.channels.latest.rev | type == "string" and
-      test("^[a-f0-9]{40}$")) and
-    (.channels.stable.version | type == "string" and
-      test("^[0-9]+\\.[0-9]+(\\.[0-9]+)?$")) and
-    (.channels.stable.rev | type == "string" and
       test("^[a-f0-9]{40}$"))
   ' "$pin" >/dev/null || {
-    printf 'Malformed Xen Orchestra release pin in %s\n' "$pin" >&2
+    printf 'Malformed latest Xen Orchestra pin in %s\n' "$pin" >&2
     exit 1
   }
 }
@@ -63,57 +59,31 @@ release_tag_for_version() {
   fi
 }
 
-validate_release_pins "$before_pin"
-validate_release_pins "$after_pin"
+validate_latest_pin "$before_pin"
+validate_latest_pin "$after_pin"
 
 before_version=$(jq -er '.channels.latest.version' "$before_pin")
 before_revision=$(jq -er '.channels.latest.rev' "$before_pin")
 after_version=$(jq -er '.channels.latest.version' "$after_pin")
 after_revision=$(jq -er '.channels.latest.rev' "$after_pin")
-before_stable_version=$(jq -er '.channels.stable.version' "$before_pin")
-before_stable_revision=$(jq -er '.channels.stable.rev' "$before_pin")
-after_stable_version=$(jq -er '.channels.stable.version' "$after_pin")
-after_stable_revision=$(jq -er '.channels.stable.rev' "$after_pin")
-
-latest_changed=false
-stable_changed=false
-[[ $before_version == "$after_version" && $before_revision == "$after_revision" ]] || latest_changed=true
-[[ $before_stable_version == "$after_stable_version" &&
-   $before_stable_revision == "$after_stable_revision" ]] || stable_changed=true
-if [[ $latest_changed == false && $stable_changed == false ]]; then
-  echo 'The Xen Orchestra release channels are unchanged; no package tags are needed'
+if [[ $before_version == "$after_version" && $before_revision == "$after_revision" ]]; then
+  echo 'The latest Xen Orchestra version and revision are unchanged; no package tag is needed'
   exit 0
 fi
 
 release_tag=$(release_tag_for_version "$after_version")
-stable_release_tag=$(release_tag_for_version "$after_stable_version")
 
 existing=$(git rev-list -n 1 "$release_tag" 2>/dev/null || true)
 if [[ -n $existing && $existing != "$GATED_SHA" ]]; then
-  printf '%s remains on its immutable XO package commit %s\n' "$release_tag" "$existing"
-elif [[ $existing == "$GATED_SHA" ]]; then
+  printf 'Immutable XO package tag %s already points to %s, not gated commit %s\n' \
+    "$release_tag" "$existing" "$GATED_SHA" >&2
+  exit 1
+fi
+if [[ $existing == "$GATED_SHA" ]]; then
   printf '%s already points to the gated XO package commit\n' "$release_tag"
-elif [[ $latest_changed == true ]]; then
-  git tag "$release_tag" "$GATED_SHA"
-else
-  printf 'Latest channel %s has no immutable package tag %s\n' \
-    "$after_version" "$release_tag" >&2
-  exit 1
+  exit 0
 fi
 
-latest_target=$(git rev-list -n 1 "$release_tag")
-stable_target=$(git rev-list -n 1 "$stable_release_tag" 2>/dev/null || true)
-[[ -n $stable_target ]] || {
-  printf 'Stable channel %s has no immutable package tag %s\n' \
-    "$after_stable_version" "$stable_release_tag" >&2
-  exit 1
-}
-
-git tag -f latest "$latest_target"
-git tag -f stable "$stable_target"
+git tag "$release_tag" "$GATED_SHA"
 git remote set-url origin "https://x-access-token:${GH_TOKEN}@github.com/${GITHUB_REPOSITORY}.git"
-if [[ -z $existing ]]; then
-  git push origin "refs/tags/$release_tag"
-fi
-git push --force origin refs/tags/latest refs/tags/stable
-printf 'latest now follows %s; stable now follows %s\n' "$release_tag" "$stable_release_tag"
+git push origin "refs/tags/$release_tag"

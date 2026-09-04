@@ -48,6 +48,7 @@ rec {
     script = ../ci/classify.sh;
     runtimeInputs = with pkgs; [
       coreutils
+      gawk
       gh
       git
       gnugrep

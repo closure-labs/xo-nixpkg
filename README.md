@@ -105,12 +105,10 @@ Two independent kinds of immutable `v*` tag remain available: project release
 tags come from `VERSION` (for example, `v0.10.0`), while XO package tags come
 from the gated `latest` upstream pin (for example, upstream `6.8` becomes
 `v6.8.0`). Both point to downstream commits in this repository, and XO package
-tags are additive rather than replacements for project releases. After a gated
-release update, the moving Git tags `latest` and `stable` are refreshed to the
-corresponding immutable XO package tags. Package outputs with the same names
-remain the preferred flake interface; `rolling` and `latest-upstream` are output
-aliases only. Commit the resolved `flake.lock` when reproducing a rolling-channel
-investigation.
+tags are additive rather than replacements for project releases. The `latest`,
+`stable`, `rolling`, and compatibility `latest-upstream` names are flake output
+aliases, not Git tags, and automation never moves similarly named legacy tags.
+Commit the resolved `flake.lock` when reproducing a rolling-channel investigation.
 
 Each channel has a matching `supply-protector-<channel>` output containing a
 reproducible closure assertion, the exported Nix reference graph, and SPDX 2.3

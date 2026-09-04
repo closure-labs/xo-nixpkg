@@ -80,10 +80,10 @@ argument limit. CI recognizes this generated pin/flake/lock cohort and builds
 only the changed channels.
 
 Each newly detected release gets a version-specific pull request with a review
-request. A human approval is required before trusted automation enrolls it in
-the merge queue. After the gated merge, the immutable XO package tag is created
-and the moving `latest` and `stable` Git tags are updated to their corresponding
-immutable package-tag commits.
+request. An approval on the current head commit from a maintainer with write,
+maintain, or admin repository permission is required before trusted automation
+enrolls it in the merge queue. After the gated merge, automation creates only
+the immutable XO package tag; legacy `latest` and `stable` Git tags are not moved.
 
 To refresh `rolling` to upstream HEAD for troubleshooting, run:
 
@@ -185,10 +185,11 @@ CycloneDX, closure-graph, checksum, and assertion files for downstream flakes.
 The public `closure-labs/xo-nixpkg` repository requires GitHub's merge queue.
 Pull requests and synthetic merge groups must pass `CI gate`, and review
 conversations must be resolved. Successful rolling candidates are created ready
-for the trusted automation queue; failed prewarming leaves the candidate draft
-for diagnosis. Protected-main publication retains every pending run in its
-FIFO concurrency group and can reuse successful ancestral merge-group
-validation.
+for the trusted automation queue without human approval; versioned release
+candidates require an exact-head maintainer approval. Failed rolling prewarming
+leaves the candidate draft for diagnosis. Protected-main publication retains
+every pending run in its FIFO concurrency group and can reuse successful
+ancestral merge-group validation.
 
 Update pull requests and releases use job-scoped built-in GitHub tokens. The
 trusted queue is the exception: approving action-required workflow runs and
@@ -197,7 +198,11 @@ enrolling an exact pull-request SHA requires the repository secret
 `closure-labs/xo-nixpkg`, owned by an authorized automation identity, with
 Actions, Contents, and Pull requests read/write permissions. The workflow
 fails before checkout and Nix setup if that secret is absent; it never falls
-back to `github.token`.
+back to `github.token`. Reconciliation runs after updater or CI completion,
+after an approval is submitted, on demand, and on a daily repair schedule. It
+does not wait inside a runner: pending, newly authorized, failed, and
+awaiting-review candidates are reported as state, while identity, changed-file,
+credential, and API failures fail the reconciliation job.
 
 The release environment, `MERGE_QUEUE_TOKEN`, and `CACHIX_AUTH_TOKEN` remain
 repository-scoped; recheck their availability after any transfer or visibility
