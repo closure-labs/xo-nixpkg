@@ -19,8 +19,8 @@
       "docsYarnHash": "sha256-g/rB7fqBHgv94XI3OakCIaebzNe6pyK6Wmlx0cLWNSk="
     },
     "rolling": {
-      "version": "unstable-2026-09-09",
-      "rev": "0115680129b0910bf95268a6a17e3c6e59fec83b",
+      "version": "unstable-2026-09-11",
+      "rev": "adecd7306e2fa262ef77d71f83555d160f03aa03",
       "yarnHash": "sha256-w+1cDvP8deMwWQF6iwVVCh75I7LRkACJ620jYay+Y38=",
       "docsYarnHash": "sha256-g/rB7fqBHgv94XI3OakCIaebzNe6pyK6Wmlx0cLWNSk="
     }
