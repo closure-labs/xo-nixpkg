@@ -20,7 +20,7 @@
     },
     "rolling": {
       "version": "unstable-2026-09-21",
-      "rev": "ee0b8f04680800b27f6d2808f769a3a963de7452",
+      "rev": "c40741ccf4e6bbd78bf9c911ab8d3910c7fe728e",
       "yarnHash": "sha256-RsuAcbrxMI+EmQ0nYX8C+rn8I5+lbjvel3l4kupzETg=",
       "docsYarnHash": "sha256-g/rB7fqBHgv94XI3OakCIaebzNe6pyK6Wmlx0cLWNSk="
     }
