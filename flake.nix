@@ -13,11 +13,11 @@ rec {
   inputs = {
     nixpkgs.url = "github:NixOS/nixpkgs/nixos-unstable";
     xo-latest = {
-      url = "github:vatesfr/xen-orchestra/4416d55d7afe6d3bb20c7755fae1f63b7fdfb132";
+      url = "github:vatesfr/xen-orchestra/a2bd181d3528a61a45bbd4fe99686875fe8eebf8";
       flake = false;
     };
     xo-stable = {
-      url = "github:vatesfr/xen-orchestra/bca8f02b8a3a4475eca49dc6e9327dbe09b20263";
+      url = "github:vatesfr/xen-orchestra/4416d55d7afe6d3bb20c7755fae1f63b7fdfb132";
       flake = false;
     };
     xo-rolling = {
