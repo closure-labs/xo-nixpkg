@@ -140,6 +140,7 @@ passes protocol v1 JSON on stdin with `operation` (`partitions`, `files`, or
 `path` or `paths`/`format`. Listing operations return JSON; archives stream binary
 `tgz` or `zip` output. The helper must provide read-only guest-kernel isolation;
 XO never uses its legacy host loop/LVM path when a helper is configured. Missing
-helpers and nonzero exits fail the operation. Client cancellation stops the
+helpers and nonzero exits fail the operation. The manual host partition-mount
+API is disabled while this backend is configured. Client cancellation stops the
 helper and releases the underlying VHD mount. The helper should also enforce
 its own resource and runtime limits. Maestro provides this backend.
