@@ -10,6 +10,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- Rebuild XO Node against OpenSSL 3.5.9 LTS, retaining Nixpkgs certificate and
+  platform patches. Verify the running crypto version and loaded shared-library
+  paths for every XO channel; expose the selected Node/OpenSSL packages for
+  consumer runtime checks.
+
 - Keep local setup actions tied to the checked-out revision, including trusted
   base revisions in repair jobs; document that choice for the newer audit rule.
 - Refresh the package and native Nixpkgs inputs to the October snapshot with

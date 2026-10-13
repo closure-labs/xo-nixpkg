@@ -2,6 +2,8 @@
   lib,
   stdenv,
   fetchYarnDeps,
+  fetchurl,
+  openssl_3_5,
   yarn,
   yarnConfigHook,
   writableTmpDirAsHomeHook,
@@ -22,6 +24,14 @@
 }:
 
 let
+  runtimeNode = import ./nix/runtime-node.nix {
+    inherit
+      lib
+      fetchurl
+      nodejs_22
+      openssl_3_5
+      ;
+  };
   platformToolTarballs = import ./nix/yarn-platform-tools.nix {
     inherit lib;
     yarnLock = source + "/yarn.lock";
@@ -113,7 +123,7 @@ let
   # Keep Yarn classic on the same Node major as Xen Orchestra. nixpkgs' default
   # yarn may be shebanged to a newer Node, which emits DEP0169 during install.
   yarn' = yarn.override {
-    nodejs = nodejs_22;
+    nodejs = runtimeNode.nodejs;
   };
   yarnConfigHook' = yarnConfigHook.override {
     yarn = yarn';
@@ -150,7 +160,7 @@ stdenv.mkDerivation (
       writableTmpDirAsHomeHook
       yarn'
       yarnConfigHook'
-      nodejs_22
+      runtimeNode.nodejs
       python3
       node-gyp
       pkg-config
@@ -179,7 +189,7 @@ stdenv.mkDerivation (
       TURBO_TELEMETRY_DISABLED = "1";
       YARN_PRODUCTION = "false";
       NPM_CONFIG_PRODUCTION = "false";
-      npm_config_nodedir = "${nodejs_22}";
+      npm_config_nodedir = "${runtimeNode.nodejs}";
       npm_config_node_gyp = "${node-gyp}/bin/node-gyp";
       npm_config_python = "${python3}/bin/python3";
       LD_LIBRARY_PATH = lib.makeLibraryPath [ fuse ];
@@ -235,7 +245,7 @@ stdenv.mkDerivation (
 
               mkdir -p @xen-orchestra/web/node_modules/.bin
               rm -f @xen-orchestra/web/node_modules/.bin/vue-tsc
-              makeWrapper ${nodejs_22}/bin/node @xen-orchestra/web/node_modules/.bin/vue-tsc \
+              makeWrapper ${runtimeNode.nodejs}/bin/node @xen-orchestra/web/node_modules/.bin/vue-tsc \
                 --add-flags "$vue_tsc_target"
 
           if [ -f node_modules/fuse-shared-library-linux/index.js ]; then
@@ -305,7 +315,7 @@ stdenv.mkDerivation (
                   cd "$modulePath"
                   rm -rf build
                   npm_config_build_from_source=true \
-                  npm_config_nodedir="${nodejs_22}" \
+                  npm_config_nodedir="${runtimeNode.nodejs}" \
                   npm_config_node_gyp="${node-gyp}/bin/node-gyp" \
                   npm_config_python="${python3}/bin/python3" \
                     "$node_gyp_build"
@@ -379,7 +389,7 @@ stdenv.mkDerivation (
       mkdir -p $out/libexec/xen-orchestra/docs
       cp -a docs/build-embed $out/libexec/xen-orchestra/docs/
 
-      makeWrapper ${nodejs_22}/bin/node $out/bin/xo-server \
+      makeWrapper ${runtimeNode.nodejs}/bin/node $out/bin/xo-server \
         --chdir $out/libexec/xen-orchestra \
         --prefix LD_LIBRARY_PATH : ${lib.makeLibraryPath [ fuse ]} \
         --prefix PATH : ${lib.makeBinPath [ (lib.getBin fuse) ]} \
@@ -391,6 +401,16 @@ stdenv.mkDerivation (
     doInstallCheck = true;
     installCheckPhase = ''
       runHook preInstallCheck
+
+      ${runtimeNode.nodejs}/bin/node -e '
+        const assert = require("node:assert/strict");
+        const fs = require("node:fs");
+        assert.equal(process.versions.openssl, "${runtimeNode.openssl.version}");
+        const maps = fs.readFileSync("/proc/self/maps", "utf8");
+        for (const name of ["crypto", "ssl"]) {
+          assert(maps.includes("${lib.getLib runtimeNode.openssl}/lib/lib" + name + ".so."), maps);
+        }
+      '
 
       xo_root="$out/libexec/xen-orchestra"
       fuse_native_root="$xo_root/node_modules/fuse-native"
@@ -438,6 +458,7 @@ stdenv.mkDerivation (
 
     passthru = {
       inherit channel sourceRev;
+      inherit (runtimeNode) nodejs openssl;
       updateScript = ./scripts/update.sh;
     };
 

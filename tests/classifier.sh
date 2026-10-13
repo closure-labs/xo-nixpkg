@@ -67,8 +67,8 @@ jq -e '
   [.jobs.publish.plan.targets[].name] == ["automation-runtime"]
 ' <<<"$runtime_plan" >/dev/null
 
-printf 'package change\n' >>"$fixture/default.nix"
-git -C "$fixture" add default.nix
+printf 'runtime crypto change\n' >"$fixture/nix/runtime-node.nix"
+git -C "$fixture" add nix/runtime-node.nix
 git -C "$fixture" commit -qm package
 package_head=$(git -C "$fixture" rev-parse HEAD)
 jq -n --arg base "$runtime_head" '{pull_request:{base:{sha:$base}}}' >"$temporary/event.json"
