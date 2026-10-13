@@ -29,6 +29,7 @@ pkgs.runCommand "xo-${channel}-supply-protector-${version}"
       check-jsonschema
       coreutils
       jq
+      python3
     ];
     exportReferencesGraph = [
       "closure"
@@ -51,5 +52,6 @@ pkgs.runCommand "xo-${channel}-supply-protector-${version}"
     meta.description = "Reproducible closure assertion and SBOMs for Xen Orchestra ${channel}";
   }
   ''
+    export XO_SUPPLY_INVENTORY=${./supply-inventory.py}
     bash ${./supply-protector.sh} closure "$out"
   ''

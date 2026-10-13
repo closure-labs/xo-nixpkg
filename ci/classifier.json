@@ -149,7 +149,7 @@
       "publication": ["xo-latest", "xo-stable", "xo-rolling", "supply-protector-latest", "supply-protector-stable", "supply-protector-rolling"]
     },
     {
-      "pattern": "^nix/supply-protector\\.(nix|sh)$",
+      "pattern": "^nix/supply-(protector\\.(nix|sh)|inventory\\.py)$",
       "validation": ["repository-policy", "supply-protector-latest", "supply-protector-stable", "supply-protector-rolling", "classifier-fixtures"],
       "publication": ["supply-protector-latest", "supply-protector-stable", "supply-protector-rolling"]
     },

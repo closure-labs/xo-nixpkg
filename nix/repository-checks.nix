@@ -111,8 +111,10 @@ let
           git
           gnugrep
           jq
+          python3
         ])
         ''
+          python3 source/tests/supply-inventory.py
           bash source/tests/trusted-update.sh
           bash source/tests/fix-nix-hashes.sh
           bash source/tests/open-update-pr.sh
