@@ -295,6 +295,6 @@ yq -e '
 # actionlint 1.7.12 predates GitHub's queue:max concurrency extension.
 actionlint -ignore 'unexpected key "queue"' "$root"/.github/workflows/*.yml
 zizmor "$root/.github"
-shellcheck "$root"/ci/*.sh "$root"/scripts/*.sh "$root"/tests/*.sh
+shellcheck "$root"/ci/*.sh "$root"/scripts/*.sh "$root"/tests/*.sh "$root/nix/retry-yarn-fetch.sh"
 
 printf 'Repository policy passed\n'

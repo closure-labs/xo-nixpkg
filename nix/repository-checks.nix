@@ -36,6 +36,7 @@ let
         ])
         ''
           bash source/tests/policy.sh
+          bash source/tests/yarn-fetch.sh
         '';
 
     ci-runtime-fixtures =

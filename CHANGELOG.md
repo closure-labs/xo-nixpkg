@@ -10,6 +10,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- Retry failed XO dependency fetches up to three times using clean temporary
+  caches, preserving upstream archive integrity checks and fixed-output hashes.
+
 - Rebuild XO Node against OpenSSL 3.5.9 LTS, retaining Nixpkgs certificate and
   platform patches. Verify the running crypto version and loaded shared-library
   paths for every XO channel; expose the selected Node/OpenSSL packages for
