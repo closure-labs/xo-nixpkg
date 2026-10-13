@@ -131,3 +131,15 @@ workspace links and nested dependency versions, alongside the Nix runtime
 closure. It includes hashes of installed native addons. Installed development
 dependencies are retained in this conservative inventory; it does not claim
 that every installed package or bundled native function is reached at runtime.
+
+## Isolated file restore integration
+
+Services may set `XO_FILE_RESTORE_HELPER` to a trusted absolute executable. XO
+passes protocol v1 JSON on stdin with `operation` (`partitions`, `files`, or
+`archive`), the raw FUSE `disk` path, optional `partition`, and the requested
+`path` or `paths`/`format`. Listing operations return JSON; archives stream binary
+`tgz` or `zip` output. The helper must provide read-only guest-kernel isolation;
+XO never uses its legacy host loop/LVM path when a helper is configured. Missing
+helpers and nonzero exits fail the operation. Client cancellation stops the
+helper and releases the underlying VHD mount. The helper should also enforce
+its own resource and runtime limits. Maestro provides this backend.

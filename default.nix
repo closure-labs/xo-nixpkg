@@ -141,7 +141,10 @@ stdenv.mkDerivation (
       hash = docsYarnHash;
     };
 
-    patches = [ ./nix/patches/xo-server-immutable-source.patch ];
+    patches = [
+      ./nix/patches/xo-server-immutable-source.patch
+      ./nix/patches/xo-isolated-file-restore.patch
+    ];
 
     nativeBuildInputs = [
       writableTmpDirAsHomeHook
@@ -189,6 +192,7 @@ stdenv.mkDerivation (
     };
 
     postPatch = ''
+      cp ${./nix/isolated-file-restore.mjs} @xen-orchestra/backups/_isolatedFileRestore.mjs
       # Keep yarnConfigHook's source/cache lockfile validation aligned with the
       # normalized tarball checksums above.
       cp ${finalAttrs.yarnOfflineCache}/yarn.lock yarn.lock

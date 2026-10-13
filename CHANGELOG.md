@@ -17,6 +17,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- Add an optional absolute `XO_FILE_RESTORE_HELPER` protocol for unprivileged
+  deployments to isolate guest partition discovery, file listing and archive
+  downloads. Configured helper failures never fall back to host loop/LVM mounts.
+
 - Include versioned Nix identities, installed npm packages, dependency edges and
   native addon hashes in the bound supply SBOMs. Reject incomplete npm package
   manifests rather than emitting an apparently clean inventory.

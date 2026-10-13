@@ -112,9 +112,11 @@ let
           gnugrep
           jq
           python3
+          nodejs_22
         ])
         ''
           python3 source/tests/supply-inventory.py
+          node source/tests/isolated-file-restore.mjs
           bash source/tests/trusted-update.sh
           bash source/tests/fix-nix-hashes.sh
           bash source/tests/open-update-pr.sh
