@@ -8,7 +8,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## Unreleased
 
+### Changed
+
+- Keep local setup actions tied to the checked-out revision, including trusted
+  base revisions in repair jobs; document that choice for the newer audit rule.
+- Refresh the package and native Nixpkgs inputs to the October snapshot with
+  OpenSSL 3.6.5 and libxml2 2.15.4, preserving XO channel/source pins.
+
 ### Added
+
+- Include versioned Nix identities, installed npm packages, dependency edges and
+  native addon hashes in the bound supply SBOMs. Reject incomplete npm package
+  manifests rather than emitting an apparently clean inventory.
 
 - Add a locked Devenv contributor environment that shares the flake's
   development toolchain and pins the public Xen Orchestra Cachix URL and

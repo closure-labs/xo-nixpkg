@@ -73,6 +73,7 @@ done <"$graph"
 [[ $root_seen == true ]]
 jq -s 'sort_by(.path)' "$nodes_ndjson" >"$temporary/nodes.json"
 jq -s 'sort_by(.from, .to) | unique_by(.from, .to)' "$edges_ndjson" >"$temporary/edges.json"
+python3 "${XO_SUPPLY_INVENTORY:?}" "$temporary/nodes.json" "$ROOT_PATH" "$SOURCE_REV" "$temporary/npm.json"
 created=$(date --utc --date="@$SOURCE_TIMESTAMP" +%Y-%m-%dT%H:%M:%SZ)
 root_hash=${ROOT_PATH#/nix/store/}
 root_hash=${root_hash%%-*}
@@ -83,6 +84,7 @@ cp "$graph" "$output/closure.graph"
 jq -S -n \
   --slurpfile nodes "$temporary/nodes.json" \
   --slurpfile edges "$temporary/edges.json" \
+  --slurpfile npm "$temporary/npm.json" \
   --arg channel "$CHANNEL" \
   --arg created "$created" \
   --arg root "$ROOT_PATH" \
@@ -114,17 +116,28 @@ jq -S -n \
           referenceType: "nix-store-path",
           referenceLocator: .path
         }]
-      } + if .isRoot then {versionInfo: $version, primaryPackagePurpose: "APPLICATION"} else {} end
-    ],
+      } + (if .version != null then {versionInfo: .version} else {} end)
+      + {externalRefs: [{referenceCategory: "OTHER", referenceType: "nix-store-path", referenceLocator: .path},
+         {referenceCategory: "PACKAGE-MANAGER", referenceType: "purl", referenceLocator: .purl}]}
+      + if .isRoot then {primaryPackagePurpose: "APPLICATION"} else {} end
+    ] + [$npm[0].components[] | {
+      name: .name, SPDXID: ("SPDXRef-" + (."bom-ref" | sub(":"; "-"))),
+      downloadLocation: "NOASSERTION", filesAnalyzed: false,
+      licenseConcluded: "NOASSERTION", licenseDeclared: "NOASSERTION", copyrightText: "NOASSERTION",
+      externalRefs: [{referenceCategory: "PACKAGE-MANAGER", referenceType: "purl", referenceLocator: .purl}]
+    } + (if .version then {versionInfo: .version} else {} end)],
     relationships: (
       [{spdxElementId: "SPDXRef-DOCUMENT", relationshipType: "DESCRIBES", relatedSpdxElement: $rootSpdx}] +
-      [$edges[0][] | {spdxElementId: .fromSpdx, relationshipType: "DEPENDS_ON", relatedSpdxElement: .toSpdx}]
+      [$edges[0][] | {spdxElementId: .fromSpdx, relationshipType: "DEPENDS_ON", relatedSpdxElement: .toSpdx}] +
+      [$npm[0].components[] | {spdxElementId: $rootSpdx, relationshipType: "CONTAINS", relatedSpdxElement: ("SPDXRef-" + (."bom-ref" | sub(":"; "-")))}] +
+      [$npm[0].dependencies[] as $dependency | $dependency.dependsOn[] | {spdxElementId: ("SPDXRef-" + ($dependency.ref | sub(":"; "-"))), relationshipType: "DEPENDS_ON", relatedSpdxElement: ("SPDXRef-" + (. | sub(":"; "-")))}]
     )
   }' >"$output/xen-orchestra.spdx.json"
 
 jq -S -n \
   --slurpfile nodes "$temporary/nodes.json" \
   --slurpfile edges "$temporary/edges.json" \
+  --slurpfile npm "$temporary/npm.json" \
   --arg channel "$CHANNEL" \
   --arg created "$created" \
   --arg rootBomRef "nix:$root_hash" \
@@ -132,14 +145,15 @@ jq -S -n \
   --arg version "$VERSION" '
   def component:
     {
-      type: (if .isRoot then "application" else "library" end),
+      type: (if .isRoot then "application" elif .version != null then "library" else "file" end),
+      purl: .purl,
       name: .name,
       "bom-ref": .bomRef,
       properties: [
         {name: "nix:storePath", value: .path},
         {name: "nix:storeHash", value: .storeHash}
       ]
-    } + if .isRoot then {version: $version} else {} end;
+    } + if .version != null then {version: .version} else {} end;
   {
     bomFormat: "CycloneDX",
     specVersion: "1.5",
@@ -149,17 +163,21 @@ jq -S -n \
       tools: {components: [{type: "application", name: "xo-nixpkg-supply-protector"}]},
       component: (($nodes[0][] | select(.bomRef == $rootBomRef)) | component)
     },
-    components: [$nodes[0][] | component],
+    components: [$nodes[0][] | component] + $npm[0].components,
     dependencies: [
       $nodes[0][] as $node |
       {
         ref: $node.bomRef,
-        dependsOn: ([$edges[0][] | select(.fromBomRef == $node.bomRef) | .toBomRef] | unique)
+        dependsOn: (([$edges[0][] | select(.fromBomRef == $node.bomRef) | .toBomRef] +
+          (if $node.isRoot then [$npm[0].components[]."bom-ref"] else [] end)) | unique)
       }
-    ],
+    ] + $npm[0].dependencies,
     properties: [
       {name: "xo-nixpkg:channel", value: $channel},
-      {name: "xo-nixpkg:sourceRevision", value: $sourceRev}
+      {name: "xo-nixpkg:sourceRevision", value: $sourceRev},
+      {name: "xo-nixpkg:inventoryVersion", value: "2"},
+      {name: "xo-nixpkg:installedNpmCount", value: ($npm[0].components | length | tostring)},
+      {name: "xo-nixpkg:nativeBinaries", value: ($npm[0].nativeBinaries | tojson)}
     ]
   }' >"$output/xen-orchestra.cdx.json"
 

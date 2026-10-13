@@ -125,3 +125,9 @@ the packages they describe.
 - [Preparing packages for nixpkgs](docs/nixpkgs-submission.md)
 
 Licensed under [Apache-2.0](LICENSE).
+
+The supply protector inventories the full installed JavaScript tree, including
+workspace links and nested dependency versions, alongside the Nix runtime
+closure. It includes hashes of installed native addons. Installed development
+dependencies are retained in this conservative inventory; it does not claim
+that every installed package or bundled native function is reached at runtime.
