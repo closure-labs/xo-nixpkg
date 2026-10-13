@@ -75,7 +75,7 @@ jq -n --arg base "$runtime_head" '{pull_request:{base:{sha:$base}}}' >"$temporar
 package_plan=$(classify pull_request refs/pull/3/merge "$package_head")
 jq -e '
   [.jobs.validate.plan.targets[].name] ==
-    ["xo-latest", "xo-stable", "xo-rolling", "supply-protector-latest", "supply-protector-stable", "supply-protector-rolling", "xo-fuse-linkage", "xo-server-service"]
+    ["yarn-cache-fixtures", "xo-latest", "xo-stable", "xo-rolling", "supply-protector-latest", "supply-protector-stable", "supply-protector-rolling", "xo-fuse-linkage", "xo-server-service"]
 ' <<<"$package_plan" >/dev/null
 
 # The generated fixture expands this variable when it runs.
@@ -116,14 +116,14 @@ jq -n --arg base "$unrelated" --arg head "$delta_head" \
 invalid_plan=$(classify merge_group refs/heads/gh-readonly-queue/main/pr-1 "$delta_head")
 jq -e '
   .classification.reason == "invalid-merge-group-ancestry" and
-  (.jobs.validate.plan.targets | length) == 17
+  (.jobs.validate.plan.targets | length) == 18
 ' <<<"$invalid_plan" >/dev/null
 
 printf '{}\n' >"$temporary/event.json"
 dispatch_plan=$(classify workflow_dispatch refs/heads/main "$delta_head")
 jq -e '
   .classification.reason == "event-does-not-classify-paths" and
-  (.jobs.validate.plan.targets | length) == 17 and
+  (.jobs.validate.plan.targets | length) == 18 and
   .jobs.publish.enabled == false and
   .release.enabled == false
 ' <<<"$dispatch_plan" >/dev/null
@@ -171,7 +171,7 @@ semantic_plan=$(classify pull_request refs/pull/4/merge "$semantic_head")
 jq -e '
   .classification.reason == "semantic-xo-channel-update" and
   [.jobs.validate.plan.targets[].name] ==
-    ["xo-rolling", "supply-protector-rolling", "source-update-fixtures"] and
+    ["yarn-cache-fixtures", "xo-rolling", "supply-protector-rolling", "source-update-fixtures"] and
   [.jobs.publish.plan.targets[].name] ==
     ["xo-rolling", "supply-protector-rolling"]
 ' <<<"$semantic_plan" >/dev/null

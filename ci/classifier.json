@@ -5,9 +5,10 @@
     "release": { "event": "push", "ref": "refs/heads/main" }
   },
   "validationTargets": [
-    { "name": "xo-latest", "attribute": "checks.x86_64-linux.xo-latest", "requires": [] },
-    { "name": "xo-stable", "attribute": "checks.x86_64-linux.xo-stable", "requires": [] },
-    { "name": "xo-rolling", "attribute": "checks.x86_64-linux.xo-rolling", "requires": [] },
+    { "name": "yarn-cache-fixtures", "attribute": "checks.x86_64-linux.yarn-cache-fixtures", "requires": [] },
+    { "name": "xo-latest", "attribute": "checks.x86_64-linux.xo-latest", "requires": ["yarn-cache-fixtures"] },
+    { "name": "xo-stable", "attribute": "checks.x86_64-linux.xo-stable", "requires": ["yarn-cache-fixtures"] },
+    { "name": "xo-rolling", "attribute": "checks.x86_64-linux.xo-rolling", "requires": ["yarn-cache-fixtures"] },
     { "name": "supply-protector-latest", "attribute": "checks.x86_64-linux.supply-protector-latest", "requires": ["xo-latest"] },
     { "name": "supply-protector-stable", "attribute": "checks.x86_64-linux.supply-protector-stable", "requires": ["xo-stable"] },
     { "name": "supply-protector-rolling", "attribute": "checks.x86_64-linux.supply-protector-rolling", "requires": ["xo-rolling"] },
@@ -33,6 +34,11 @@
     { "name": "automation-runtime", "attribute": "packages.x86_64-linux.automation-runtime" }
   ],
   "pathRules": [
+    {
+      "pattern": "^tests/yarn-cache\\.sh$",
+      "validation": ["yarn-cache-fixtures", "repository-policy"],
+      "publication": []
+    },
     {
       "pattern": "^(README\\.md|LICENSE|VERSION-SYNC\\.md|docs/.*|\\.gitignore)$",
       "validation": [],
@@ -129,7 +135,7 @@
       "publication": []
     },
     {
-      "pattern": "^(default\\.nix|nix/(fetch-normalized-yarn-deps|prefetch-yarn-deps|yarn-platform-tools|runtime-node)\\.nix|nix/retry-yarn-fetch\\.sh|nix/patches/)",
+      "pattern": "^(default\\.nix|nix/(fetch-normalized-yarn-deps|prefetch-yarn-deps|yarn-platform-tools|runtime-node)\\.nix|nix/(retry-yarn-fetch|normalize-yarn-cache)\\.sh|nix/patches/)",
       "validation": ["xo-latest", "xo-stable", "xo-rolling", "supply-protector-latest", "supply-protector-stable", "supply-protector-rolling", "xo-fuse-linkage", "xo-server-service"],
       "publication": ["xo-latest", "xo-stable", "xo-rolling", "supply-protector-latest", "supply-protector-stable", "supply-protector-rolling"]
     },

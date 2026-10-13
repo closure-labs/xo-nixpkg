@@ -61,15 +61,25 @@ printf '#!%s\n' "$BASH" >"$temporary_directory/bin/flake-plan-runner"
 cat >>"$temporary_directory/bin/flake-plan-runner" <<'EOF'
 set -euo pipefail
 manifest=
+plan=
 printf 'flake-plan-runner'
 while (( $# > 0 )); do
   printf ' <%s>' "$1"
+  if [[ $1 == --plan-file ]]; then
+    plan=$2
+  fi
   if [[ $1 == --manifest ]]; then
     manifest=$2
   fi
   shift
 done
 printf '\n'
+if [[ -n $plan ]]; then
+  jq -r .name "$plan"
+  if [[ ${FAIL_CACHE_PREFLIGHT:-0} == 1 ]] && jq -e 'any(.targets[]; .name == "yarn-cache-fixtures")' "$plan" >/dev/null; then
+    exit 42
+  fi
+fi
 if [[ -n $manifest ]]; then
   printf '%s\n' '{"results":[{"outputs":["/nix/store/xo-latest"]},{"outputs":["/nix/store/xo-stable"]},{"outputs":["/nix/store/xo-rolling"]},{"outputs":["/nix/store/supply-latest"]},{"outputs":["/nix/store/supply-stable"]},{"outputs":["/nix/store/supply-rolling"]},{"outputs":["/nix/store/runtime-bin","/nix/store/runtime-lib","/nix/store/runtime-doc"]}]}' >"$manifest"
 fi
@@ -92,6 +102,21 @@ XO_NIXPKG_SOURCE_ROOT="$root" \
   bash "$root/ci/run.sh" >"$temporary_directory/validation-log"
 [[ $(<"$temporary_directory/validation-log") == \
   *'<--plan-file>'* ]]
+
+preflight_lifecycle=$(jq '.jobs.validate.plan.targets += [{name:"yarn-cache-fixtures",attribute:"checks.x86_64-linux.yarn-cache-fixtures"}]' <<<"$prepared_lifecycle")
+PATH="$temporary_directory/bin:$PATH" \
+PREPARED_CI_WORKFLOW="$preflight_lifecycle" \
+  bash "$root/ci/run.sh" >"$temporary_directory/preflight-log"
+[[ $(<"$temporary_directory/preflight-log") == *fixture-validation-cache-preflight*fixture-validation* ]]
+if PATH="$temporary_directory/bin:$PATH" \
+  PREPARED_CI_WORKFLOW="$preflight_lifecycle" FAIL_CACHE_PREFLIGHT=1 \
+  bash "$root/ci/run.sh" >"$temporary_directory/preflight-failure-log"; then
+  echo 'Failed cache preflight must stop full validation' >&2
+  exit 1
+else
+  [[ $? == 42 ]]
+fi
+[[ $(<"$temporary_directory/preflight-failure-log") == *fixture-validation-cache-preflight ]]
 
 PATH="$temporary_directory/bin:$PATH" \
 CACHIX_AUTH_TOKEN=fixture \

@@ -10,6 +10,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- Validate normalized FUSE caches with offline Yarn in an immutable mirror before
+  XO builds. Fail on unreadable archives and avoid early pipe closure when
+  inspecting privileged modes.
+
 - Retry failed XO dependency fetches up to three times using clean temporary
   caches, preserving upstream archive integrity checks and fixed-output hashes.
 
