@@ -8,6 +8,7 @@
   yarnConfigHook,
   writableTmpDirAsHomeHook,
   nodejs_22,
+  nodejs-slim_22,
   python3,
   node-gyp,
   pkg-config,
@@ -29,6 +30,7 @@ let
       lib
       fetchurl
       nodejs_22
+      nodejs-slim_22
       openssl_3_5
       ;
   };

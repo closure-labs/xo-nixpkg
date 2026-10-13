@@ -2,6 +2,7 @@
   lib,
   fetchurl,
   nodejs_22,
+  nodejs-slim_22,
   openssl_3_5,
 }:
 let
@@ -23,5 +24,7 @@ let
 in
 {
   inherit openssl;
-  nodejs = nodejs_22.override { inherit openssl; };
+  nodejs = nodejs_22.override {
+    nodejs-slim = nodejs-slim_22.override { inherit openssl; };
+  };
 }
