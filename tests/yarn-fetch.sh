@@ -9,8 +9,9 @@ export TMPDIR="$temporary/attempts" FIXTURE="$temporary"
 export PATH="$temporary/bin:$PATH"
 
 # Emulate the upstream downloader: write the response before verifying it.
-cat >"$temporary/bin/prefetch-yarn-deps" <<'EOF'
-#!/usr/bin/env bash
+# Nix sandboxes have no /usr/bin/env; use the running toolchain interpreter.
+printf '#!%s\n' "$BASH" >"$temporary/bin/prefetch-yarn-deps"
+cat >>"$temporary/bin/prefetch-yarn-deps" <<'EOF'
 set -euo pipefail
 [[ $1 == --verbose && $2 == --builder && $3 == "$FIXTURE/yarn.lock" ]]
 [[ -z $(ls -A) ]]
