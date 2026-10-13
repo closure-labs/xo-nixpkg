@@ -1,0 +1,78 @@
+--- a/@xen-orchestra/backups/_fileRestore.mjs
++++ b/@xen-orchestra/backups/_fileRestore.mjs
+@@ -25,6 +25,8 @@
+ import pDefer from 'promise-toolbox/defer'
+ import * as tar from 'tar'
+ 
++import { createIsolatedFileRestore } from './_isolatedFileRestore.mjs'
++
+ import { getTmpDir } from './_getTmpDir.mjs'
+ import {
+   listPartitions,
+@@ -36,6 +38,8 @@
+ import { lvs, pvs } from './_lvm.mjs'
+ 
+ const { debug, warn } = createLogger('xo:backups:RemoteAdapter')
++
++const isolatedFileRestore = createIsolatedFileRestore(process.env.XO_FILE_RESTORE_HELPER)
+ 
+ const noop = Function.prototype
+ 
+@@ -286,6 +290,17 @@
+   },
+ 
+   fetchPartitionFiles(diskId, partitionId, paths, format) {
++    if (isolatedFileRestore !== undefined) {
++      const { promise, reject, resolve } = pDefer()
++      Disposable.use(async function* () {
++        const disk = yield this.getDisk(diskId)
++        const stream = isolatedFileRestore.fetchPartitionFiles(disk, partitionId, paths, format)
++        resolve(stream)
++        await finished(stream).catch(noop)
++        await stream.restoreFinished
++      }.bind(this)).catch(reject)
++      return promise
++    }
+     const { promise, reject, resolve } = pDefer()
+     const self = this
+     Disposable.use(async function* () {
+@@ -351,6 +366,9 @@
+   // - `<pvId>/<vgName>/<lvName>`: LVM on a partitioned disk
+   // - `/<vgName>/lvName>`: LVM on a raw disk
+   async *getPartition(diskId, partitionId) {
++    if (isolatedFileRestore !== undefined) {
++      throw new Error('host partition mounting is disabled; use isolated file listing or archive downloads')
++    }
+     const devicePath = yield this.getDisk(diskId)
+     if (partitionId === undefined) {
+       debug(
+@@ -370,6 +388,9 @@
+   },
+ 
+   listPartitionFiles(diskId, partitionId, path) {
++    if (isolatedFileRestore !== undefined) {
++      return Disposable.use(this.getDisk(diskId), disk => isolatedFileRestore.listPartitionFiles(disk, partitionId, path))
++    }
+     return Disposable.use(this.getPartition(diskId, partitionId), async rootPath => {
+       path = resolveSubpath(rootPath, path)
+       const entriesMap = {}
+@@ -397,6 +418,9 @@
+   },
+ 
+   listPartitions(diskId) {
++    if (isolatedFileRestore !== undefined) {
++      return Disposable.use(this.getDisk(diskId), disk => isolatedFileRestore.listPartitions(disk))
++    }
+     return Disposable.use(this.getDisk(diskId), async devicePath => {
+       // partx may return empty on FUSE-backed files (vhd0); a loop device
+       // presents proper block-device semantics that partx reads reliably.
+--- a/packages/xo-server/src/xo-mixins/file-restore-ng.mjs
++++ b/packages/xo-server/src/xo-mixins/file-restore-ng.mjs
+@@ -37,6 +37,7 @@
+     // clean any LVM volumes that might have not been properly
+     // unmounted
+     app.hooks.on('start', async () => {
++      if (process.env.XO_FILE_RESTORE_HELPER) return
+       await Promise.all([execa('losetup', ['-D']), execa('vgchange', ['-an'])])
+       await execa('pvscan', ['--cache'])
+     })
