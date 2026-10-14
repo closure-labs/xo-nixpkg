@@ -19,6 +19,8 @@ jq -e '
   (.lifecycle.publish | keys | sort) == ["event", "ref"] and
   (.lifecycle.release | keys | sort) == ["event", "ref"] and
   (.validationTargets | type == "array" and length > 0) and
+  (.preflightTargets | type == "array" and length > 0 and length == (unique | length)) and
+  all(.preflightTargets[]; . as $name | $validationNames | index($name)) and
   (.publicationTargets | type == "array" and length > 0) and
   ($validationNames | length == (unique | length)) and
   ($publicationNames | length == (unique | length)) and

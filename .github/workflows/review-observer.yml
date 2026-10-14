@@ -1,0 +1,19 @@
+# SPDX-License-Identifier: Apache-2.0
+name: Observe update reviews
+
+on:
+  pull_request_review:
+    types: [submitted]
+
+permissions:
+  contents: read
+
+jobs:
+  observe:
+    name: Signal an approved review
+    if: github.event.review.state == 'approved'
+    runs-on: ubuntu-slim
+    timeout-minutes: 5
+    steps:
+      - name: Record the review event
+        run: echo 'Approval observed; protected-branch reconciliation revalidates current review and candidate state.'

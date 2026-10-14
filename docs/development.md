@@ -54,6 +54,43 @@ nix run .#ci
 nix eval --accept-flake-config --json .#checks.x86_64-linux --apply builtins.attrNames
 ```
 
+## CI preflight and trusted prewarming
+
+`nix run .#ci` evaluates the complete flake, then runs all selected cheap
+contracts before selected runtime, VM, linkage and supply checks. The classifier
+contract declares `preflightTargets`; each selected target runs once. A failed
+preflight emits its evidence and stops the runtime stage. Selection and required
+CI verdicts retain their existing behavior.
+
+Validation and publication retain schema-v2 manifests plus separate schema-v1
+per-target timing receipts. Set `XO_NIXPKG_CI_EVIDENCE` for an explicit directory;
+the default is `$RUNNER_TEMP/xo-nixpkg-ci-evidence` in Actions and
+`${TMPDIR:-/tmp}/xo-nixpkg-ci-evidence` locally. Each invocation clears its own
+previous receipts. CI uploads evidence after success or failure. Timing includes
+Nix startup, realization and substitution; it does not isolate compilation.
+
+Official-release and flake-lock automation prewarm changed package/supply roots
+and the patched runtime respectively before opening update PRs. A failed prewarm
+preserves a draft PR and fails the updater. The manual **Prewarm protected
+runtime** workflow can seed the current protected-main runtime without changing
+pins or publishing a release. Its packaged app is `.#prewarm-runtime`; official
+release automation calls `.#prewarm-release-candidate -- latest,stable` with only
+the channels actually changed.
+
+Hosted prewarming requires the protected default branch at the exact event SHA,
+a schedule or manual event, and only the declared updater pin changes. It checks
+GitHub's current branch identity and protection before using cache credentials.
+Ordinary PR jobs retain read-only cache access. Local authenticated prewarming is
+an explicit operator action; `CACHIX_AUTH_TOKEN` is resolved at runtime and never
+passed into Nix evaluation or a derivation.
+
+Review approvals first trigger an observer with no checkout or credentials.
+Privileged queue reconciliation runs from default-branch-owned workflow code and
+checks out the default branch; it then revalidates candidate identity, approval,
+paths and current SHA. The observer event carries no authority to merge by itself.
+See [pilot measurements](ci-pilot-benchmarks-2026-10-14.md) for validation and
+performance limits.
+
 ## Updating xen-orchestra-ce
 
 Use the release updater to refresh both official package outputs. Discovery

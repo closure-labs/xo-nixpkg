@@ -56,6 +56,15 @@ jobs:
       - name: Run the selected flake-defined targets
         run: nix run .#ci
 
+      - name: Retain selected-target manifests and timings
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: xo-ci-evidence
+          path: ${{ runner.temp }}/xo-nixpkg-ci-evidence
+          if-no-files-found: ignore
+          retention-days: 30
+
   fix-hashes:
     name: Repair Dependabot Nix hashes
     needs: validate

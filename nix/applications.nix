@@ -219,6 +219,37 @@ rec {
     prelude = cachePrelude;
   };
 
+  trustedPrewarm = mkRepositoryApplication {
+    name = "xo-nixpkg-trusted-prewarm";
+    script = ../ci/prewarm-candidate.sh;
+    runtimeInputs =
+      with pkgs;
+      [
+        cachix
+        coreutils
+        gh
+        git
+        jq
+        nix
+      ]
+      ++ [ planRunner ];
+    prelude = cachePrelude;
+  };
+
+  prewarmRelease = pkgs.writeShellApplication {
+    name = "xo-nixpkg-prewarm-release";
+    text = ''
+      exec ${pkgs.lib.getExe trustedPrewarm} release "$@"
+    '';
+  };
+
+  prewarmRuntime = pkgs.writeShellApplication {
+    name = "xo-nixpkg-prewarm-runtime";
+    text = ''
+      exec ${pkgs.lib.getExe trustedPrewarm} runtime "$@"
+    '';
+  };
+
   updateLibvhdiSource = mkRepositoryApplication {
     name = "xo-nixpkg-update-libvhdi-source";
     script = ../scripts/update-libvhdi.sh;

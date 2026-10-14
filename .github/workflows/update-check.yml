@@ -16,14 +16,16 @@ permissions:
 
 jobs:
   update:
+    if: github.ref == 'refs/heads/main'
     name: Refresh Xen Orchestra release
     runs-on: ubuntu-24.04
-    timeout-minutes: 120
+    timeout-minutes: 180
     steps:
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
+          ref: ${{ github.sha }}
 
       - name: Set up Nix
         uses: ./.github/actions/setup-nix # zizmor: ignore[self-repository] -- setup follows the explicitly checked-out source; repair jobs use a trusted base revision.
@@ -36,9 +38,30 @@ jobs:
           GITHUB_TOKEN: ${{ github.token }}
         run: nix run .#update-xo-release -- "$GITHUB_OUTPUT"
 
-      - name: Open the update pull request
+      - name: Prewarm trusted candidate closures
         if: steps.release.outputs.changed == 'true'
+        id: prewarm
+        continue-on-error: true
         env:
+          CACHIX_AUTH_TOKEN: ${{ secrets.CACHIX_AUTH_TOKEN }}
+          GH_TOKEN: ${{ github.token }}
+          DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
+          CHANGED_CHANNELS: ${{ steps.release.outputs.changed_channels }}
+        run: nix run .#prewarm-release-candidate -- "${CHANGED_CHANNELS}" "$GITHUB_OUTPUT"
+
+      - name: Retain prewarm evidence
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: xo-prewarm-evidence
+          path: ${{ runner.temp }}/xo-nixpkg-ci-evidence
+          if-no-files-found: ignore
+          retention-days: 30
+
+      - name: Open the update pull request
+        if: always() && steps.release.outputs.changed == 'true'
+        env:
+          UPDATE_DRAFT: ${{ steps.prewarm.outcome != 'success' }}
           GH_TOKEN: ${{ github.token }}
           UPDATE_BRANCH: automation/xo-release-${{ steps.release.outputs.version }}
           UPDATE_TITLE: "xen-orchestra-ce: update to ${{ steps.release.outputs.version }}"
@@ -54,3 +77,7 @@ jobs:
             trusted automation will enroll it in the merge queue. The gated main build then creates the immutable
             package tag; the `latest` and `stable` names remain flake output channels rather than moving Git tags.
         run: nix run .#open-update-pr -- flake.nix flake.lock nix/sources/xen-orchestra.json
+
+      - name: Fail after retaining a cold or broken candidate
+        if: always() && steps.release.outputs.changed == 'true' && steps.prewarm.outcome != 'success'
+        run: exit 1

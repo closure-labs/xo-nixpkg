@@ -4,6 +4,7 @@
     "publish": { "event": "push", "ref": "refs/heads/main" },
     "release": { "event": "push", "ref": "refs/heads/main" }
   },
+  "preflightTargets": ["yarn-cache-fixtures", "repository-policy", "ci-runtime-fixtures", "application-composition", "source-update-fixtures", "automation-fixtures", "plan-runner-fixtures", "classifier-fixtures"],
   "validationTargets": [
     { "name": "yarn-cache-fixtures", "attribute": "checks.x86_64-linux.yarn-cache-fixtures", "requires": [] },
     { "name": "xo-latest", "attribute": "checks.x86_64-linux.xo-latest", "requires": ["yarn-cache-fixtures"] },
@@ -125,12 +126,12 @@
       "publication": []
     },
     {
-      "pattern": "^ci/prewarm-rolling\\.sh$",
+      "pattern": "^ci/(prewarm-rolling|prewarm-candidate)\\.sh$",
       "validation": ["repository-policy", "source-update-fixtures", "application-composition", "automation-runtime"],
       "publication": ["automation-runtime"]
     },
     {
-      "pattern": "^tests/prewarm-rolling\\.sh$",
+      "pattern": "^tests/(prewarm-rolling|prewarm-candidate)\\.sh$",
       "validation": ["repository-policy", "source-update-fixtures"],
       "publication": []
     },
