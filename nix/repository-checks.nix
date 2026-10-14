@@ -5,6 +5,30 @@
 }:
 
 let
+  fuseArchive = pkgs.fetchurl {
+    url = "https://registry.yarnpkg.com/fuse-shared-library-linux/-/fuse-shared-library-linux-1.0.1.tgz";
+    hash = "sha512-07MQRSobrBKwW4D7oKm0gM2TwgvZWb+gC08JdiYDG4KBTncxk9ssqEDiDMKll8hpseZufsY2w1yc/feOu2DPmQ==";
+  };
+  fuseArmArchive = pkgs.fetchurl {
+    url = "https://registry.yarnpkg.com/fuse-shared-library-linux-arm/-/fuse-shared-library-linux-arm-1.0.0.tgz";
+    hash = "sha512-Dj4ssxo1/MKGvOsVWRblSRu+o5F5OJTrVPDkjSyGDU2yKvVnIzQSwy1deiWA0qCcS/Q8iJMlZaCpCcZWSwvoug==";
+  };
+  yarnCacheFixture =
+    pkgs.runCommand "xo-normalized-yarn-cache-fixture"
+      {
+        nativeBuildInputs = with pkgs; [
+          bash
+          coreutils
+          gnugrep
+          gnused
+          gnutar
+          gzip
+        ];
+      }
+      ''
+        bash ${self}/tests/yarn-cache.sh --prepare "$out" ${fuseArchive} ${fuseArmArchive}
+      '';
+
   mkCheck =
     name: nativeBuildInputs: commands:
     pkgs.runCommandLocal "xo-nixpkg-${name}"
@@ -19,6 +43,34 @@ let
       '';
 
   checks = {
+    yarn-cache-fixtures =
+      mkCheck "yarn-cache-fixtures"
+        (with pkgs; [
+          bash
+          coreutils
+          diffutils
+          gnugrep
+          gnused
+          gnutar
+          gzip
+          yarn
+          fixup-yarn-lock
+        ])
+        ''
+          bash source/tests/yarn-cache.sh ${yarnCacheFixture}
+          ${pkgs.lib.concatMapStringsSep "\n"
+            (channel: ''
+              bash source/tests/yarn-cache.sh --verify \
+                ${self.packages.${pkgs.stdenv.hostPlatform.system}.${channel}.yarnOfflineCache}
+            '')
+            [
+              "latest"
+              "stable"
+              "rolling"
+            ]
+          }
+        '';
+
     automation-runtime = self.packages.${pkgs.stdenv.hostPlatform.system}.automation-runtime;
 
     repository-policy =
@@ -36,6 +88,7 @@ let
         ])
         ''
           bash source/tests/policy.sh
+          bash source/tests/yarn-fetch.sh
         '';
 
     ci-runtime-fixtures =

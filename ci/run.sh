@@ -10,7 +10,8 @@ if [[ -z ${PREPARED_CI_WORKFLOW:-} ]]; then
   PREPARED_CI_WORKFLOW=$("$classify_ci")
 fi
 validation_plan=$(mktemp)
-trap 'rm -f -- "$validation_plan"' EXIT
+preflight_plan=$(mktemp)
+trap 'rm -f -- "$validation_plan" "$preflight_plan"' EXIT
 jq -er '
   select(
     .schemaVersion == 2 and
@@ -27,6 +28,13 @@ nix flake check \
   "$flake_ref" \
   "$@"
 
-exec flake-plan-runner \
+# Catch malformed normalized mirrors before compiling the XO runtime.
+jq '.name += "-cache-preflight" | .targets |= map(select(.name == "yarn-cache-fixtures"))' \
+  "$validation_plan" >"$preflight_plan"
+if jq -e '.targets | length > 0' "$preflight_plan" >/dev/null; then
+  flake-plan-runner --flake "$flake_ref" --plan-file "$preflight_plan"
+fi
+
+flake-plan-runner \
   --flake "$flake_ref" \
   --plan-file "$validation_plan"

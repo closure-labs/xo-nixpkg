@@ -10,6 +10,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- Validate normalized FUSE caches with offline Yarn in an immutable mirror before
+  XO builds. Fail on unreadable archives and avoid early pipe closure when
+  inspecting privileged modes.
+
+- Retry failed XO dependency fetches up to three times using clean temporary
+  caches, preserving upstream archive integrity checks and fixed-output hashes.
+
+- Rebuild XO Node against OpenSSL 3.5.9 LTS, retaining Nixpkgs certificate and
+  platform patches. Verify the running crypto version and loaded shared-library
+  paths for every XO channel; expose the selected Node/OpenSSL packages for
+  consumer runtime checks.
+
 - Keep local setup actions tied to the checked-out revision, including trusted
   base revisions in repair jobs; document that choice for the newer audit rule.
 - Refresh the package and native Nixpkgs inputs to the October snapshot with
