@@ -10,6 +10,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- Observe approval events without loading candidate code or write credentials;
+  reconcile trusted updates only from protected default-branch automation.
+
 - Validate normalized FUSE caches with offline Yarn in an immutable mirror before
   XO builds. Fail on unreadable archives and avoid early pipe closure when
   inspecting privileged modes.

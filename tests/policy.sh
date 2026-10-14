@@ -249,12 +249,9 @@ mapfile -t queue_steps < <(yq -r '.jobs.enqueue.steps[].name' \
 [[ ${queue_steps[1]} == 'Checkout trusted automation' ]]
 [[ ${queue_steps[2]} == 'Set up Nix' ]]
 yq -e '
-  (.["on"].pull_request_review.types | length) == 1 and
-  .["on"].pull_request_review.types[0] == "submitted" and
+  .["on"].pull_request_review == null and
   (.["on"].workflow_run.types | length) == 1 and
   .["on"].workflow_run.types[0] == "completed" and
-  (.jobs.enqueue.if | contains("github.event.review.state")) and
-  (.jobs.enqueue.if | contains("approved")) and
   .jobs.enqueue["timeout-minutes"] == 20 and
   .permissions.actions == "read" and
   .permissions.contents == "read" and
@@ -262,12 +259,13 @@ yq -e '
 ' "$root/.github/workflows/queue-automation.yml" >/dev/null
 mapfile -t queue_workflows < <(yq -r '.["on"].workflow_run.workflows[]' \
   "$root/.github/workflows/queue-automation.yml")
-[[ ${#queue_workflows[@]} == 5 ]]
+[[ ${#queue_workflows[@]} == 6 ]]
 [[ ${queue_workflows[0]} == CI ]]
-[[ ${queue_workflows[1]} == 'Check for XO release updates' ]]
-[[ ${queue_workflows[2]} == 'Refresh XO rolling channel' ]]
-[[ ${queue_workflows[3]} == 'Refresh flake inputs' ]]
-[[ ${queue_workflows[4]} == 'Refresh libvhdi source' ]]
+[[ ${queue_workflows[1]} == 'Observe update reviews' ]]
+[[ ${queue_workflows[2]} == 'Check for XO release updates' ]]
+[[ ${queue_workflows[3]} == 'Refresh XO rolling channel' ]]
+[[ ${queue_workflows[4]} == 'Refresh flake inputs' ]]
+[[ ${queue_workflows[5]} == 'Refresh libvhdi source' ]]
 preflight=$(yq -r '.jobs.enqueue.steps[0].run' \
   "$root/.github/workflows/queue-automation.yml")
 preflight_output=$(mktemp)
@@ -315,3 +313,20 @@ shellcheck "$root"/ci/*.sh "$root"/scripts/*.sh "$root"/tests/*.sh \
   "$root/nix/retry-yarn-fetch.sh" "$root/nix/normalize-yarn-cache.sh"
 
 printf 'Repository policy passed\n'
+
+# shellcheck disable=SC2016
+yq -e '
+  ([.jobs.enqueue.steps[] | select(.name == "Checkout trusted automation") |
+    select(.with.ref == "${{ github.event.repository.default_branch }}")] | length) == 1
+' "$root/.github/workflows/queue-automation.yml" >/dev/null
+yq -e '
+  (.["on"].pull_request_review.types | length) == 1 and
+  .["on"].pull_request_review.types[0] == "submitted" and
+  .permissions.contents == "read" and
+  (.jobs.observe.if | contains("approved")) and
+  [.jobs.observe.steps[] | (has("uses") == false and has("env") == false)] | all_c(. == true)
+' "$root/.github/workflows/review-observer.yml" >/dev/null
+if rg 'secrets\.|checkout|nix run' "$root/.github/workflows/review-observer.yml"; then
+  echo 'Review observer must not load repository code or credentials' >&2
+  exit 1
+fi
