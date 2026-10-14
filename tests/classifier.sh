@@ -176,4 +176,20 @@ jq -e '
     ["xo-rolling", "supply-protector-rolling"]
 ' <<<"$semantic_plan" >/dev/null
 
+# Security sources select their cheap evidence fixtures and packaged helpers,
+# without compiling all three XO channels or adding a required network scan.
+mkdir -p "$semantic/nix"
+printf 'reviewed security source\n' >"$semantic/nix/security-normalize.py"
+git -C "$semantic" add nix/security-normalize.py
+git -C "$semantic" commit -qm security
+security_head=$(git -C "$semantic" rev-parse HEAD)
+jq -n --arg base "$semantic_head" '{pull_request:{base:{sha:$base}}}' >"$temporary/event.json"
+security_plan=$(classify pull_request refs/pull/5/merge "$security_head")
+jq -e '
+  [.jobs.validate.plan.targets[].name] ==
+    ["repository-policy", "application-composition", "automation-runtime", "automation-fixtures"] and
+  [.jobs.publish.plan.targets[].name] == ["automation-runtime"] and
+  .jobs.publish.enabled == false
+' <<<"$security_plan" >/dev/null
+
 printf 'Classifier fixtures passed\n'

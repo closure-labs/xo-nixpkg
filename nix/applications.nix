@@ -43,6 +43,37 @@ let
   '';
 in
 rec {
+  securityApplicability =
+    (pkgs.writeShellApplication {
+      name = "xo-nixpkg-security-applicability";
+      runtimeInputs = [ pkgs.python3 ];
+      text = ''
+        exec python3 ${./security-applicability.py} "$@"
+      '';
+    }).overrideAttrs
+      (_: {
+        passthru.source = ./security-applicability.py;
+      });
+
+  securityScan = mkRepositoryApplication {
+    name = "xo-nixpkg-security-scan";
+    script = ../ci/security-scan.sh;
+    runtimeInputs =
+      (with pkgs; [
+        coreutils
+        grype
+        jq
+        nix
+        python3
+      ])
+      ++ [ securityApplicability ];
+    prelude = ''
+      XO_SECURITY_NORMALIZE_SOURCE=${./security-normalize.py}
+      XO_SECURITY_APPLICABILITY_RULES=${./security-applicability-rules.json}
+      export XO_SECURITY_NORMALIZE_SOURCE XO_SECURITY_APPLICABILITY_RULES
+    '';
+  };
+
   classifyCi = mkRepositoryApplication {
     name = "xo-nixpkg-classify-ci";
     script = ../ci/classify.sh;

@@ -209,3 +209,43 @@ repository-scoped; recheck their availability after any transfer or visibility
 change and rotate the PAT before its configured expiration. The cache name,
 URL, and public key are flake data exposed through `lib.binaryCache`, so there
 is no `CACHIX_CACHE_NAME` secret.
+
+## Security inventory review
+
+Run `nix run .#security-scan -- latest` to review one immutable channel. `stable`
+and `rolling` are also supported; `CHANNEL` supplies the default when there is
+no argument. The app realizes only that channel's supply protector, verifies
+its checksums, asserted package/source/channel and CycloneDX bindings, and scans
+with a fresh age-validated Grype database. Native and npm canaries must both
+match before the actual scan proceeds. No write credential is needed.
+
+Reports default to `security-report/<channel>`, with `SECURITY_OUTPUT` available
+for an explicit destination. `raw.grype.json` preserves original matches;
+`findings.json` binds normalized matches to immutable component identities;
+`context.json` describes a **package** profile, not a consuming NixOS host.
+`critical-applicability.json` contains classifications and exact dispositions,
+plus inventory/rules/evaluator digests. `unresolved-critical.json` and
+`summary.json` expose unresolved critical counts. Native components without
+curated source/patch evidence remain unresolved rather than disappearing.
+
+The main-only daily and manual workflow reviews latest, stable and rolling
+independently, retaining reports after failures. It adds no required PR scan.
+Cheap evaluator, normalization and scan fixtures run in ordinary CI when their
+sources or rules change. `SECURITY_MODE=report` is the default: unresolved
+findings do not fail it, while scanner/database, identity and malformed evidence
+errors do. `SECURITY_MODE=enforce` fails on unresolved critical findings; keep
+production reporting until the existing remediation and deployment acceptance
+gates have passed.
+
+`nix run .#security-applicability -- --help` exposes the standalone evaluator.
+Its package also exposes `security-applicability.source` for consumers to bind
+the exact shared Python implementation. Rules in
+`nix/security-applicability-rules.json` start empty. A reviewed decision requires
+an exact advisory/component/source binding, actual code hashes and applicable
+runtime guards, with an owner, evidence and an expiry of at most 30 days. Changed,
+missing or expired evidence yields unresolved findings. Manifest hashes alone,
+NixOS, private networks and missing process observations are insufficient
+evidence. The five reviewed npm findings remain unresolved: immutable built-in
+callers suggest narrow future Handlebars guards, but dynamic plugin/config
+exposure must first be established. See
+[the npm triage](security-triage-2026-10-14.md).

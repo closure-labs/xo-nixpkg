@@ -41,6 +41,22 @@ for channel in latest stable rolling; do
   rg -F "supply-protector-$channel" "$root/flake.nix" >/dev/null
 done
 
+# Security review is a main-only maintenance job, never a PR publication gate.
+# shellcheck disable=SC2016
+yq -e '
+  .permissions.contents == "read" and (.permissions | length) == 1 and
+  .jobs.scan.if == "github.ref == '\''refs/heads/main'\''" and
+  .jobs.scan.strategy."fail-fast" == false and
+  (.jobs.scan.strategy.matrix.channel | length) == 3 and
+  .jobs.scan.strategy.matrix.channel[0] == "latest" and
+  .jobs.scan.strategy.matrix.channel[1] == "stable" and
+  .jobs.scan.strategy.matrix.channel[2] == "rolling" and
+  .["on"].pull_request == null and
+  ([.jobs.scan.steps[] | select(.run == "nix run .#security-scan") |
+    select(.env.SECURITY_MODE == "report")] | length) == 1
+' "$root/.github/workflows/security-scan.yml" >/dev/null
+jq -e '.schema_version == 1 and .rules == []' "$root/nix/security-applicability-rules.json" >/dev/null
+
 rg -F 'exportReferencesGraph' "$root/nix/supply-protector.nix" >/dev/null
 rg -F 'xen-orchestra.spdx.json' "$root/nix/supply-protector.sh" >/dev/null
 rg -F 'xen-orchestra.cdx.json' "$root/nix/supply-protector.sh" >/dev/null
