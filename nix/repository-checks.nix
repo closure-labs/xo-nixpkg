@@ -169,6 +169,9 @@ let
         ])
         ''
           python3 source/tests/supply-inventory.py
+          PYTHONDONTWRITEBYTECODE=1 python3 source/tests/security-applicability.py
+          PYTHONDONTWRITEBYTECODE=1 python3 source/tests/security-normalize.py
+          bash source/tests/security-scan.sh
           node source/tests/isolated-file-restore.mjs
           bash source/tests/trusted-update.sh
           bash source/tests/fix-nix-hashes.sh

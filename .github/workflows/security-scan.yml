@@ -1,0 +1,51 @@
+# SPDX-License-Identifier: Apache-2.0
+name: Security inventory review
+
+on:
+  schedule:
+    - cron: "19 8 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: security-inventory-review
+  cancel-in-progress: false
+
+jobs:
+  scan:
+    if: github.ref == 'refs/heads/main'
+    name: Review ${{ matrix.channel }} critical findings
+    runs-on: ubuntu-24.04
+    timeout-minutes: 180
+    strategy:
+      fail-fast: false
+      matrix:
+        channel: [latest, stable, rolling]
+    steps:
+      - name: Checkout protected main source
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Set up Nix
+        uses: ./.github/actions/setup-nix # zizmor: ignore[self-repository] -- main-only workflow checks out the protected source.
+        with:
+          github-token: ${{ github.token }}
+
+      - name: Scan the immutable channel inventory
+        env:
+          CHANNEL: ${{ matrix.channel }}
+          SECURITY_MODE: report
+          SECURITY_OUTPUT: security-report
+        run: nix run .#security-scan
+
+      - name: Upload raw matches and applicability evidence
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: security-review-${{ matrix.channel }}
+          path: security-report
+          if-no-files-found: error
+          retention-days: 30

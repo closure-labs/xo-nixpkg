@@ -29,6 +29,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- Add `security-scan` for independent, report-only review of each channel's
+  complete supply inventory, preserving raw scanner matches and unresolved
+  critical findings. Scanner and inventory failures still fail the operation.
+- Export `security-applicability`, a shared evaluator for exact source, code,
+  runtime and expiring evidence guards; package decisions start empty.
+
 - Add an optional absolute `XO_FILE_RESTORE_HELPER` protocol for unprivileged
   deployments to isolate guest partition discovery, file listing and archive
   downloads. Configured helper failures never fall back to host loop/LVM mounts.

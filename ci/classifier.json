@@ -95,7 +95,17 @@
       "publication": ["automation-runtime"]
     },
     {
-      "pattern": "^ci/(fix-nix-hashes|tag-release|tag-xo-release|publish-release|trusted-update|queue-automation)\\.sh$",
+      "pattern": "^nix/security-(applicability\\.(py|json)|applicability-rules\\.json|normalize\\.py)$",
+      "validation": ["repository-policy", "automation-fixtures", "application-composition", "automation-runtime"],
+      "publication": ["automation-runtime"]
+    },
+    {
+      "pattern": "^tests/security-(applicability|normalize|scan)\\.(py|sh)$",
+      "validation": ["repository-policy", "automation-fixtures"],
+      "publication": []
+    },
+    {
+      "pattern": "^ci/(fix-nix-hashes|tag-release|tag-xo-release|publish-release|trusted-update|queue-automation|security-scan)\\.sh$",
       "validation": ["repository-policy", "automation-fixtures", "application-composition", "automation-runtime"],
       "publication": ["automation-runtime"]
     },
