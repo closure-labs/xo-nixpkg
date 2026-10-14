@@ -51,7 +51,7 @@ if FLAKE_PLAN_RUNNER_NIX="$fake_nix" \
   bash "$root/nix/flake-plan-runner.sh" \
     --flake path:/fixture \
     --plan lib.ciPlans.x86_64-linux.fixture \
-    --manifest "$temporary/manifest.json"; then
+    --manifest "$temporary/manifest.json" --timings "$temporary/timings.json"; then
   printf 'Runner accepted a failed attribute build\n' >&2
   exit 1
 fi
@@ -106,3 +106,8 @@ fi
 [[ $(grep -c '^build ' "$temporary/nix.log" || true) -eq 0 ]]
 
 printf 'Flake plan runner fixtures passed\n'
+
+jq -e '.schemaVersion == 1 and (.results|length)==3 and
+  [.results[].status] == ["success","failure","success"] and
+  all(.results[]; (.elapsedSeconds|type)=="number" and .elapsedSeconds >= 0)
+' "$temporary/timings.json" >/dev/null

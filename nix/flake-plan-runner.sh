@@ -5,7 +5,7 @@ set -uo pipefail
 
 usage() {
   cat <<'EOF'
-Usage: flake-plan-runner (--plan ATTRIBUTE | --plan-file FILE) [--flake REFERENCE] [--manifest FILE]
+Usage: flake-plan-runner (--plan ATTRIBUTE | --plan-file FILE) [--flake REFERENCE] [--manifest FILE] [--timings FILE]
 
 Evaluate or consume one schema-v2 CI plan, validate its contract, build every
 declared attribute in an isolated child process, and materialize links only
@@ -17,6 +17,7 @@ flake_ref=.
 plan_attribute=
 input_plan_file=
 manifest_file=
+timings_file=
 
 while (($# > 0)); do
   case "$1" in
@@ -38,6 +39,11 @@ while (($# > 0)); do
     --manifest)
       (($# >= 2)) || { usage >&2; exit 2; }
       manifest_file=$2
+      shift 2
+      ;;
+    --timings)
+      (($# >= 2)) || { usage >&2; exit 2; }
+      timings_file=$2
       shift 2
       ;;
     -h|--help)
@@ -65,6 +71,7 @@ trap 'rm -rf -- "$temporary"' EXIT
 plan_json=$temporary/plan.json
 results_jsonl=$temporary/results.jsonl
 manifest_json=$temporary/manifest.json
+timings_jsonl=$temporary/timings.jsonl
 
 if [[ -n $input_plan_file ]]; then
   cp -- "$input_plan_file" "$plan_json"
@@ -110,6 +117,7 @@ while IFS=$'\t' read -r target_name target_attribute target_link; do
   ((target_count += 1))
   outputs_file=$temporary/outputs-$target_count
   printf 'Building %s (%s#%s)\n' "$target_name" "$flake_ref" "$target_attribute"
+  target_started=$(date +%s)
   if "$nix_bin" build --accept-flake-config --no-write-lock-file --no-link \
     --print-build-logs --print-out-paths "$flake_ref#$target_attribute" >"$outputs_file"; then
     status=success
@@ -118,6 +126,11 @@ while IFS=$'\t' read -r target_name target_attribute target_link; do
     ((failure_count += 1))
     : >"$outputs_file"
   fi
+  target_elapsed=$(( $(date +%s) - target_started ))
+  jq -n --arg name "$target_name" --arg attribute "$target_attribute" \
+    --arg status "$status" --argjson elapsedSeconds "$target_elapsed" \
+    '{name:$name,attribute:$attribute,status:$status,elapsedSeconds:$elapsedSeconds}' \
+    >>"$timings_jsonl"
   jq -Rn \
     --arg name "$target_name" \
     --arg attribute "$target_attribute" \
@@ -140,6 +153,12 @@ jq -s \
 
 if [[ -n $manifest_file ]]; then
   install -Dm0644 "$manifest_json" "$manifest_file"
+fi
+
+if [[ -n $timings_file ]]; then
+  mkdir -p "$(dirname "$timings_file")"
+  jq -s --arg plan "$plan_name" '{schemaVersion:1,plan:$plan,results:.}' \
+    "$timings_jsonl" >"$timings_file"
 fi
 
 if ((failure_count > 0)); then

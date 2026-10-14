@@ -151,6 +151,7 @@ let
         ''
           bash source/tests/update-xo.sh
           bash source/tests/update-effects.sh
+          bash source/tests/prewarm-candidate.sh
           bash source/tests/prewarm-rolling.sh
           bash source/tests/update-libvhdi.sh
           bash source/tests/update-noop.sh

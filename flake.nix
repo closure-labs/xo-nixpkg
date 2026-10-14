@@ -117,6 +117,7 @@ rec {
         {
           inherit latest rolling stable;
           rolling-candidate = rolling;
+          runtime-node = (pkgs.callPackage ./nix/runtime-node.nix { }).nodejs;
           supply-protector = latestSupplyProtector;
           supply-protector-latest = latestSupplyProtector;
           supply-protector-stable = stableSupplyProtector;
@@ -207,6 +208,8 @@ rec {
           update-xo-release = mkApp applications.updateXoRelease "Refresh the latest and stable XO release channels";
           update-xo-rolling = mkApp applications.updateXoRolling "Refresh the rolling XO channel from upstream HEAD";
           prewarm-rolling-candidate = mkApp applications.prewarmRolling "Realize and publish the exact rolling candidate closure";
+          prewarm-release-candidate = mkApp applications.prewarmRelease "Prewarm exact official channel updates from trusted code";
+          prewarm-runtime = mkApp applications.prewarmRuntime "Prewarm the protected source runtime and input updates";
           update-xo-upstream = mkApp applications.updateXoRolling "Compatibility alias for the rolling XO updater";
           update-libvhdi = mkApp applications.updateLibvhdi "Update and validate the official libvhdi release";
           open-update-pr = mkApp applications.openUpdatePr "Commit and open one allowlisted source update pull request";

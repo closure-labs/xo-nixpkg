@@ -8,8 +8,11 @@ set -euo pipefail
 : "${PREPARED_CI_WORKFLOW:?PREPARED_CI_WORKFLOW must be set}"
 
 publish_plan=$(mktemp)
-manifest=$(mktemp)
-trap 'rm -f -- "$publish_plan" "$manifest"' EXIT
+evidence_dir=${XO_NIXPKG_CI_EVIDENCE:-${RUNNER_TEMP:-${TMPDIR:-/tmp}}/xo-nixpkg-ci-evidence}
+mkdir -p "$evidence_dir"
+rm -f -- "$evidence_dir/publication.json" "$evidence_dir/publication-timings.json"
+manifest=$evidence_dir/publication.json
+trap 'rm -f -- "$publish_plan"' EXIT
 jq -er '
   select(
     .schemaVersion == 2 and
@@ -18,7 +21,7 @@ jq -er '
   .jobs.publish.plan
 ' <<<"$PREPARED_CI_WORKFLOW" >"$publish_plan"
 
-flake-plan-runner --flake . --plan-file "$publish_plan" --manifest "$manifest"
+flake-plan-runner --flake . --plan-file "$publish_plan" --manifest "$manifest" --timings "$evidence_dir/publication-timings.json"
 mapfile -t package_paths < <(jq -er '.results[].outputs[]' "$manifest")
 
 if [[ ${#package_paths[@]} -lt 1 ]]; then

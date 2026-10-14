@@ -10,6 +10,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- Run selected cheap contracts before runtime, VM and supply checks, retaining
+  per-stage schema-v2 manifests and separate per-target timing receipts.
+
 - Observe approval events without loading candidate code or write credentials;
   reconcile trusted updates only from protected default-branch automation.
 
@@ -37,6 +40,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   critical findings. Scanner and inventory failures still fail the operation.
 - Export `security-applicability`, a shared evaluator for exact source, code,
   runtime and expiring evidence guards; package decisions start empty.
+
+- Prewarm official changed channels and the patched runtime from protected
+  default-branch updater code before opening ready candidate pull requests.
+  Keep failed prewarms visible as drafts and add an exact-main runtime warmup.
 
 - Add an optional absolute `XO_FILE_RESTORE_HELPER` protocol for unprivileged
   deployments to isolate guest partition discovery, file listing and archive

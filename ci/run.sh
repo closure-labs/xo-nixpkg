@@ -11,7 +11,13 @@ if [[ -z ${PREPARED_CI_WORKFLOW:-} ]]; then
 fi
 validation_plan=$(mktemp)
 preflight_plan=$(mktemp)
-trap 'rm -f -- "$validation_plan" "$preflight_plan"' EXIT
+runtime_plan=$(mktemp)
+evidence_dir=${XO_NIXPKG_CI_EVIDENCE:-${RUNNER_TEMP:-${TMPDIR:-/tmp}}/xo-nixpkg-ci-evidence}
+mkdir -p "$evidence_dir"
+rm -f -- "$evidence_dir/preflight.json" "$evidence_dir/preflight-timings.json" \
+  "$evidence_dir/runtime.json" "$evidence_dir/runtime-timings.json"
+contract=${XO_NIXPKG_CLASSIFIER_CONTRACT:-$repo_root/ci/classifier.json}
+trap 'rm -f -- "$validation_plan" "$preflight_plan" "$runtime_plan"' EXIT
 jq -er '
   select(
     .schemaVersion == 2 and
@@ -28,13 +34,21 @@ nix flake check \
   "$flake_ref" \
   "$@"
 
-# Catch malformed normalized mirrors before compiling the XO runtime.
-jq '.name += "-cache-preflight" | .targets |= map(select(.name == "yarn-cache-fixtures"))' \
-  "$validation_plan" >"$preflight_plan"
+# All selected inexpensive contracts must pass before runtime compilation.
+# The full runtime/VM/supply plan remains authoritative after this prerequisite.
+jq --slurpfile contract "$contract" '
+  .name += "-preflight" |
+  .targets |= map(select(.name as $name | $contract[0].preflightTargets | index($name)))
+' "$validation_plan" >"$preflight_plan"
+jq --slurpfile contract "$contract" '
+  .name += "-runtime" |
+  .targets |= map(select(.name as $name | $contract[0].preflightTargets | index($name) | not))
+' "$validation_plan" >"$runtime_plan"
 if jq -e '.targets | length > 0' "$preflight_plan" >/dev/null; then
-  flake-plan-runner --flake "$flake_ref" --plan-file "$preflight_plan"
+  flake-plan-runner --flake "$flake_ref" --plan-file "$preflight_plan" \
+    --manifest "$evidence_dir/preflight.json" --timings "$evidence_dir/preflight-timings.json"
 fi
-
-flake-plan-runner \
-  --flake "$flake_ref" \
-  --plan-file "$validation_plan"
+if jq -e '.targets | length > 0' "$runtime_plan" >/dev/null; then
+  flake-plan-runner --flake "$flake_ref" --plan-file "$runtime_plan" \
+    --manifest "$evidence_dir/runtime.json" --timings "$evidence_dir/runtime-timings.json"
+fi

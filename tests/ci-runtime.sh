@@ -7,6 +7,8 @@ root=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)
 temporary_directory=$(mktemp -d)
 trap 'rm -rf -- "$temporary_directory"' EXIT
 mkdir -p "$temporary_directory/bin"
+export XO_NIXPKG_SOURCE_ROOT="$root"
+export XO_NIXPKG_CI_EVIDENCE="$temporary_directory/evidence"
 
 prepared_lifecycle=$(jq -cn '{
   schemaVersion: 2,
@@ -76,6 +78,9 @@ done
 printf '\n'
 if [[ -n $plan ]]; then
   jq -r .name "$plan"
+  if [[ ${FAIL_POLICY_PREFLIGHT:-0} == 1 ]] && jq -e 'any(.targets[]; .name == "repository-policy")' "$plan" >/dev/null; then
+    exit 42
+  fi
   if [[ ${FAIL_CACHE_PREFLIGHT:-0} == 1 ]] && jq -e 'any(.targets[]; .name == "yarn-cache-fixtures")' "$plan" >/dev/null; then
     exit 42
   fi
@@ -107,7 +112,7 @@ preflight_lifecycle=$(jq '.jobs.validate.plan.targets += [{name:"yarn-cache-fixt
 PATH="$temporary_directory/bin:$PATH" \
 PREPARED_CI_WORKFLOW="$preflight_lifecycle" \
   bash "$root/ci/run.sh" >"$temporary_directory/preflight-log"
-[[ $(<"$temporary_directory/preflight-log") == *fixture-validation-cache-preflight*fixture-validation* ]]
+[[ $(<"$temporary_directory/preflight-log") == *fixture-validation-preflight*fixture-validation-runtime* ]]
 if PATH="$temporary_directory/bin:$PATH" \
   PREPARED_CI_WORKFLOW="$preflight_lifecycle" FAIL_CACHE_PREFLIGHT=1 \
   bash "$root/ci/run.sh" >"$temporary_directory/preflight-failure-log"; then
@@ -116,7 +121,24 @@ if PATH="$temporary_directory/bin:$PATH" \
 else
   [[ $? == 42 ]]
 fi
-[[ $(<"$temporary_directory/preflight-failure-log") == *fixture-validation-cache-preflight ]]
+[[ $(<"$temporary_directory/preflight-failure-log") == *fixture-validation-preflight ]]
+
+cheap_lifecycle=$(jq '.jobs.validate.plan.targets = [
+  {name:"repository-policy",attribute:"checks.x86_64-linux.repository-policy"},
+  {name:"xo-latest",attribute:"checks.x86_64-linux.xo-latest"},
+  {name:"xo-server-service",attribute:"checks.x86_64-linux.xo-server-service"}
+]' <<<"$prepared_lifecycle")
+if PATH="$temporary_directory/bin:$PATH" PREPARED_CI_WORKFLOW="$cheap_lifecycle" \
+  FAIL_POLICY_PREFLIGHT=1 bash "$root/ci/run.sh" >"$temporary_directory/policy-failure-log"; then
+  echo 'Failed policy preflight must stop runtime and VM validation' >&2
+  exit 1
+else
+  [[ $? == 42 ]]
+fi
+if grep -F 'fixture-validation-runtime' "$temporary_directory/policy-failure-log"; then
+  echo 'Runtime work began after a cheap prerequisite failed' >&2
+  exit 1
+fi
 
 PATH="$temporary_directory/bin:$PATH" \
 CACHIX_AUTH_TOKEN=fixture \

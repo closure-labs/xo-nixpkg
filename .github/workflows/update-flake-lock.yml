@@ -16,14 +16,16 @@ permissions:
 
 jobs:
   update:
+    if: github.ref == 'refs/heads/main'
     name: Refresh Nixpkgs
     runs-on: ubuntu-24.04
-    timeout-minutes: 30
+    timeout-minutes: 180
     steps:
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
+          ref: ${{ github.sha }}
 
       - name: Set up Nix
         uses: ./.github/actions/setup-nix # zizmor: ignore[self-repository] -- setup follows the explicitly checked-out source; repair jobs use a trusted base revision.
@@ -34,11 +36,35 @@ jobs:
         id: update
         run: nix run .#update-flake-lock -- "$GITHUB_OUTPUT"
 
-      - name: Open the lock update pull request
+      - name: Prewarm trusted candidate closures
         if: steps.update.outputs.changed == 'true'
+        id: prewarm
+        continue-on-error: true
         env:
+          CACHIX_AUTH_TOKEN: ${{ secrets.CACHIX_AUTH_TOKEN }}
+          GH_TOKEN: ${{ github.token }}
+          DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
+        run: nix run .#prewarm-runtime -- "$GITHUB_OUTPUT"
+
+      - name: Retain prewarm evidence
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: xo-prewarm-evidence
+          path: ${{ runner.temp }}/xo-nixpkg-ci-evidence
+          if-no-files-found: ignore
+          retention-days: 30
+
+      - name: Open the lock update pull request
+        if: always() && steps.update.outputs.changed == 'true'
+        env:
+          UPDATE_DRAFT: ${{ steps.prewarm.outcome != 'success' }}
           GH_TOKEN: ${{ github.token }}
           UPDATE_BRANCH: automation/weekly-flake-input-refresh
           UPDATE_TITLE: "flake.lock: refresh nixpkgs"
           UPDATE_BODY: Automated weekly refresh of the Nixpkgs flake input.
         run: nix run .#open-update-pr -- flake.lock
+
+      - name: Fail after retaining a cold or broken candidate
+        if: always() && steps.update.outputs.changed == 'true' && steps.prewarm.outcome != 'success'
+        run: exit 1

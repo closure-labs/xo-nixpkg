@@ -252,6 +252,7 @@ yq -e '
   .["on"].pull_request_review == null and
   (.["on"].workflow_run.types | length) == 1 and
   .["on"].workflow_run.types[0] == "completed" and
+  (.jobs.enqueue.if | contains("github.event.repository.default_branch")) and
   .jobs.enqueue["timeout-minutes"] == 20 and
   .permissions.actions == "read" and
   .permissions.contents == "read" and
