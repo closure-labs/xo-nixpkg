@@ -1,5 +1,52 @@
 {
   "productHash": "d758ce64bd9c96ff8e24640ab06cda8f989a4f03a1d4361d8b83f1d6b5f29db1",
   "schema": 1,
-  "steps": []
+  "steps": [
+    {
+      "identity": {
+        "products": {
+          "libvhdi": {
+            "narHash": "sha256-ip8mHBq2UMgRL5Uu91EZt+3QnmMRibyOuZ/tV9xub88=",
+            "storePath": "/nix/store/8nzizs27j3kyidj2rlffwa1hxx2palvi-libvhdi-20260901"
+          },
+          "xo-latest": {
+            "narHash": "sha256-xc1ppaaqEWgTOuKmIg/0+3mj8cd4BEmuncuJYx/+GfI=",
+            "storePath": "/nix/store/7rgckrz7zf9l3rvidb4987gcxgi07a8i-xen-orchestra-ce-6.9.1"
+          },
+          "xo-rolling": {
+            "narHash": "sha256-QLipbxRX+SLwFfsqSAu94nsqMU8+4b05At7D0Gl0B5E=",
+            "storePath": "/nix/store/hhmj1icrdhfnjz6l0qqjzlpqhfjwbbnh-xen-orchestra-ce-unstable-2026-10-20"
+          },
+          "xo-stable": {
+            "narHash": "sha256-NdXp4BuPIGaWPXgg2zlA7s7ht6D+uOxsd+8G4y38LAA=",
+            "storePath": "/nix/store/isdd9f6z1yd81aiimhzdcdcckdffl4lk-xen-orchestra-ce-6.9.0"
+          }
+        },
+        "roots": {
+          "automation-runtime": {
+            "narHash": "sha256-1TTQ9/R52efgi43+GPXde74Si9w8mlKqZTPbyVb0NOI=",
+            "profile": "xo-latest",
+            "storePath": "/nix/store/f5m0vl536gyw54sqcl11bxkkk1n7kxvb-xo-nixpkg-automation-runtime-0.10.1"
+          },
+          "supply-protector-latest": {
+            "narHash": "sha256-omRgakYRDzmBvOT/OhngTCxzewClgaWjrRADOsbIJr0=",
+            "profile": "xo-latest",
+            "storePath": "/nix/store/ma21c8myvvn7pkcv3zc8mb5k400giq58-xo-latest-supply-protector-6.9.1"
+          },
+          "supply-protector-rolling": {
+            "narHash": "sha256-GSlZETyZWv9es43jci3iqa+pefgbbH6bifC56XV1zH8=",
+            "profile": "xo-rolling",
+            "storePath": "/nix/store/lc58hivx4gcc5qnlhpfkc7b9c2xnly8i-xo-rolling-supply-protector-unstable-2026-10-20"
+          },
+          "supply-protector-stable": {
+            "narHash": "sha256-YzuEpvuhofsxvVw4/rE/V+wC2ANgCyePnE/p3Bntos8=",
+            "profile": "xo-stable",
+            "storePath": "/nix/store/v0nhj3yb6vnk2akl1zrn40w8gvwk355s-xo-stable-supply-protector-6.9.0"
+          }
+        }
+      },
+      "name": "cache",
+      "state": "complete"
+    }
+  ]
 }
