@@ -25,6 +25,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- Retry temporary GitHub authority read failures within three attempts and report
+  bounded HTTP status diagnostics when publication or reconciliation is blocked.
 - Report bounded registry error categories when private evidence uploads fail,
   without printing credentials, request URLs, or raw registry responses.
 - Authenticate the unique GitHub merged event for decision provenance when a
