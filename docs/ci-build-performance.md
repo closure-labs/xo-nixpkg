@@ -30,9 +30,19 @@ unavailable/expired artifacts produce an explicit cold-build miss; invalid proof
 or altered bytes fail closed.
 
 PR caches require a same-repository PR targeting main and the actual run-associated
-base/head and merge parents. Queue caches bind their protected base to both the
-source parent and exact queue ref. Manual producer runs must be on exact main.
-Candidate workflow or controller changes require a new reviewed bootstrap.
+base/head and merge parents. GitHub may omit the PR association from historical
+run metadata after merge; those candidates are unavailable and the consumer tries
+another cache or builds cold. It never reconstructs historical authority from a
+current PR response. Supplied but invalid or ambiguous provenance still fails
+closed. Queue caches bind their protected base to both the source parent and
+exact queue ref. Manual producer runs must be on exact main.
+The receipt must match its historical protected workflow and launcher blobs;
+the source workflow must match that protected workflow too. After verifying the
+exact signed invocation and output structure, a consumer treats authenticated
+historical bytes that differ from its current trusted controller as an unavailable
+cache candidate. Forged historical hashes, source-workflow changes and invalid
+signatures remain hard failures. Controller changes still require a new reviewed
+bootstrap before their output bytes can be reused.
 
 Reusable payloads and receipts expire after seven days; timing metadata remains
 for 30 days. Qualified release evidence retains its existing durable policy.

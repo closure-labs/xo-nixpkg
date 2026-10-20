@@ -378,6 +378,90 @@ class RestoreTests(ReuseFixture):
         self.assertEqual(self.restore()['status'], 'miss')
         self.transport.restore.assert_not_called()
 
+    def test_missing_historical_pr_association_is_cold_build_miss(self):
+        # GitHub can drop a merged PR's association from historical run metadata.
+        for association in ([], None):
+            with self.subTest(association=association):
+                if association is None:
+                    self.run.pop('pull_requests', None)
+                else:
+                    self.run['pull_requests'] = association
+                result = self.restore()
+                self.assertEqual(result['status'], 'miss')
+        self.assertFalse(result['authorityClaim'])
+        self.attestation.assert_not_called()
+        self.transport.restore.assert_not_called()
+        self.native.assert_not_called()
+        self.assertEqual(json.loads((self.directory / 'result.json').read_text()), result)
+
+    def test_missing_pr_association_continues_to_an_authenticated_candidate(self):
+        unavailable = dict(self.run, id=102, pull_requests=[])
+        self.runs = [unavailable, self.run]
+        original_api = self.api
+
+        def api(path):
+            if path.endswith('/actions/runs/102/attempts/2'):
+                return copy.deepcopy(unavailable)
+            if path.endswith('/actions/runs/102/artifacts'):
+                return {'artifacts': [dict(self.artifacts[0], name='xo-ci-reuse-receipt-102-2')]}
+            return original_api(path)
+
+        def download(args, **kwargs):
+            if args[3] == '102':
+                destination = Path(args[args.index('--dir') + 1])
+                destination.mkdir(parents=True)
+                (destination / 'receipt.json').write_text(json.dumps(dict(self.receipt, runId=102)))
+                return ''
+            return self.command(args, **kwargs)
+
+        with patch.object(reuse, 'api', side_effect=api), \
+             patch.object(reuse, 'command', side_effect=download):
+            result = self.restore()
+        self.assertEqual(result['status'], 'hit')
+        self.assertEqual(result['runId'], 101)
+        self.attestation.assert_called_once()
+        self.transport.restore.assert_called_once()
+
+    def test_invalid_supplied_pr_provenance_remains_a_hard_failure(self):
+        original = copy.deepcopy(self.run['pull_requests'])
+        for association in (None, {}, 'untrusted', original * 2,
+                            [dict(original[0], base=dict(original[0]['base'], sha='f' * 40))]):
+            with self.subTest(association=association):
+                self.run['pull_requests'] = association
+                with self.assertRaises(ValueError):
+                    self.restore()
+                self.assertFalse((self.directory / 'result.json').exists())
+        self.attestation.assert_not_called()
+        self.transport.restore.assert_not_called()
+        self.native.assert_not_called()
+
+    def test_authenticated_previous_controller_bytes_are_cold_build_misses(self):
+        for key in ('launcherSha256', 'workflowSha256'):
+            with self.subTest(key=key):
+                original = self.receipt[key]
+                # Independently queried historical blobs agree with this receipt.
+                self.receipt[key] = '0' * 64
+                result = self.restore()
+                self.assertEqual(result['status'], 'miss')
+                self.assertFalse(result['authorityClaim'])
+                self.receipt[key] = original
+        self.assertEqual(self.attestation.call_count, 2)
+        self.transport.restore.assert_not_called()
+        self.native.assert_not_called()
+
+    def test_previous_controller_still_requires_valid_attestation_and_receipt(self):
+        self.receipt['launcherSha256'] = '0' * 64
+        self.attestation.side_effect = ValueError('signature invalid')
+        with self.assertRaisesRegex(ValueError, 'signature invalid'):
+            self.restore()
+        self.attestation.side_effect = None
+        self.receipt['outputs']['xo-latest']['storePath'] = '/tmp/forged-output'
+        with self.assertRaisesRegex(ValueError, 'Invalid authenticated output'):
+            self.restore()
+        self.transport.restore.assert_not_called()
+        self.native.assert_not_called()
+        self.assertFalse((self.directory / 'result.json').exists())
+
     def test_changed_evaluated_derivation_cannot_reuse_same_named_output(self):
         self.evaluated['derivation'] = '/nix/store/' + '4' * 32 + '-changed.drv'
         self.assertEqual(self.restore()['status'], 'miss')
