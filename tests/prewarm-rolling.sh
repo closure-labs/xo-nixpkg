@@ -34,8 +34,7 @@ PREWARM_CACHIX_LOG="$temporary/cachix.log" \
 PATH="$temporary/bin:$PATH" \
 XO_NIXPKG_SOURCE_ROOT="$root" \
   bash "$root/ci/prewarm-rolling.sh" "$temporary/output"
-grep -Fx 'cachix push fixture-cache /nix/store/rolling-candidate' \
-  < <(sed 's/^/cachix /' "$temporary/cachix.log") >/dev/null
+[[ ! -e $temporary/cachix.log ]]
 grep -Fx 'candidate_path=/nix/store/rolling-candidate' "$temporary/output" >/dev/null
 grep -Fx 'closure_path_count=2' "$temporary/output" >/dev/null
 grep -F '#rolling-candidate' "$temporary/nix.log" >/dev/null

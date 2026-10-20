@@ -2,13 +2,11 @@
   lib,
   stdenv,
   fetchYarnDeps,
-  fetchurl,
   openssl_3_5,
   yarn,
   yarnConfigHook,
   writableTmpDirAsHomeHook,
   nodejs_22,
-  nodejs-slim_22,
   python3,
   node-gyp,
   pkg-config,
@@ -28,9 +26,7 @@ let
   runtimeNode = import ./nix/runtime-node.nix {
     inherit
       lib
-      fetchurl
       nodejs_22
-      nodejs-slim_22
       openssl_3_5
       ;
   };

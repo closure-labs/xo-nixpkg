@@ -3,6 +3,8 @@
 
 set -euo pipefail
 
+xo-nixpkg-publication-gate() { return 0; }
+export -f xo-nixpkg-publication-gate
 root=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)
 fixture=$(mktemp -d)
 trap 'rm -rf "$fixture"' EXIT
@@ -46,7 +48,10 @@ GATED_SHA=$release bash "$root/ci/tag-release.sh"
 printf 'packaging\n' >state
 git commit -qam packaging
 packaging=$(git rev-parse HEAD)
-GATED_SHA=$packaging bash "$root/ci/tag-release.sh"
+if GATED_SHA=$packaging bash "$root/ci/tag-release.sh"; then
+  echo "Conflicting immutable project tag was accepted" >&2
+  exit 1
+fi
 [[ $(git rev-list -n 1 v0.8.0) == "$release" ]]
 
 printf '0.9.0\n' >VERSION

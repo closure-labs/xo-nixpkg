@@ -39,7 +39,7 @@ jobs:
           CHANNEL: ${{ matrix.channel }}
           SECURITY_MODE: report
           SECURITY_OUTPUT: security-report
-        run: nix run .#security-scan
+        run: nix run .#devenv -- tasks run security:review
 
       - name: Upload raw matches and applicability evidence
         if: always()

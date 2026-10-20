@@ -116,6 +116,7 @@ rec {
         in
         {
           inherit latest rolling stable;
+          devenv = pkgs.devenv;
           rolling-candidate = rolling;
           runtime-node = (pkgs.callPackage ./nix/runtime-node.nix { }).nodejs;
           supply-protector = latestSupplyProtector;
@@ -191,6 +192,23 @@ rec {
           };
         in
         {
+          audit-policy = mkApp applications.auditPolicy "Audit effective protection with read-only administration credentials";
+          repository-audit = mkApp applications.repositoryAudit "Run the complete repository contract";
+          publication-controller = mkApp applications.publicationController "Publish exact admitted products with durable recovery checkpoints";
+          refresh-products = mkApp applications.refreshProducts "Rescan exact retained products without changing approval identity";
+          decision-collect = mkApp applications.decisionCollect "Collect decision event metadata";
+          decision-authority = mkApp applications.decisionAuthority "Publish the App-origin human authority check";
+          reconcile-retained = mkApp applications.reconcileRetained "Reconcile retained security and release approvals";
+          queue-preflight = mkApp applications.queuePreflight "Check merge queue runtime credential";
+          rolling-failure = mkApp applications.rollingFailure "Report a preserved failed rolling candidate";
+          fetch-evidence = mkApp applications.fetchEvidence "Fetch an authenticated immutable qualification packet";
+          security-lint = mkApp applications.securityLint "Validate workflow security and evidence contracts";
+          qualify-products = mkApp applications.qualifyProducts "Build complete four-profile runtime security evidence";
+          ci-verdict = mkApp applications.ciVerdict "Enforce the classified validation result";
+          decision-reconcile = mkApp applications.decisionReconcile "Reconcile authenticated security or release proposals";
+          decision-readiness = mkApp (pkgs.writeShellScriptBin "xo-nixpkg-readiness" ''
+            exec ${applications.decisions}/bin/xo-nixpkg-decision-readiness --config ci/decision-policy.json "$@"
+          '') "Audit live publication authority and policy";
           classify-ci = mkApp applications.classifyCi "Classify a CI event into exact validation and publication plans";
           ci = mkApp applications.ci "Run the complete repository validation pipeline";
           security-applicability = mkApp applications.securityApplicability "Revalidate exact source-bound security applicability evidence";
@@ -207,9 +225,9 @@ rec {
           queue-automation = mkApp applications.queueAutomation "Queue trusted automation updates";
           update-xo-release = mkApp applications.updateXoRelease "Refresh the latest and stable XO release channels";
           update-xo-rolling = mkApp applications.updateXoRolling "Refresh the rolling XO channel from upstream HEAD";
-          prewarm-rolling-candidate = mkApp applications.prewarmRolling "Realize and publish the exact rolling candidate closure";
-          prewarm-release-candidate = mkApp applications.prewarmRelease "Prewarm exact official channel updates from trusted code";
-          prewarm-runtime = mkApp applications.prewarmRuntime "Prewarm the protected source runtime and input updates";
+          prewarm-rolling-candidate = mkApp applications.prewarmRolling "Realize the exact rolling candidate locally";
+          prewarm-release-candidate = mkApp applications.prewarmRelease "Realize exact official channel candidates locally";
+          prewarm-runtime = mkApp applications.prewarmRuntime "Realize the protected source runtime locally";
           update-xo-upstream = mkApp applications.updateXoRolling "Compatibility alias for the rolling XO updater";
           update-libvhdi = mkApp applications.updateLibvhdi "Update and validate the official libvhdi release";
           open-update-pr = mkApp applications.openUpdatePr "Commit and open one allowlisted source update pull request";

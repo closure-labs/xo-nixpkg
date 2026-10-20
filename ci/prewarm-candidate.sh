@@ -15,7 +15,7 @@ esac
 [[ $# -le 1 ]] || exit 2
 output_file=${1:-}
 repo_root=${XO_NIXPKG_SOURCE_ROOT:-$PWD}
-# Hosted cache writes are confined to protected default-branch-owned code.
+# Candidate realization uses protected default-branch-owned code.
 # The updater may change only its declared pins, never candidate scripts.
 if [[ ${GITHUB_ACTIONS:-false} == true ]]; then
   : "${DEFAULT_BRANCH:?}" "${GITHUB_REPOSITORY:?}" "${GITHUB_SHA:?}"
@@ -33,7 +33,6 @@ if [[ ${GITHUB_ACTIONS:-false} == true ]]; then
     esac
   done <<<"$changed_paths"
 fi
-: "${CACHIX_AUTH_TOKEN:?}" "${XO_NIXPKG_CACHIX_CACHE_NAME:?}"
 evidence_dir=${XO_NIXPKG_CI_EVIDENCE:-${RUNNER_TEMP:-${TMPDIR:-/tmp}}/xo-nixpkg-ci-evidence}
 mkdir -p "$evidence_dir"
 plan=$(mktemp)
@@ -52,7 +51,7 @@ manifest=$evidence_dir/prewarm-$mode.json
 rm -f -- "$manifest" "$evidence_dir/prewarm-$mode-timings.json"
 flake-plan-runner --flake "$flake_ref" --plan-file "$plan" \
   --manifest "$manifest" --timings "$evidence_dir/prewarm-$mode-timings.json"
-# Validate exact planned outputs before authenticated publication.
+# Validate exact planned outputs before retaining local realization evidence.
 while IFS=$'\t' read -r attribute output; do
   expected=$(nix eval --accept-flake-config --no-write-lock-file --raw "$flake_ref#$attribute.outPath")
   [[ $output == "$expected" ]] || { echo 'Prewarm output differs from planned package.' >&2; exit 1; }
@@ -62,7 +61,6 @@ mapfile -t paths < <(jq -er '[.results[].outputs[]] | unique[]' "$manifest")
 [[ ${#paths[@]} -gt 0 ]]
 closure_path_count=$(nix path-info --recursive "${paths[@]}" | sort -u | wc -l)
 ((closure_path_count > 0))
-cachix push "$XO_NIXPKG_CACHIX_CACHE_NAME" "${paths[@]}"
 if [[ -n $output_file ]]; then
   printf 'closure_path_count=%s\n' "$closure_path_count" >>"$output_file"
 fi

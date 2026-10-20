@@ -10,6 +10,11 @@ in
     pkgs.curl
     pkgs.deadnix
     pkgs.git
+    pkgs.gitleaks
+    pkgs.grype
+    pkgs.gh
+    pkgs.oras
+    pkgs.devenv
     pkgs.gnused
     pkgs.jq
     pkgs.nixd

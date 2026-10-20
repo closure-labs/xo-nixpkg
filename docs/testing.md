@@ -145,3 +145,10 @@ its exact head SHA, approves any action-required pull-request CI, enrolls the PR
 in the merge queue, observes a successful merge-group `CI gate`, and completes
 protected-main publication. The following scheduled automation run should
 substitute `automation-runtime` without cache-trust or credential warnings.
+
+CI/security changes are validated through `devenv tasks run ci:repository-audit`.
+Run `devenv tasks run ci:security-lint` for actionlint, zizmor, Gitleaks history
+scanning, and inventory/journal fixtures. `tests/publication-boundary.sh` proves
+all distribution leaves stop before external effects when live authority fails.
+Use `devenv tasks run security:readiness` with repository-scoped runtime read
+credentials to audit the live App/ruleset/baseline configuration before activation.

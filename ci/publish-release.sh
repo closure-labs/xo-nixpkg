@@ -3,11 +3,19 @@
 
 set -euo pipefail
 
+export XO_NIXPKG_PUBLICATION_PURPOSE=release
+xo-nixpkg-publication-gate
+
 : "${GH_TOKEN:?GH_TOKEN must be set}"
 : "${GITHUB_REPOSITORY:?GITHUB_REPOSITORY must be set}"
 
 repo_root=${XO_NIXPKG_SOURCE_ROOT:-$PWD}
-version=$(tr -d '\r\n' <"$repo_root/VERSION")
+if [[ -n ${XO_NIXPKG_EVIDENCE:-} ]]; then
+  gated_sha=$(jq -er .revision "$XO_NIXPKG_EVIDENCE/product.json")
+  version=$(git -C "$repo_root" show "$gated_sha:VERSION" | tr -d '\r\n')
+else
+  version=$(tr -d '\r\n' <"$repo_root/VERSION")
+fi
 tag="v$version"
 [[ $tag =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]] || {
   printf 'Invalid release tag: %s\n' "$tag" >&2

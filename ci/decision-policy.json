@@ -1,0 +1,21 @@
+{
+  "schema": 1,
+  "enabled": false,
+  "repository": "closure-labs/xo-nixpkg",
+  "botLogin": "cl-decider[bot]",
+  "appId": 5384448,
+  "profiles": [
+    "xo-latest",
+    "xo-stable",
+    "xo-rolling",
+    "libvhdi"
+  ],
+  "decisionRoot": "automation/decisions",
+  "policyPath": "ci/decision-policy.json",
+  "requiredAuthorityCheck": "Maintainer decision authority",
+  "producerWorkflows": [
+    ".github/workflows/qualification.yml"
+  ],
+  "maxEvidenceAgeHours": 48,
+  "maxDatabaseAgeHours": 48
+}

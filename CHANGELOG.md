@@ -8,82 +8,48 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## Unreleased
 
-### Changed
+## [0.10.1] - 2026-10-19
 
-- Run selected cheap contracts before runtime, VM and supply checks, retaining
-  per-stage schema-v2 manifests and separate per-target timing receipts.
+### Security
 
-- Observe approval events without loading candidate code or write credentials;
-  reconcile trusted updates only from protected default-branch automation.
-
-- Validate normalized FUSE caches with offline Yarn in an immutable mirror before
-  XO builds. Fail on unreadable archives and avoid early pipe closure when
-  inspecting privileged modes.
-
-- Retry failed XO dependency fetches up to three times using clean temporary
-  caches, preserving upstream archive integrity checks and fixed-output hashes.
-
-- Rebuild XO Node against OpenSSL 3.5.9 LTS, retaining Nixpkgs certificate and
-  platform patches. Verify the running crypto version and loaded shared-library
-  paths for every XO channel; expose the selected Node/OpenSSL packages for
-  consumer runtime checks.
-
-- Keep local setup actions tied to the checked-out revision, including trusted
-  base revisions in repair jobs; document that choice for the newer audit rule.
-- Refresh the package and native Nixpkgs inputs to the October snapshot with
-  OpenSSL 3.6.5 and libxml2 2.15.4, preserving XO channel/source pins.
-
-### Added
-
-- Add `security-scan` for independent, report-only review of each channel's
-  complete supply inventory, preserving raw scanner matches and unresolved
-  critical findings. Scanner and inventory failures still fail the operation.
-- Export `security-applicability`, a shared evaluator for exact source, code,
-  runtime and expiring evidence guards; package decisions start empty.
-
-- Prewarm official changed channels and the patched runtime from protected
-  default-branch updater code before opening ready candidate pull requests.
-  Keep failed prewarms visible as drafts and add an exact-main runtime warmup.
-
-- Add an optional absolute `XO_FILE_RESTORE_HELPER` protocol for unprivileged
-  deployments to isolate guest partition discovery, file listing and archive
-  downloads. Configured helper failures never fall back to host loop/LVM mounts.
-
-- Include versioned Nix identities, installed npm packages, dependency edges and
-  native addon hashes in the bound supply SBOMs. Reject incomplete npm package
-  manifests rather than emitting an apparently clean inventory.
-
-- Add a locked Devenv contributor environment that shares the flake's
-  development toolchain and pins the public Xen Orchestra Cachix URL and
-  signing key for nested Nix commands.
-- Tag each newly gated `latest` Xen Orchestra release at its downstream pin
-  commit, normalizing upstream versions such as `6.8` to the immutable
-  lightweight tag `v6.8.0` without moving independent project release tags.
-- Require an approval on the exact current head from a repository maintainer
-  before version-specific Xen Orchestra release pull requests enter the merge
-  queue, while enrolling successful rolling updates without human approval.
+- Require live human security admission for all four distributed profiles and
+  approval of each exact release product before cache, tag, release, or handoff
+  publication. Keep publication disabled until the approval path is activated.
+- Inventory installed npm packages, native binaries, immutable sources and
+  derivations, and shipped-file exposure. Preserve raw findings and reject
+  incomplete inventories, unhealthy scanners, and stale vulnerability databases.
+- Preserve the verified XO Node/OpenSSL runtime and isolated file-restore helper
+  integration, including checks of the active crypto library and refusal to
+  fall back to privileged host parsing when an isolated backend fails.
+- Run pinned CodeQL analysis for Actions, JavaScript/TypeScript, and Python on
+  pull requests and merge groups.
+- Use scoped organization Apps and short-lived queue credentials. Keep repository
+  metadata reads separate from the read-only administration audit credential.
 
 ### Changed
 
-- Reconcile trusted update pull requests after updater, CI, and review events
-  instead of occupying a runner while CI completes. Treat pending CI, failed CI,
-  and missing release approval as candidate state while keeping policy and API
-  failures visible as failed automation runs.
-- Keep known-bad `6.8` out of the stable channel, retaining `6.7.1` until a
-  supported successor can be promoted.
+- Update Nixpkgs to use its packaged OpenSSL 3.5.9 and Node 22.23.3. Remove
+  the custom crypto rebuild; verify the stock runtime and mapped library paths.
+- Separate immutable qualification from public distribution. Retain candidate
+  Nix closures privately, restore exact approved outputs without builders, and
+  publish digest-addressed handoffs for independent Maestro qualification.
+- Resume interrupted publication through durable journals while preserving exact
+  tags, output identities, and release bytes. Refresh scans without changing the
+  original product identity or requiring approval of the same release again.
+- Refresh the latest and rolling XO channels and libvhdi source pins while
+  preserving the independently selected stable channel.
+- Run cheap repository checks before runtime and supply tests, and keep rolling
+  prewarming local until its product has passed publication admission.
 
 ### Fixed
 
-- Let failed same-repository Dependabot validation invoke a flake-packaged
-  Determinate Nix hash repair command and push only tracked fixes back to the
-  exact pull-request head with force-with-lease protection.
-- Keep release-update fixtures independent of the repository's current latest
-  version so a successful source update cannot break its own pull-request CI.
-- Retry GitHub's transient `commit_refs` failures when publishing update
-  branches, republish candidates whose base tree has changed so they receive
-  fresh CI, and validate candidate paths before any trusted PR enters the queue.
-- Create only immutable XO version tags after gated publication, leaving legacy
-  `latest` and `stable` Git refs untouched and failing on immutable-tag conflicts.
+- Validate normalized dependency mirrors offline and retry failed fetches in clean
+  temporary caches without weakening archive hashes or integrity checks.
+- Reconcile update approvals from protected default-branch code and validate
+  exact proposal heads before queue entry.
+- Preserve private evidence access and authenticated recovery after temporary
+  Actions artifacts expire. Verify both original product and current scanner
+  provenance when refreshing historical candidates.
 
 ## [0.10.0] - 2026-08-28
 

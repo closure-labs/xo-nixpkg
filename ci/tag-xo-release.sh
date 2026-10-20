@@ -3,6 +3,9 @@
 
 set -euo pipefail
 
+export XO_NIXPKG_PUBLICATION_PURPOSE=release
+xo-nixpkg-publication-gate
+
 : "${GH_TOKEN:?GH_TOKEN must be set}"
 : "${GATED_SHA:?GATED_SHA must be set}"
 : "${BASE_SHA:?BASE_SHA must be set}"
@@ -20,10 +23,11 @@ for sha_name in GATED_SHA BASE_SHA; do
   }
 done
 
-[[ $(git rev-parse HEAD) == "$GATED_SHA" ]] || {
-  echo 'The checkout does not match the gated commit' >&2
-  exit 1
-}
+if [[ -n ${XO_NIXPKG_EVIDENCE:-} ]]; then
+  [[ $(jq -er .revision "$XO_NIXPKG_EVIDENCE/product.json") == "$GATED_SHA" ]]
+else
+  [[ $(git rev-parse HEAD) == "$GATED_SHA" ]]
+fi
 git merge-base --is-ancestor "$BASE_SHA" "$GATED_SHA" || {
   echo 'The push base is not an ancestor of the gated commit' >&2
   exit 1

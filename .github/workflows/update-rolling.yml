@@ -20,6 +20,10 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 180
     steps:
+      - name: Audit runner traffic
+        uses: step-security/harden-runner@dc2769abcc0fcfbadfc1df54081c1608579ef6b2 # v2
+        with:
+          egress-policy: audit
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -34,15 +38,13 @@ jobs:
         id: rolling
         env:
           GITHUB_TOKEN: ${{ github.token }}
-        run: nix run .#update-xo-rolling -- "$GITHUB_OUTPUT"
+        run: nix run .#devenv -- tasks run update:xo-rolling
 
-      - name: Realize and publish the exact rolling candidate closure
+      - name: Realize the exact rolling candidate locally
         if: steps.rolling.outputs.changed == 'true'
         id: prewarm
         continue-on-error: true
-        env:
-          CACHIX_AUTH_TOKEN: ${{ secrets.CACHIX_AUTH_TOKEN }}
-        run: nix run .#prewarm-rolling-candidate -- "$GITHUB_OUTPUT"
+        run: nix run .#devenv -- tasks run update:rolling-realize
 
       - name: Open or update the rolling candidate pull request
         if: always() && steps.rolling.outputs.changed == 'true'
@@ -56,15 +58,14 @@ jobs:
 
             Upstream commit: `vatesfr/xen-orchestra@${{ steps.rolling.outputs.rev }}`
             Changed channels: `${{ steps.rolling.outputs.changed_channels }}`
-            Candidate cache status: `${{ steps.prewarm.outcome == 'success' && 'prewarmed' || 'BROKEN — realization or Cachix upload failed' }}`
+            Candidate realization status: `${{ steps.prewarm.outcome == 'success' && 'realized locally' || 'BROKEN — realization failed' }}`
 
-            The normal pull-request CI is authoritative. A prewarmed candidate is
+            The normal pull-request CI is authoritative. A realized locally candidate is
             eligible for the trusted merge queue; a broken candidate remains draft
             and is replaced only when upstream advances.
-        run: nix run .#open-update-pr -- flake.nix flake.lock nix/sources/xen-orchestra.json
+          XO_NIXPKG_UPDATE_PATHS: flake.nix flake.lock nix/sources/xen-orchestra.json
+        run: nix run .#devenv -- tasks run update:open-pr
 
       - name: Fail after preserving a broken rolling candidate
         if: always() && steps.rolling.outputs.changed == 'true' && steps.prewarm.outcome != 'success'
-        run: |
-          echo 'Rolling candidate realization or Cachix upload failed; the draft PR was preserved for diagnosis.' >&2
-          exit 1
+        run: nix run .#devenv -- tasks run update:rolling-failure
