@@ -325,6 +325,16 @@ rec {
       ];
   };
 
+  trustedCandidateNix = pkgs.writeShellApplication {
+    name = "xo-nixpkg-candidate-nix";
+    runtimeInputs = [ pkgs.nix ];
+    text = ''
+      exec ${pkgs.lib.getExe pkgs.nix} "$@" --no-accept-flake-config \
+        --option sandbox true --option builders "" --option pure-eval true \
+        --option allow-unsafe-native-code-during-evaluation false
+    '';
+  };
+
   buildReuse = mkRepositoryApplication {
     name = "xo-nixpkg-build-reuse";
     script = ../ci/build-reuse.sh;
@@ -334,11 +344,13 @@ rec {
       git
       nix
       planRunner
+      trustedCandidateNix
     ];
     prelude = ''
       export XO_NIXPKG_BUILD_REUSE_SOURCE=${../ci/build-reuse.py}
       export XO_NIXPKG_TRUSTED_NIX=${pkgs.lib.getExe pkgs.nix}
       export XO_NIXPKG_PLAN_RUNNER=${pkgs.lib.getExe planRunner}
+      export XO_NIXPKG_TRUSTED_PLAN_NIX=${pkgs.lib.getExe trustedCandidateNix}
       export XO_NIXPKG_DISTRIBUTION_CACHE_SOURCE=${../ci/distribution-cache.py}
       export XO_NIXPKG_CI_EVIDENCE="''${RUNNER_TEMP:-''${TMPDIR:-/tmp}}/xo-nixpkg-ci-evidence"
     '';

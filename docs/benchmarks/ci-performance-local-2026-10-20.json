@@ -43,7 +43,7 @@
   "sandbox": {
     "childContainsCredentialKeys": [],
     "dummyCredentialsOnly": true,
-    "launcherSha256": "36111c19cb2acb5fed420b8aae347b834777438e1b3ea3a11a2ab3dd4c0854a9",
+    "launcherSha256": "9053d3862e950e499d426a5c9b6c242ab58595a89d2b2a0346a0cab1acbe533e",
     "operations": [
       {
         "exitCode": 0,
@@ -67,6 +67,7 @@
       }
     ],
     "outsideStoreMarkerExists": false,
+    "packagedPlanNix": "/nix/store/zfmvn2xhih6ywajc0i9g36gxhc810sik-xo-nixpkg-candidate-nix/bin/xo-nixpkg-candidate-nix",
     "pinnedNix": "/nix/store/z3fxqxbjggzsqa23076csafqyvx042zh-nix-2.34.9/bin/nix"
   },
   "schema": 1,

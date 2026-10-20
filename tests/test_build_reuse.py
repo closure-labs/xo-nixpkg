@@ -261,6 +261,7 @@ class IsolationAndPlanTests(ReuseFixture):
         environment = {'PATH': '/trusted/bin', 'GH_TOKEN': 'not-for-candidate',
                        'PREPARED_CI_WORKFLOW': json.dumps({'jobs': {'validate': {'plan': plan}}}),
                        'XO_NIXPKG_TRUSTED_NIX': '/nix/store/' + '3' * 32 + '-nix/bin/nix',
+                       'XO_NIXPKG_TRUSTED_PLAN_NIX': '/nix/store/' + '4' * 32 + '-candidate-nix/bin/xo-nixpkg-candidate-nix',
                        'XO_NIXPKG_PLAN_RUNNER': '/nix/store/trusted-plan-runner/bin/runner'}
         with patch.dict(os.environ, environment, clear=True), \
              patch.object(reuse, 'nix', return_value='') as native, \
@@ -273,9 +274,28 @@ class IsolationAndPlanTests(ReuseFixture):
             self.assertIn('git+file://' + str(candidate), call.args[0])
             self.assertNotIn('GH_TOKEN', call.kwargs['env'])
             self.assertNotIn('BASH_ENV', call.kwargs['env'])
+            self.assertEqual(call.kwargs['env']['FLAKE_PLAN_RUNNER_NIX'],
+                             environment['XO_NIXPKG_TRUSTED_PLAN_NIX'])
             self.assertTrue(call.kwargs['check'])
         self.assertEqual(native.call_args.args[1:4], ('flake', 'check', '--no-build'))
         restore.assert_called_once()
+
+    def test_validation_rejects_candidate_or_nonpackaged_plan_nix_wrapper(self):
+        plan = {'schemaVersion': 2, 'name': 'selected', 'targets': [
+            {'name': 'xo-latest', 'attribute': 'checks.x86_64-linux.xo-latest'}]}
+        environment = {'PREPARED_CI_WORKFLOW': json.dumps({'jobs': {'validate': {'plan': plan}}})}
+        for wrapper in ('/tmp/candidate/bin/xo-nixpkg-candidate-nix',
+                        '/usr/bin/xo-nixpkg-candidate-nix',
+                        '/nix/store/' + '4' * 32 + '-candidate-nix/bin/nix'):
+            with self.subTest(wrapper=wrapper), \
+                 patch.dict(os.environ, dict(environment, XO_NIXPKG_TRUSTED_PLAN_NIX=wrapper), clear=True), \
+                 patch.object(reuse, 'nix') as native, \
+                 patch.object(reuse.subprocess, 'run') as runner:
+                with self.assertRaises(ValueError):
+                    reuse.validate(self.directory / 'candidate', self.controller,
+                                   self.directory / 'evidence')
+                native.assert_not_called()
+                runner.assert_not_called()
 
 
 class AttestationTests(ReuseFixture):

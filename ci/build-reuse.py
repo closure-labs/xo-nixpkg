@@ -10,7 +10,6 @@ import os
 from pathlib import Path
 import platform
 import re
-import shlex
 import subprocess
 import tempfile
 import time
@@ -296,12 +295,10 @@ def validate(candidate, controller, evidence):
     with tempfile.TemporaryDirectory(prefix='xo-trusted-build-') as temporary:
         temporary = Path(temporary)
         environment = child_environment(temporary / 'native')
-        wrapper = temporary / 'nix'
-        wrapper.write_text('#!/bin/sh\nexec ' + shlex.quote(os.environ['XO_NIXPKG_TRUSTED_NIX'])
-                           + ' "$@" --no-accept-flake-config --option sandbox true --option builders ""'
-                           + ' --option pure-eval true --option allow-unsafe-native-code-during-evaluation false\n')
-        wrapper.chmod(0o700)
-        environment['FLAKE_PLAN_RUNNER_NIX'] = str(wrapper)
+        wrapper = os.environ['XO_NIXPKG_TRUSTED_PLAN_NIX']
+        require(wrapper.startswith('/nix/store/') and wrapper.endswith('/bin/xo-nixpkg-candidate-nix'),
+                'Pinned sandboxed plan Nix required')
+        environment['FLAKE_PLAN_RUNNER_NIX'] = wrapper
         reference = 'git+file://' + str(candidate)
         nix(environment, 'flake', 'check', '--no-build', '--no-write-lock-file', reference)
         contract = json.loads((controller / 'ci/classifier.json').read_text())
