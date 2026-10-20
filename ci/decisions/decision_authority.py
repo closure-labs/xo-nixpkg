@@ -7,8 +7,10 @@ import json
 import os
 from pathlib import Path
 import re
+import resource
 import subprocess
 import sys
+import tempfile
 from urllib.parse import quote
 
 from security_decisions import TechnicalError, canonical_hash, load_json
@@ -18,6 +20,9 @@ REPOSITORY = re.compile(r'[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+')
 APPROVER_ORG = 'closure-labs'
 APPROVER_TEAM = 'super-admins'
 APPROVER_TEAM_ID = 20196962
+# Complete four-profile ledgers exceed 8 MiB; keep an explicit immutable-blob cap.
+MAX_PROPOSAL_BYTES = 16 * 1024**2
+MAX_API_BYTES = 24 * 1024**2
 KINDS = {'security-findings': 'security', 'security-revocation': 'security', 'release-set': 'releases', 'release-product': 'releases'}
 
 
@@ -39,14 +44,24 @@ def proposal_path(proposal):
 
 def github_api(endpoint):
     # Endpoint is constructed from validated repository, PR numbers and hashes.
-    result = subprocess.run(['gh', 'api', '--method', 'GET', endpoint], capture_output=True,
-                            text=True, timeout=60, check=False)
-    if result.returncode:
-        raise AuthorityError('GitHub authority API failed: ' + endpoint.split('?')[0])
-    try:
-        return json.loads(result.stdout)
-    except ValueError as error:
-        raise AuthorityError('Invalid GitHub API response') from error
+    # GitHub base64 JSON needs more space than the bounded raw document. Bound
+    # the child output before allocating or parsing it, including on API errors.
+    def bound_output():
+        resource.setrlimit(resource.RLIMIT_FSIZE, (MAX_API_BYTES, MAX_API_BYTES))
+    with tempfile.TemporaryFile() as output:
+        try:
+            result = subprocess.run(['gh', 'api', '--method', 'GET', endpoint],
+                                    stdout=output, stderr=subprocess.DEVNULL,
+                                    timeout=60, check=False, preexec_fn=bound_output)
+        except (OSError, subprocess.TimeoutExpired) as error:
+            raise AuthorityError('GitHub authority API unavailable') from error
+        if result.returncode or output.tell() > MAX_API_BYTES:
+            raise AuthorityError('GitHub authority API failed: ' + endpoint.split('?')[0])
+        output.seek(0)
+        try:
+            return json.load(output)
+        except (ValueError, UnicodeError) as error:
+            raise AuthorityError('Invalid GitHub API response') from error
 
 
 def collection(api, endpoint):
@@ -74,7 +89,7 @@ def document_at(api, repository, path, revision):
     content = api(f'repos/{repository}/contents/{quote(path, safe="/")}?ref={revision}')
     if (not isinstance(content, dict) or content.get('type') != 'file'
             or content.get('encoding') not in ('base64', 'none')
-            or type(content.get('size')) is not int or not 0 < content['size'] <= 8 * 1024 * 1024
+            or type(content.get('size')) is not int or not 0 < content['size'] <= MAX_PROPOSAL_BYTES
             or not isinstance(content.get('sha'), str) or not SHA.fullmatch(content['sha'])):
         raise AuthorityError('Decision proposal is not a bounded regular Git blob')
     blob = content

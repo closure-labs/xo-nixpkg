@@ -192,4 +192,23 @@ jq -e '
   .jobs.publish.enabled == false
 ' <<<"$security_plan" >/dev/null
 
+# Scanner configuration and repository fixture definitions run the complete
+# repository contract; they do not alter the XO application derivations.
+for path in .gitleaks.toml tests/test_secret_inventory.py nix/repository-checks.nix ci/decisions/check.py tests/decisions/test_check.py automation/decisions/security/fixture.json; do
+  parent=$(git -C "$semantic" rev-parse HEAD)
+  mkdir -p "$(dirname "$semantic/$path")"
+  printf 'reviewed repository contract change\n' >"$semantic/$path"
+  git -C "$semantic" add "$path"
+  git -C "$semantic" commit -qm repository-contract
+  fixture_head=$(git -C "$semantic" rev-parse HEAD)
+  jq -n --arg base "$parent" '{pull_request:{base:{sha:$base}}}' >"$temporary/event.json"
+  fixture_plan=$(classify pull_request refs/pull/6/merge "$fixture_head")
+  jq -e '
+    any(.jobs.validate.plan.targets[]; .name == "repository-policy") and
+    any(.jobs.validate.plan.targets[]; .name == "automation-fixtures") and
+    all(.jobs.validate.plan.targets[]; (.name | startswith("xo-")) | not) and
+    .jobs.publish.enabled == false
+  ' <<<"$fixture_plan" >/dev/null
+done
+
 printf 'Classifier fixtures passed\n'

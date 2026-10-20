@@ -125,6 +125,33 @@ class Packets(unittest.TestCase):
             result = mod.push(temporary, {'runId': 7})
             self.assertTrue(result['reference'].startswith(mod.REGISTRY + '@sha256:'))
 
+    def test_packet_transport_creation_time_is_stable_without_changing_producer_evidence(self):
+        producer = {'runId': 7, 'runAttempt': 2, 'revision': 'a' * 40}
+        evidence = {'scannedAt': '2026-10-20T08:49:00+00:00', 'producer': producer}
+        observed = []
+        def upload(arguments, **kwargs):
+            self.assertEqual(arguments[arguments.index('--annotation') + 1],
+                             'org.opencontainers.image.created=1970-01-01T00:00:00Z')
+            directory = Path(kwargs['cwd'])
+            packet = json.loads((directory / 'decision-packet.json').read_text())
+            self.assertEqual(packet['producer'], producer)
+            self.assertEqual(json.loads((directory / 'scan.json').read_text()), evidence)
+            self.assertEqual(packet['files'], {'scan.json': {
+                'sha256': mod.file_hash(directory / 'scan.json'),
+                'size': (directory / 'scan.json').stat().st_size}})
+            observed.append(packet)
+            return self.push_command(arguments, **kwargs)
+        with tempfile.TemporaryDirectory() as temporary, \
+             mock.patch.object(mod, 'private_review_registry') as privacy, \
+             mock.patch.object(mod, 'command', side_effect=upload):
+            (Path(temporary) / 'scan.json').write_text(json.dumps(evidence))
+            first = mod.push(temporary, producer)
+            second = mod.push(temporary, producer)
+            self.assertEqual(first, second)
+            self.assertEqual(observed[0], observed[1])
+            self.assertEqual(privacy.call_args_list,
+                             [mock.call(allow_missing=True), mock.call()] * 2)
+
     def fetch(self, registry, expected=True):
         registry.refresh()
         with tempfile.TemporaryDirectory() as directory, mock.patch.object(mod, 'command', side_effect=registry.command):

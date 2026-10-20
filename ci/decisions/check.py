@@ -20,7 +20,7 @@ PROPOSAL = re.compile(r'automation/decisions/(security|releases)/([0-9a-f]{64})\
 GOVERNED_PREFIXES = ('nix/', 'ci/', 'lib/', 'pkgs/', 'npins/', 'scripts/', 'sources/', '.github/', 'automation/',
                      'tests/decisions/', 'modules/', 'host/', 'installer/', 'packer/')
 GOVERNED_FILES = {'default.nix', 'flake.nix', 'flake.lock', 'devenv.nix', 'devenv.yaml', 'devenv.lock', 'secretspec.toml',
-                  'cosign.pub', 'zizmor.yml', '.zizmor.yml'}
+                  'cosign.pub', 'zizmor.yml', '.zizmor.yml', '.gitleaks.toml', 'gitleaks.toml', '.gitleaksignore'}
 
 
 def governed(path):
