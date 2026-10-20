@@ -25,6 +25,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- Verify publication journal write acknowledgements and briefly retry readbacks
+  of the known prior ref state, preserving non-fast-forward protection and reporting
+  bounded immutable commit identities when confirmation fails.
 - Report bounded registry error categories when private evidence uploads fail,
   without printing credentials, request URLs, or raw registry responses.
 - Authenticate the unique GitHub merged event for decision provenance when a
