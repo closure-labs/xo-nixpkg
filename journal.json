@@ -70,6 +70,14 @@
       },
       "name": "xo-tag",
       "state": "complete"
+    },
+    {
+      "identity": {
+        "revision": "6e49a69b5ee9a9ef939ea97e39c08b7045adf153",
+        "tag": "v0.10.1"
+      },
+      "name": "project-tag",
+      "state": "complete"
     }
   ]
 }
