@@ -18,6 +18,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Inventory installed npm packages, native binaries, immutable sources and
   derivations, and shipped-file exposure. Preserve raw findings and reject
   incomplete inventories, unhealthy scanners, and stale vulnerability databases.
+- Preserve reviewed runtime policy for profiles with no findings, so an empty
+  vulnerability report cannot silently authorize expanded exposure.
 - Preserve the verified XO Node/OpenSSL runtime and isolated file-restore helper
   integration, including checks of the active crypto library and refusal to
   fall back to privileged host parsing when an isolated backend fails.
