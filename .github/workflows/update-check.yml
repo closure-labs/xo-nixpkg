@@ -21,6 +21,10 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 180
     steps:
+      - name: Audit runner traffic
+        uses: step-security/harden-runner@dc2769abcc0fcfbadfc1df54081c1608579ef6b2 # v2
+        with:
+          egress-policy: audit
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -36,18 +40,17 @@ jobs:
         id: release
         env:
           GITHUB_TOKEN: ${{ github.token }}
-        run: nix run .#update-xo-release -- "$GITHUB_OUTPUT"
+        run: nix run .#devenv -- tasks run update:xo-release
 
-      - name: Prewarm trusted candidate closures
+      - name: Realize trusted candidate closures locally
         if: steps.release.outputs.changed == 'true'
         id: prewarm
         continue-on-error: true
         env:
-          CACHIX_AUTH_TOKEN: ${{ secrets.CACHIX_AUTH_TOKEN }}
           GH_TOKEN: ${{ github.token }}
           DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
           CHANGED_CHANNELS: ${{ steps.release.outputs.changed_channels }}
-        run: nix run .#prewarm-release-candidate -- "${CHANGED_CHANNELS}" "$GITHUB_OUTPUT"
+        run: nix run .#devenv -- tasks run update:release-realize
 
       - name: Retain prewarm evidence
         if: always()
@@ -76,8 +79,9 @@ jobs:
             Approve this pull request after reviewing the channel selection. Once approved and CI is green,
             trusted automation will enroll it in the merge queue. The gated main build then creates the immutable
             package tag; the `latest` and `stable` names remain flake output channels rather than moving Git tags.
-        run: nix run .#open-update-pr -- flake.nix flake.lock nix/sources/xen-orchestra.json
+          XO_NIXPKG_UPDATE_PATHS: flake.nix flake.lock nix/sources/xen-orchestra.json
+        run: nix run .#devenv -- tasks run update:open-pr
 
-      - name: Fail after retaining a cold or broken candidate
+      - name: Fail after retaining a broken candidate
         if: always() && steps.release.outputs.changed == 'true' && steps.prewarm.outcome != 'success'
-        run: exit 1
+        run: nix run .#devenv -- tasks run update:rolling-failure

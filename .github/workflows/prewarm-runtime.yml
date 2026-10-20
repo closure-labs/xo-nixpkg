@@ -30,8 +30,7 @@ jobs:
         env:
           DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
           GH_TOKEN: ${{ github.token }}
-          CACHIX_AUTH_TOKEN: ${{ secrets.CACHIX_AUTH_TOKEN }}
-        run: nix run .#prewarm-runtime -- "$GITHUB_OUTPUT"
+        run: nix run .#devenv -- tasks run update:runtime-realize
       - name: Retain prewarm evidence
         if: always()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1

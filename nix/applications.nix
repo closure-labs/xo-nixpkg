@@ -74,6 +74,212 @@ rec {
     '';
   };
 
+  auditPolicy = mkRepositoryApplication {
+    name = "xo-nixpkg-audit-policy";
+    script = ../ci/audit-policy.sh;
+    runtimeInputs = with pkgs; [
+      python3
+      gh
+    ];
+    prelude = ''
+      export XO_NIXPKG_POLICY_AUDIT_SOURCE=${../ci/audit-policy.py}
+      export PYTHONPATH=${decisions}/lib/decisions
+    '';
+  };
+  restoreProducts = mkRepositoryApplication {
+    name = "xo-nixpkg-restore-products";
+    script = ../ci/restore-products.sh;
+    runtimeInputs = with pkgs; [
+      python3
+      nix
+      publicationGate
+    ];
+    prelude = ''
+      export XO_NIXPKG_RESTORER=${../ci/restore-products.py}
+      export XO_NIXPKG_DISTRIBUTION_CACHE_SOURCE=${../ci/distribution-cache.py}
+    '';
+  };
+  repositoryAudit = mkRepositoryApplication {
+    name = "xo-nixpkg-repository-audit";
+    script = ../ci/repository-audit.sh;
+    runtimeInputs = [ pkgs.nix ];
+  };
+  publicationController = mkRepositoryApplication {
+    name = "xo-nixpkg-publication-controller";
+    script = ../ci/publication-controller.sh;
+    runtimeInputs = with pkgs; [
+      python3
+      gh
+      git
+      oras
+      publicationGate
+      publish
+      tagXoRelease
+      tagRelease
+      publishRelease
+    ];
+    prelude = ''
+      export XO_NIXPKG_PUBLICATION_CONTROLLER=${../ci/publication-controller.py}
+      export PYTHONPATH=${decisions}/lib/decisions
+    '';
+  };
+  refreshProducts = mkRepositoryApplication {
+    name = "xo-nixpkg-refresh-products";
+    script = ../ci/refresh-products.sh;
+    runtimeInputs = with pkgs; [
+      python3
+      git
+      nix
+      securityNativeScan
+    ];
+    prelude = ''
+      export XO_NIXPKG_REFRESHER=${../ci/refresh-products.py}
+      export XO_NIXPKG_DISTRIBUTION_CACHE_SOURCE=${../ci/distribution-cache.py}
+    '';
+  };
+  decisionCollect = mkRepositoryApplication {
+    name = "xo-nixpkg-decision-collect";
+    script = ../ci/decision-collect.sh;
+    runtimeInputs = [ ];
+  };
+  decisionAuthority = mkRepositoryApplication {
+    name = "xo-nixpkg-authority-controller";
+    script = ../ci/decision-authority.sh;
+    runtimeInputs = with pkgs; [
+      oras
+      decisions
+    ];
+  };
+  reconcileRetained = mkRepositoryApplication {
+    name = "xo-nixpkg-reconcile-retained";
+    script = ../ci/reconcile-retained.sh;
+    runtimeInputs = with pkgs; [
+      coreutils
+      gh
+      jq
+      oras
+      python3
+      decisions
+    ];
+    prelude = ''
+      export XO_NIXPKG_RETAINED_FETCH_SOURCE=${../ci/fetch-retained.py}
+      export XO_NIXPKG_RESCAN_VERIFIER_SOURCE=${../ci/verify-rescan-evidence.py}
+      export PYTHONPATH=${decisions}/lib/decisions
+    '';
+  };
+  queuePreflight = mkRepositoryApplication {
+    name = "xo-nixpkg-queue-preflight";
+    script = ../ci/queue-preflight.sh;
+    runtimeInputs = [ pkgs.gh ];
+  };
+  rollingFailure = mkRepositoryApplication {
+    name = "xo-nixpkg-rolling-failure";
+    script = ../ci/rolling-failure.sh;
+    runtimeInputs = [ ];
+  };
+  fetchEvidence = mkRepositoryApplication {
+    name = "xo-nixpkg-fetch-evidence";
+    script = ../ci/fetch-evidence.sh;
+    runtimeInputs = with pkgs; [
+      coreutils
+      gh
+      oras
+      python3
+      jq
+      publicationGate
+    ];
+    prelude = ''
+      export XO_NIXPKG_RETAINED_FETCH_SOURCE=${../ci/fetch-retained.py}
+      export XO_NIXPKG_RESCAN_VERIFIER_SOURCE=${../ci/verify-rescan-evidence.py}
+      export PYTHONPATH=${decisions}/lib/decisions
+    '';
+  };
+  ciVerdict = mkRepositoryApplication {
+    name = "xo-nixpkg-ci-verdict";
+    script = ../ci/ci-verdict.sh;
+    runtimeInputs = [ ];
+  };
+  securityLint = mkRepositoryApplication {
+    name = "xo-nixpkg-security-lint";
+    script = ../ci/security-lint.sh;
+    runtimeInputs = with pkgs; [
+      actionlint
+      zizmor
+      gitleaks
+      python3
+    ];
+  };
+  decisionReconcile = mkRepositoryApplication {
+    name = "xo-nixpkg-decision-reconcile-candidate";
+    script = ../ci/decision-reconcile.sh;
+    runtimeInputs = with pkgs; [
+      coreutils
+      decisions
+    ];
+  };
+  securityInventory = mkRepositoryApplication {
+    name = "xo-nixpkg-security-inventory";
+    script = ../ci/security-inventory.sh;
+    runtimeInputs = with pkgs; [
+      python3
+      nix
+    ];
+    prelude = "export XO_NIXPKG_SECURITY_INVENTORY=${../ci/security-inventory.py}";
+  };
+  securityNativeScan = mkRepositoryApplication {
+    name = "xo-nixpkg-security-native-scan";
+    script = ../ci/security-native-scan.sh;
+    runtimeInputs = with pkgs; [
+      coreutils
+      grype
+      jq
+      python3
+    ];
+    prelude = "export XO_NIXPKG_SECURITY_NORMALIZER=${../ci/security-normalize.py}";
+  };
+  qualifyProducts = mkRepositoryApplication {
+    name = "xo-nixpkg-qualify-products";
+    script = ../ci/qualify-products.sh;
+    runtimeInputs = with pkgs; [
+      coreutils
+      git
+      nix
+      python3
+      securityInventory
+      securityNativeScan
+    ];
+    prelude = ''
+      export XO_NIXPKG_QUALIFIER=${../ci/qualify-products.py}
+      export XO_NIXPKG_DISTRIBUTION_CACHE_SOURCE=${../ci/distribution-cache.py}
+    '';
+  };
+  publicationGate = mkRepositoryApplication {
+    name = "xo-nixpkg-publication-gate";
+    script = ../ci/publication-gate.sh;
+    runtimeInputs = [ decisions ];
+  };
+  decisions = pkgs.stdenvNoCC.mkDerivation {
+    pname = "xo-nixpkg-decisions";
+    version = "1";
+    src = ../ci/decisions;
+    nativeBuildInputs = [ pkgs.makeWrapper ];
+    dontBuild = true;
+    installPhase = ''
+      mkdir -p "$out/lib/decisions" "$out/bin"
+      cp *.py "$out/lib/decisions/"
+      for leaf in authority admission proposal readiness publication recovery handoff reconcile check; do
+        makeWrapper ${pkgs.python3}/bin/python3 "$out/bin/xo-nixpkg-decision-$leaf" \
+          --add-flags "$out/lib/decisions/$leaf.py" \
+          --prefix PATH : ${
+            pkgs.lib.makeBinPath [
+              pkgs.gh
+              pkgs.git
+              pkgs.oras
+            ]
+          }
+      done
+    '';
+  };
   classifyCi = mkRepositoryApplication {
     name = "xo-nixpkg-classify-ci";
     script = ../ci/classify.sh;
@@ -116,7 +322,11 @@ rec {
         jq
         nix
       ]
-      ++ [ planRunner ];
+      ++ [
+        planRunner
+        publicationGate
+        restoreProducts
+      ];
     prelude = cachePrelude;
   };
 
@@ -124,6 +334,8 @@ rec {
     name = "xo-nixpkg-publish-release";
     script = ../ci/publish-release.sh;
     runtimeInputs = with pkgs; [
+      jq
+      publicationGate
       coreutils
       gawk
       gh
@@ -145,6 +357,8 @@ rec {
     name = "xo-nixpkg-tag-release";
     script = ../ci/tag-release.sh;
     runtimeInputs = with pkgs; [
+      jq
+      publicationGate
       coreutils
       git
       gnugrep
@@ -155,6 +369,7 @@ rec {
     name = "xo-nixpkg-tag-xo-release";
     script = ../ci/tag-xo-release.sh;
     runtimeInputs = with pkgs; [
+      publicationGate
       coreutils
       git
       jq
@@ -212,11 +427,9 @@ rec {
     name = "xo-nixpkg-prewarm-rolling";
     script = ../ci/prewarm-rolling.sh;
     runtimeInputs = with pkgs; [
-      cachix
       coreutils
       nix
     ];
-    prelude = cachePrelude;
   };
 
   trustedPrewarm = mkRepositoryApplication {
@@ -225,7 +438,6 @@ rec {
     runtimeInputs =
       with pkgs;
       [
-        cachix
         coreutils
         gh
         git
@@ -233,7 +445,6 @@ rec {
         nix
       ]
       ++ [ planRunner ];
-    prelude = cachePrelude;
   };
 
   prewarmRelease = pkgs.writeShellApplication {

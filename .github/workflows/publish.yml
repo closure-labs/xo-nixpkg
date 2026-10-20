@@ -1,141 +1,79 @@
 # SPDX-License-Identifier: Apache-2.0
-name: Publish protected main
-
+name: Publish admitted products
 on:
-  push:
-    branches: [main]
-
+  workflow_dispatch:
+    inputs:
+      qualification_run:
+        description: Successful immutable qualification run ID
+        type: string
+        required: true
+      purpose:
+        description: Publication authority required
+        type: choice
+        options: [rolling, release]
+        default: rolling
+permissions:
+  contents: read
+  actions: read
+  attestations: read
+  packages: write
 concurrency:
   group: publication-${{ github.repository }}
   queue: max
-
-permissions:
-  actions: read
-  contents: read
-
+  cancel-in-progress: false
 jobs:
-  classify:
-    name: Classify main lifecycle
-    runs-on: ubuntu-slim
-    timeout-minutes: 10
-    outputs:
-      workflow: ${{ steps.classify.outputs.workflow }}
-    steps:
-      - name: Checkout publication history
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          fetch-depth: 0
-          persist-credentials: false
-
-      - name: Classify merge-group reuse and publication paths
-        id: classify
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: bash ci/classify.sh "$GITHUB_OUTPUT"
-
-  lifecycle:
-    name: Validate and publish selected closures
-    needs: classify
-    if: >-
-      needs.classify.result == 'success' &&
-      (fromJSON(needs.classify.outputs.workflow).jobs.validate.enabled ||
-       fromJSON(needs.classify.outputs.workflow).jobs.publish.enabled)
+  publish:
+    name: Verify live admission and publish exact immutable outputs
+    if: github.repository == 'closure-labs/xo-nixpkg' && github.ref == 'refs/heads/main'
+    environment: publication
     runs-on: ubuntu-24.04
-    timeout-minutes: 180
-    env:
-      PREPARED_CI_WORKFLOW: ${{ needs.classify.outputs.workflow }}
-    steps:
-      - name: Checkout
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          persist-credentials: false
-
-      - name: Set up Nix and cache
-        uses: ./.github/actions/setup-nix # zizmor: ignore[self-repository] -- setup follows the explicitly checked-out source; repair jobs use a trusted base revision.
-        with:
-          github-token: ${{ github.token }}
-
-      - name: Run selected validation targets
-        if: fromJSON(env.PREPARED_CI_WORKFLOW).jobs.validate.enabled
-        run: nix run .#ci
-
-      - name: Publish selected package closures from the same Nix store
-        if: fromJSON(env.PREPARED_CI_WORKFLOW).jobs.publish.enabled
-        env:
-          CACHIX_AUTH_TOKEN: ${{ secrets.CACHIX_AUTH_TOKEN }}
-        run: nix run .#publish
-
-      - name: Retain selected-target manifests and timings
-        if: always()
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
-        with:
-          name: xo-ci-evidence
-          path: ${{ runner.temp }}/xo-nixpkg-ci-evidence
-          if-no-files-found: ignore
-          retention-days: 30
-
-  gate:
-    name: Main lifecycle gate
-    if: always()
-    needs: [classify, lifecycle]
-    runs-on: ubuntu-slim
-    timeout-minutes: 5
-    env:
-      CLASSIFY_RESULT: ${{ needs.classify.result }}
-      LIFECYCLE_RESULT: ${{ needs.lifecycle.result }}
-      LIFECYCLE_ENABLED: ${{ needs.classify.result == 'success' && (fromJSON(needs.classify.outputs.workflow).jobs.validate.enabled || fromJSON(needs.classify.outputs.workflow).jobs.publish.enabled) || false }}
-    steps:
-      - name: Enforce the classified lifecycle
-        run: |
-          test "$CLASSIFY_RESULT" = success
-          if test "$LIFECYCLE_ENABLED" = true; then
-            test "$LIFECYCLE_RESULT" = success
-          else
-            test "$LIFECYCLE_RESULT" = skipped
-          fi
-
-  release:
-    name: Tag gated releases
-    if: >-
-      needs.classify.result == 'success' &&
-      needs.gate.result == 'success' &&
-      fromJSON(needs.classify.outputs.workflow).release.enabled
-    needs: [classify, gate]
-    runs-on: ubuntu-24.04
-    timeout-minutes: 15
-    environment: release
+    timeout-minutes: 60
     permissions:
       contents: write
+      actions: read
+      attestations: read
+      packages: write
+    env:
+      XO_NIXPKG_EVIDENCE: security-evidence
+      XO_NIXPKG_PUBLICATION_PURPOSE: ${{ inputs.purpose }}
+      QUALIFICATION_RUN: ${{ inputs.qualification_run }}
+      GH_TOKEN: ${{ github.token }}
     steps:
-      - name: Checkout the gated commit and tags
+      - name: Audit runner traffic
+        uses: step-security/harden-runner@dc2769abcc0fcfbadfc1df54081c1608579ef6b2 # v2
+        with:
+          egress-policy: audit
+      - name: Checkout protected controller
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          token: ${{ github.token }}
+          ref: main
           fetch-depth: 0
-          fetch-tags: true
           persist-credentials: false
-
       - name: Set up Nix
         uses: ./.github/actions/setup-nix # zizmor: ignore[self-repository] -- setup follows the explicitly checked-out source; repair jobs use a trusted base revision.
         with:
           github-token: ${{ github.token }}
-
-      - name: Create the immutable XO package tag
+      - name: Mint repository-scoped publication authority token
+        id: publisher
+        uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1 # v3.2.0
+        with:
+          client-id: ${{ vars.DECIDER_CLIENT }}
+          private-key: ${{ secrets.DECIDER_KEY }}
+          owner: ${{ github.repository_owner }}
+          repositories: ${{ github.event.repository.name }}
+          permission-contents: write
+          permission-pull-requests: read
+          permission-actions: read
+          permission-administration: read
+          permission-members: read
+      - name: Download and verify qualified evidence
         env:
-          BASE_SHA: ${{ github.event.before }}
-          GH_TOKEN: ${{ github.token }}
-          GATED_SHA: ${{ github.sha }}
-          GITHUB_REPOSITORY: ${{ github.repository }}
-        run: nix run .#tag-xo-release
-
-      - name: Create the immutable project tag
+          GH_TOKEN: ${{ steps.publisher.outputs.token }}
+          REGISTRY_TOKEN: ${{ github.token }}
+        run: nix run .#devenv -- tasks run release:fetch
+      - name: Recheck admission and publish exact closures
         env:
-          GH_TOKEN: ${{ github.token }}
-          GATED_SHA: ${{ github.sha }}
-        run: nix run .#tag-release
-
-      - name: Publish the immutable GitHub release
-        env:
-          GH_TOKEN: ${{ github.token }}
-          GITHUB_REPOSITORY: ${{ github.repository }}
-        run: nix run .#publish-release
+          CACHIX_AUTH_TOKEN: ${{ secrets.CACHIX_AUTH_TOKEN }}
+          GH_TOKEN: ${{ steps.publisher.outputs.token }}
+          REGISTRY_TOKEN: ${{ github.token }}
+        run: nix run .#devenv -- tasks run release:resume

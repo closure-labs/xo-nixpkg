@@ -20,6 +20,10 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 45
     steps:
+      - name: Audit runner traffic
+        uses: step-security/harden-runner@dc2769abcc0fcfbadfc1df54081c1608579ef6b2 # v2
+        with:
+          egress-policy: audit
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -34,7 +38,7 @@ jobs:
         id: release
         env:
           GITHUB_TOKEN: ${{ github.token }}
-        run: nix run .#update-libvhdi -- "$GITHUB_OUTPUT"
+        run: nix run .#devenv -- tasks run update:libvhdi
 
       - name: Open the update pull request
         if: steps.release.outputs.changed == 'true'
@@ -46,4 +50,5 @@ jobs:
             Automated source-lock refresh to the official libvhdi release asset.
 
             Validation: `nix run .#update-libvhdi`
-        run: nix run .#open-update-pr -- nix/sources/libvhdi.json
+          XO_NIXPKG_UPDATE_PATHS: nix/sources/libvhdi.json
+        run: nix run .#devenv -- tasks run update:open-pr

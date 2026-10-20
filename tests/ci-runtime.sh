@@ -140,14 +140,4 @@ if grep -F 'fixture-validation-runtime' "$temporary_directory/policy-failure-log
   exit 1
 fi
 
-PATH="$temporary_directory/bin:$PATH" \
-CACHIX_AUTH_TOKEN=fixture \
-XO_NIXPKG_CACHIX_CACHE_NAME=fixture-cache \
-PREPARED_CI_WORKFLOW="$prepared_lifecycle" \
-  bash "$root/ci/publish.sh" >"$temporary_directory/publish-log"
-[[ $(<"$temporary_directory/publish-log") == \
-  *'<--plan-file>'* ]]
-[[ $(<"$temporary_directory/publish-log") == \
-  *'cachix <push> <fixture-cache> </nix/store/xo-latest> </nix/store/xo-stable> </nix/store/xo-rolling> </nix/store/supply-latest> </nix/store/supply-stable> </nix/store/supply-rolling> </nix/store/runtime-bin> </nix/store/runtime-lib> </nix/store/runtime-doc>'* ]]
-
 printf 'CI runtime fixtures passed\n'

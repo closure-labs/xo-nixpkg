@@ -17,20 +17,29 @@ permissions:
 jobs:
   classify:
     name: Classify CI paths
-    runs-on: ubuntu-slim
+    runs-on: ubuntu-24.04
     timeout-minutes: 5
     outputs:
       workflow: ${{ steps.classify.outputs.workflow }}
     steps:
+      - name: Audit runner traffic
+        uses: step-security/harden-runner@dc2769abcc0fcfbadfc1df54081c1608579ef6b2 # v2
+        with:
+          egress-policy: audit
       - name: Checkout classification history
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: ${{ (github.event_name == 'pull_request' || github.event_name == 'merge_group') && '0' || '1' }}
           persist-credentials: false
 
+      - name: Set up Nix
+        uses: ./.github/actions/setup-nix # zizmor: ignore[self-repository] -- local setup follows the explicitly checked-out trusted revision.
+        with:
+          github-token: ${{ github.token }}
+
       - name: Classify the event
         id: classify
-        run: bash ci/classify.sh "$GITHUB_OUTPUT"
+        run: nix run .#devenv -- tasks run ci:classify
 
   validate:
     name: Flake-defined validation
@@ -43,6 +52,10 @@ jobs:
     env:
       PREPARED_CI_WORKFLOW: ${{ needs.classify.outputs.workflow }}
     steps:
+      - name: Audit runner traffic
+        uses: step-security/harden-runner@dc2769abcc0fcfbadfc1df54081c1608579ef6b2 # v2
+        with:
+          egress-policy: audit
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -54,7 +67,7 @@ jobs:
           github-token: ${{ github.token }}
 
       - name: Run the selected flake-defined targets
-        run: nix run .#ci
+        run: nix run .#devenv -- tasks run ci:validate
 
       - name: Retain selected-target manifests and timings
         if: always()
@@ -79,6 +92,10 @@ jobs:
     permissions:
       contents: write
     steps:
+      - name: Audit runner traffic
+        uses: step-security/harden-runner@dc2769abcc0fcfbadfc1df54081c1608579ef6b2 # v2
+        with:
+          egress-policy: audit
       - name: Checkout trusted hash-fixer automation
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -97,24 +114,30 @@ jobs:
           PR_HEAD_REF: ${{ github.event.pull_request.head.ref }}
           PR_HEAD_REPOSITORY: ${{ github.event.pull_request.head.repo.full_name }}
           PR_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
-        run: nix run .#fix-nix-hashes
+        run: nix run .#devenv -- tasks run update:fix-hashes
 
   gate:
     name: CI gate
     if: always()
     needs: [classify, validate]
-    runs-on: ubuntu-slim
+    runs-on: ubuntu-24.04
     timeout-minutes: 5
     env:
       CLASSIFY_RESULT: ${{ needs.classify.result }}
       VALIDATE_RESULT: ${{ needs.validate.result }}
       VALIDATE_ENABLED: ${{ needs.classify.result == 'success' && fromJSON(needs.classify.outputs.workflow).jobs.validate.enabled || false }}
     steps:
+      - name: Audit runner traffic
+        uses: step-security/harden-runner@dc2769abcc0fcfbadfc1df54081c1608579ef6b2 # v2
+        with:
+          egress-policy: audit
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Set up Nix
+        uses: ./.github/actions/setup-nix # zizmor: ignore[self-repository] -- local setup follows the explicitly checked-out trusted revision.
+        with:
+          github-token: ${{ github.token }}
       - name: Enforce the classified lifecycle
-        run: |
-          test "$CLASSIFY_RESULT" = success
-          if test "$VALIDATE_ENABLED" = true; then
-            test "$VALIDATE_RESULT" = success
-          else
-            test "$VALIDATE_RESULT" = skipped
-          fi
+        run: nix run .#devenv -- tasks run ci:verdict

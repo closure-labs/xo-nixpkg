@@ -85,6 +85,7 @@ let
           shellcheck
           yq-go
           zizmor
+          python3
         ])
         ''
           bash source/tests/policy.sh
@@ -114,10 +115,9 @@ let
           grep -F -- '${pkgs.lib.getExe applications.updateXo} --rolling' \
             ${pkgs.lib.getExe applications.updateXoRolling}
           grep -F 'rolling-candidate' ${pkgs.lib.getExe applications.prewarmRolling}
-          grep -F 'cachix push "$XO_NIXPKG_CACHIX_CACHE_NAME"' \
-            source/ci/prewarm-rolling.sh source/ci/publish.sh
+          grep -F 'cachix push "$XO_NIXPKG_CACHIX_CACHE_NAME"' source/ci/publish.sh
+          ! rg 'cachix|AUTH_TOKEN' source/ci/prewarm-rolling.sh
           grep -F 'XO_NIXPKG_CACHIX_CACHE_NAME' \
-            ${pkgs.lib.getExe applications.prewarmRolling} \
             ${pkgs.lib.getExe applications.publish}
           grep -F 'xo-nixpkg-classify-ci' source/ci/run.sh
           grep -F '/scripts/update.sh' source/ci/update-xo.sh
@@ -179,6 +179,7 @@ let
           bash source/tests/open-update-pr.sh
           bash source/tests/tag-release.sh
           bash source/tests/tag-xo-release.sh
+          bash source/tests/publication-boundary.sh
           bash source/tests/publish-release.sh
         '';
 

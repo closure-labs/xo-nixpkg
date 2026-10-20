@@ -1,0 +1,56 @@
+# SPDX-License-Identifier: Apache-2.0
+name: Reconcile security and release decisions
+on:
+  workflow_run: # zizmor: ignore[dangerous-triggers] Only completed producer metadata and attested data are read.
+    workflows: [Qualify immutable products, Verify maintainer decision authority]
+    types: [completed]
+  push:
+    branches: [main]
+    paths: ['automation/decisions/**']
+  schedule:
+    - cron: '31 * * * *'
+  workflow_dispatch:
+permissions:
+  contents: read
+  actions: read
+  packages: write
+  attestations: read
+concurrency:
+  group: decision-reconciliation
+  cancel-in-progress: false
+jobs:
+  reconcile:
+    if: github.repository == 'closure-labs/xo-nixpkg' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - name: Audit runner traffic
+        uses: step-security/harden-runner@dc2769abcc0fcfbadfc1df54081c1608579ef6b2 # v2
+        with:
+          egress-policy: audit
+      - name: Checkout protected controller
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: main
+          persist-credentials: false
+      - uses: ./.github/actions/setup-nix # zizmor: ignore[self-repository] -- local setup follows the explicitly checked-out trusted revision.
+        with:
+          github-token: ${{ github.token }}
+      - name: Mint repository-scoped proposal token
+        id: proposer
+        uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1 # v3.2.0
+        with:
+          client-id: ${{ vars.DECIDER_CLIENT }}
+          private-key: ${{ secrets.DECIDER_KEY }}
+          owner: ${{ github.repository_owner }}
+          repositories: ${{ github.event.repository.name }}
+          permission-contents: write
+          permission-pull-requests: write
+          permission-actions: write
+          permission-administration: read
+          permission-members: read
+      - name: Persist evidence, reconcile proposals and resume admitted candidates
+        env:
+          GH_TOKEN: ${{ steps.proposer.outputs.token }}
+          REGISTRY_TOKEN: ${{ github.token }}
+        run: nix run .#devenv -- tasks run security:resume

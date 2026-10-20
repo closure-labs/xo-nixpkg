@@ -29,3 +29,7 @@ CLAUDE.md
 .cursor/
 .codex
 security-report/
+
+# Qualified local evidence
+security-evidence/
+__pycache__/

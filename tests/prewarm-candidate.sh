@@ -6,7 +6,7 @@ temporary=$(mktemp -d)
 trap 'rm -rf -- "$temporary"' EXIT
 mkdir -p "$temporary/bin"
 export XO_NIXPKG_SOURCE_ROOT="$root" XO_NIXPKG_CI_EVIDENCE="$temporary/evidence"
-export FAKE_PREWARM_DIR="$temporary" XO_NIXPKG_CACHIX_CACHE_NAME=fixture CACHIX_AUTH_TOKEN=fixture
+export FAKE_PREWARM_DIR="$temporary"
 export GITHUB_ACTIONS=true DEFAULT_BRANCH=main GITHUB_REPOSITORY=example/xo-nixpkg
 export GITHUB_SHA=aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa GITHUB_REF=refs/heads/main GITHUB_EVENT_NAME=workflow_dispatch
 cat >"$temporary/bin/git" <<'SH'
@@ -65,10 +65,11 @@ chmod +x "$temporary/bin/"*
 export PATH="$temporary/bin:$PATH"
 bash "$root/ci/prewarm-candidate.sh" release latest,stable "$temporary/output"
 jq -e '[.targets[].name]==["xo-latest","supply-protector-latest","xo-stable","supply-protector-stable"]' "$temporary/plan.json" >/dev/null
-[[ $(wc -l <"$temporary/pushed") == 4 ]]
+[[ ! -e $temporary/pushed ]]
+[[ $(cat "$temporary/output") == closure_path_count=2 ]]
 bash "$root/ci/prewarm-candidate.sh" runtime
 jq -e '.targets==[{name:"runtime-node",attribute:"packages.x86_64-linux.runtime-node"}]' "$temporary/plan.json" >/dev/null
-[[ $(wc -l <"$temporary/pushed") == 1 ]]
+[[ ! -e $temporary/pushed ]]
 reject() {
   rm -f "$temporary/plan.json" "$temporary/pushed"
   if "$@" >"$temporary/rejected.log" 2>&1; then echo 'Invalid privileged prewarm accepted' >&2;exit 1;fi

@@ -1,0 +1,24 @@
+# SPDX-License-Identifier: Apache-2.0
+name: Collect maintainer decision events
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, ready_for_review, edited]
+  pull_request_review:
+    types: [submitted, edited, dismissed]
+  merge_group:
+    types: [checks_requested]
+permissions:
+  contents: read
+jobs:
+  collect:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: ./.github/actions/setup-nix # zizmor: ignore[self-repository] -- local setup follows the explicitly checked-out trusted revision.
+        with:
+          github-token: ${{ github.token }}
+      - name: Complete metadata collector
+        run: nix run .#devenv -- tasks run security:collect

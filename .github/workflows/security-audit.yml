@@ -1,0 +1,65 @@
+# SPDX-License-Identifier: Apache-2.0
+name: Audit repository security
+on:
+  pull_request:
+  merge_group:
+  push:
+    branches: [main]
+  schedule:
+    - cron: '43 4 * * *'
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: security-audit-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+jobs:
+  audit:
+    name: Repository security audit
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - name: Audit runner traffic
+        uses: step-security/harden-runner@dc2769abcc0fcfbadfc1df54081c1608579ef6b2 # v2
+        with:
+          egress-policy: audit
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: ./.github/actions/setup-nix # zizmor: ignore[self-repository] -- local setup follows the explicitly checked-out trusted revision.
+        with:
+          github-token: ${{ github.token }}
+      - name: Validate workflow security and secrets history
+        run: nix run .#devenv -- tasks run ci:security-lint
+  policy:
+    name: Audit effective repository protection
+    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - name: Audit runner traffic
+        uses: step-security/harden-runner@dc2769abcc0fcfbadfc1df54081c1608579ef6b2 # v2
+        with:
+          egress-policy: audit
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: main
+          persist-credentials: false
+      - uses: ./.github/actions/setup-nix # zizmor: ignore[self-repository] -- local setup follows the explicitly checked-out trusted revision.
+        with:
+          github-token: ${{ github.token }}
+      - name: Mint read-only audit token
+        id: auditor
+        uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1 # v3.2.0
+        with:
+          client-id: ${{ vars.SECAUDIT_CLIENTID }}
+          private-key: ${{ secrets.SECAUDIT_PEM }}
+          owner: ${{ github.repository_owner }}
+          repositories: ${{ github.event.repository.name }}
+          permission-administration: read
+      - name: Check effective rules without write authority
+        env:
+          GH_TOKEN: ${{ steps.auditor.outputs.token }}
+          REPOSITORY_READ_TOKEN: ${{ github.token }}
+        run: nix run .#devenv -- tasks run security:audit-policy

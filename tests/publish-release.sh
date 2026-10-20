@@ -3,6 +3,8 @@
 
 set -euo pipefail
 
+xo-nixpkg-publication-gate() { return 0; }
+export -f xo-nixpkg-publication-gate
 root=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)
 temporary=$(mktemp -d)
 trap 'rm -rf "$temporary"' EXIT

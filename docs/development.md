@@ -13,6 +13,12 @@ The plain `mkShellNoCC` toolchain includes Node.js 22, Yarn classic, Valkey,
 native Node build helpers, update tools, Nix linters, actionlint, ShellCheck,
 and zizmor. Evaluation is pure.
 
+The pinned runtime uses stock Nixpkgs Node 22.23.3 and OpenSSL 3.5.9. Both
+substitute from the official Nix binary cache. `nix/runtime-node.nix` requires
+the patched OpenSSL series without overriding its source or rebuilding Node;
+the package install check verifies both the reported crypto version and the
+actual mapped library paths.
+
 The repository also exposes the same toolchain as a Devenv environment:
 
 ```bash
@@ -70,19 +76,18 @@ previous receipts. CI uploads evidence after success or failure. Timing includes
 Nix startup, realization and substitution; it does not isolate compilation.
 
 Official-release and flake-lock automation prewarm changed package/supply roots
-and the patched runtime respectively before opening update PRs. A failed prewarm
+and the stock cached runtime respectively before opening update PRs. A failed prewarm
 preserves a draft PR and fails the updater. The manual **Prewarm protected
-runtime** workflow can seed the current protected-main runtime without changing
+runtime** workflow can realize the current protected-main runtime locally without changing
 pins or publishing a release. Its packaged app is `.#prewarm-runtime`; official
 release automation calls `.#prewarm-release-candidate -- latest,stable` with only
 the channels actually changed.
 
 Hosted prewarming requires the protected default branch at the exact event SHA,
 a schedule or manual event, and only the declared updater pin changes. It checks
-GitHub's current branch identity and protection before using cache credentials.
-Ordinary PR jobs retain read-only cache access. Local authenticated prewarming is
-an explicit operator action; `CACHIX_AUTH_TOKEN` is resolved at runtime and never
-passed into Nix evaluation or a derivation.
+GitHub's current branch identity and protection before realizing candidates.
+Candidate realization has no cache write credential. Public cache publication
+occurs only after live security admission in the publication controller.
 
 Review approvals first trigger an observer with no checkout or credentials.
 Privileged queue reconciliation runs from default-branch-owned workflow code and
@@ -195,27 +200,27 @@ To prepare a project release:
 3. Confirm `nix run --accept-flake-config .#ci` passes.
 4. Commit and push through the protected `main` workflow.
 
-After validation and selected Cachix publication succeed, the gated job
-maintains two independent tag streams. It creates the immutable project tag
-from `VERSION` and idempotently publishes that tag as a GitHub Release using
-only the tagged commit's matching changelog section. When the push changes the
-`latest` XO version or revision, it also creates an immutable lightweight XO
-package tag on that downstream pin commit; two-component upstream versions are
-normalized (`6.8` becomes `v6.8.0`) and three-component versions are retained
-(`6.8.1` becomes `v6.8.1`). Existing tags are never moved, and XO package tags
-do not create GitHub Release objects. The XO `latest`, `stable`, and `rolling`
-names remain non-tagged flake package outputs.
+Qualification builds and scans exact immutable XO, supply and libvhdi outputs
+without publication credentials. A separate controller runs only after the
+qualification workflow has completed successfully. It authenticates the signed
+evidence, checks live policy and human security decisions, restores the retained
+NAR transport without builders, and pushes only the admitted store paths.
+A project release additionally requires an independent approval of the complete
+product identity; publication never treats a generated receipt as authority.
 
-Protected-main publication runs in a FIFO concurrency group and retains every
-pending run. Validation and Cachix publication share one runner and Nix store;
-a successful merge-group run can satisfy validation for an ancestral main SHA,
-while only the path delta after that SHA is revalidated. Missing workflow-run
-history, API failures, incomplete Git history, and non-ancestral SHAs all fall
-back to the complete validation plan.
+Project and upstream package tags remain independent and immutable. The project
+tag comes from `VERSION` and its GitHub Release uses that tag's matching
+changelog section. Upstream package tags normalize two-component versions
+(`6.8` becomes `v6.8.0`); they do not create GitHub Release objects. The XO
+`latest`, `stable`, and `rolling` names remain flake package outputs.
 
-The same publication plan pushes each channel's `supply-protector` store output.
-Those outputs retain the exact XO closure and package deterministic SPDX,
-CycloneDX, closure-graph, checksum, and assertion files for downstream flakes.
+Protected-main publication retains pending requests in its FIFO group and
+rechecks live admission before each cache, tag or release side effect. Private
+review packets retain the complete candidate evidence and transport for delayed
+approval and recovery. Public downstream handoff packets are independently
+signed and bind the exact channel, source revision, store path and NAR hash.
+Each channel's `supply-protector` output retains its package closure and
+SPDX, CycloneDX, closure graph, checksums and assertion files.
 
 ## Organization merge queue
 
@@ -225,27 +230,21 @@ conversations must be resolved. Successful rolling candidates are created ready
 for the trusted automation queue without human approval; versioned release
 candidates require an exact-head maintainer approval. Failed rolling prewarming
 leaves the candidate draft for diagnosis. Protected-main publication retains
-every pending run in its FIFO concurrency group and can reuse successful
-ancestral merge-group validation.
+every pending request in its FIFO concurrency group and requires fresh live
+admission of the exact signed product.
 
-Update pull requests and releases use job-scoped built-in GitHub tokens. The
-trusted queue is the exception: approving action-required workflow runs and
-enrolling an exact pull-request SHA requires the repository secret
-`MERGE_QUEUE_TOKEN`. It must be a fine-grained PAT restricted to
-`closure-labs/xo-nixpkg`, owned by an authorized automation identity, with
-Actions, Contents, and Pull requests read/write permissions. The workflow
-fails before checkout and Nix setup if that secret is absent; it never falls
-back to `github.token`. Reconciliation runs after updater or CI completion,
-after an approval is submitted, on demand, and on a daily repair schedule. It
-does not wait inside a runner: pending, newly authorized, failed, and
-awaiting-review candidates are reported as state, while identity, changed-file,
-credential, and API failures fail the reconciliation job.
+Update pull requests use job-scoped built-in GitHub tokens. Queue reconciliation
+mints a short-lived repository-scoped token from the Decider App with Actions,
+Contents and Pull requests write permissions; `DECIDER_CLIENT` is a repository
+variable and `DECIDER_KEY` is a runtime secret. The separate read-only audit App
+uses the `SECAUDIT_CLIENTID` variable and `SECAUDIT_PEM` secret, with its token
+passed as `REPOSITORY_READ_TOKEN`. Approval authority is revalidated against
+current human maintain/admin access and exact decision heads.
 
-The release environment, `MERGE_QUEUE_TOKEN`, and `CACHIX_AUTH_TOKEN` remain
-repository-scoped; recheck their availability after any transfer or visibility
-change and rotate the PAT before its configured expiration. The cache name,
-URL, and public key are flake data exposed through `lib.binaryCache`, so there
-is no `CACHIX_CACHE_NAME` secret.
+Cache publication, project tags and releases require fresh admitted evidence
+and live policy checks. Release approval binds the complete immutable product
+identity independently of security acceptance. Runtime credentials never enter
+Nix evaluation or derivations. The cache name, URL and key remain flake data.
 
 ## Security inventory review
 
@@ -286,3 +285,8 @@ evidence. The five reviewed npm findings remain unresolved: immutable built-in
 callers suggest narrow future Handlebars guards, but dynamic plugin/config
 exposure must first be established. See
 [the npm triage](security-triage-2026-10-14.md).
+
+Workflow command bodies use declared `devenv tasks` backed by flake-packaged leaf
+commands. `nix run .#devenv -- tasks run <task>` bootstraps that exact locked
+toolchain on hosted runners. Credentials stay in runtime environment values
+declared by `secretspec.toml`; never put values in Nix evaluation or derivations.

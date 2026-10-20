@@ -6,12 +6,18 @@
   "conditions": {
     "ref_name": {
       "exclude": [],
-      "include": ["~DEFAULT_BRANCH"]
+      "include": [
+        "~DEFAULT_BRANCH"
+      ]
     }
   },
   "rules": [
-    {"type": "deletion"},
-    {"type": "non_fast_forward"},
+    {
+      "type": "deletion"
+    },
+    {
+      "type": "non_fast_forward"
+    },
     {
       "type": "merge_queue",
       "parameters": {
@@ -27,7 +33,9 @@
     {
       "type": "pull_request",
       "parameters": {
-        "allowed_merge_methods": ["merge"],
+        "allowed_merge_methods": [
+          "merge"
+        ],
         "dismiss_stale_reviews_on_push": false,
         "require_code_owner_review": false,
         "require_last_push_approval": false,
@@ -41,7 +49,30 @@
       "parameters": {
         "do_not_enforce_on_create": false,
         "required_status_checks": [
-          {"context": "CI gate", "integration_id": 15368}
+          {
+            "context": "CI gate",
+            "integration_id": 15368
+          },
+          {
+            "context": "Maintainer decision authority",
+            "integration_id": 5384448
+          },
+          {
+            "context": "Repository security audit",
+            "integration_id": 15368
+          },
+          {
+            "context": "Analyze (actions)",
+            "integration_id": 15368
+          },
+          {
+            "context": "Analyze (python)",
+            "integration_id": 15368
+          },
+          {
+            "context": "Analyze (javascript-typescript)",
+            "integration_id": 15368
+          }
         ],
         "strict_required_status_checks_policy": false
       }
