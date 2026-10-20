@@ -3,8 +3,52 @@
 """Normalize raw scanner evidence without reducing severity or hiding observations."""
 import datetime
 import json
+import math
 from pathlib import Path
 import sys
+
+
+def advisory_risk(match):
+    related = match.get('relatedVulnerabilities', [])
+    if not isinstance(related, list):
+        raise ValueError('invalid related advisory records')
+    advisories = [match['vulnerability'], *related]
+    levels = ['Unknown', 'Negligible', 'Low', 'Medium', 'High', 'Critical']
+    severities, aliases, cvss = [], set(), []
+    exploited = False
+    for advisory in advisories:
+        if (not isinstance(advisory, dict) or not isinstance(advisory.get('id'), str)
+                or not advisory['id']):
+            raise ValueError('invalid scanner advisory identity')
+        aliases.add(advisory['id'])
+        related_aliases = advisory.get('aliases', [])
+        if (not isinstance(related_aliases, list)
+                or any(not isinstance(alias, str) or not alias for alias in related_aliases)):
+            raise ValueError('invalid scanner advisory aliases')
+        aliases.update(related_aliases)
+        severity = advisory.get('severity', 'Unknown')
+        if severity not in levels:
+            raise ValueError('unsupported scanner severity')
+        severities.append(severity)
+        records = advisory.get('cvss', [])
+        if not isinstance(records, list):
+            raise ValueError('invalid scanner CVSS records')
+        for record in records:
+            if not isinstance(record, dict) or not isinstance(record.get('metrics'), dict):
+                raise ValueError('invalid scanner CVSS record')
+            score = record['metrics'].get('baseScore')
+            if (type(score) not in (int, float) or not math.isfinite(score)
+                    or not 0 <= score <= 10):
+                raise ValueError('invalid scanner CVSS base score')
+        cvss.extend(records)
+        known = advisory.get('knownExploited', [])
+        if (type(known) is not bool and (not isinstance(known, list)
+                or any(not isinstance(record, dict) for record in known))):
+            raise ValueError('invalid scanner exploitation metadata')
+        exploited = exploited or bool(known)
+    return {'aliases': sorted(aliases), 'severity': severities[0],
+            'admissionSeverity': max(severities, key=levels.index),
+            'cvss': cvss, 'knownExploited': exploited}
 
 
 def normalize(sbom, report):
@@ -22,10 +66,7 @@ def normalize(sbom, report):
                             for p in component['properties'] if p['name'] == 'xo-nixpkg:installedPath'})
         if not locations or any(not path.startswith('/') for path in locations):
             raise ValueError('finding has no bound shipped-file exposure')
-        aliases = sorted({v['id'] for v in [vulnerability, *match.get('relatedVulnerabilities', [])]})
-        severity = vulnerability.get('severity', 'Unknown')
-        if severity not in {'Unknown', 'Negligible', 'Low', 'Medium', 'High', 'Critical'}:
-            raise ValueError('unsupported scanner severity')
+        risk = advisory_risk(match)
         exposure_bindings = []
         for component in components[purl]:
             props = {p['name']: p['value'] for p in component['properties']
@@ -36,12 +77,10 @@ def normalize(sbom, report):
                     relative = str(Path(location).relative_to(props['nix:storePath']))
                     exposure_bindings.append({'location': location,
                         'outputName': props['xo-nixpkg:outputName'], 'relativePath': relative})
-        cvss = vulnerability.get('cvss', [])
-        observations.append({'component': purl, 'advisory': vulnerability['id'], 'aliases': aliases,
-                             'severity': severity,
-                             'knownExploited': bool(vulnerability.get('knownExploited', [])),
+        observations.append({'component': purl, 'advisory': vulnerability['id'], **risk,
                              'locations': locations, 'locationCoverage': 'complete',
-                             'exposureBindings': exposure_bindings, 'cvss': cvss, 'fixVersions': vulnerability.get('fix', {}).get('versions', [])})
+                             'exposureBindings': exposure_bindings,
+                             'fixVersions': vulnerability.get('fix', {}).get('versions', [])})
     return {'status': 'complete', 'scannerHealth': 'healthy', 'observations': observations,
             'scannedAt': datetime.datetime.now(datetime.timezone.utc).isoformat()}
 

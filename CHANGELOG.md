@@ -43,6 +43,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- Retain plain runtime script and schema files in closure evidence while
+  requiring exact derivation identities for shipped native code and npm roots.
+- Preserve stronger severity, CVSS, and exploitation data from related scanner
+  advisories when deciding whether a product needs new human security review.
 - Validate normalized dependency mirrors offline and retry failed fetches in clean
   temporary caches without weakening archive hashes or integrity checks.
 - Reconcile update approvals from protected default-branch code and validate

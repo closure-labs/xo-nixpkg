@@ -78,6 +78,217 @@ class InventoryTests(unittest.TestCase):
 
 
 
+class InventoryCollectorTests(unittest.TestCase):
+    def collect(self, *, unknown_native=False, unknown_npm=False,
+                malformed_native=None, unversioned=False,
+                unrelated_native=False, unrelated_npm=False,
+                native_candidate=None, npm_candidate=None):
+        """Exercise the real CLI with a closure containing literal store source."""
+        import os
+        import subprocess
+        import sys
+        with tempfile.TemporaryDirectory() as temporary:
+            directory = Path(temporary)
+            root, native = directory / 'xo', directory / 'native'
+            package = root / 'libexec/xen-orchestra/node_modules/dependency'
+            package.mkdir(parents=True)
+            (package / 'package.json').write_text('{"name":"dependency","version":"1.2.3"}')
+            if not (unknown_npm or unrelated_npm or npm_candidate):
+                (root / 'binary').write_bytes(b'\x7fELFprimary')
+            native.mkdir()
+            (native / 'library.so').write_bytes(b'\x7fELFnative')
+            literal, derived = directory / 'source.py', directory / 'derived.txt'
+            literal.write_text('#!/usr/bin/env python3\nprint("source")\n')
+            derived.write_text('known derived data\n')
+            closure = {str(path): {'narHash': 'sha256-fixture-' + path.name,
+                                  'references': [str(literal)] if path == root else []}
+                       for path in (root, native, literal, derived)}
+            root_drv = '/nix/store/' + 'a' * 32 + '-xo.drv'
+            native_drv = '/nix/store/' + 'b' * 32 + '-native.drv'
+            derived_drv = '/nix/store/' + 'c' * 32 + '-derived.drv'
+            records = {drv: {'env': {'pname': name, 'version': version, 'out': str(path)},
+                             'outputs': {'out': {'path': str(path)}}}
+                       for drv, name, version, path in (
+                           (root_drv, 'xo', '6.9.1', root),
+                           (native_drv, 'native-library', '2.3.4', native),
+                           (derived_drv, 'derived-data', '1', derived))}
+            if unversioned:
+                del records[native_drv]['env']['version']
+            for enabled, drv in ((unrelated_native, native_drv), (unrelated_npm, root_drv)):
+                if enabled:
+                    records[drv]['env']['out'] = str(directory / 'unrelated-output')
+                    records[drv]['outputs']['out']['path'] = str(directory / 'unrelated-output')
+            # The cached primary pointer is absent, while the valid producer
+            # index knows the exact same output under its current derivation.
+            stale_primary = '/nix/store/' + 'e' * 32 + '-missing-cached-producer.drv'
+            derivers = ([] if unknown_npm else [root_drv])
+            if malformed_native is not None:
+                derivers.append(malformed_native)
+            elif not unknown_native:
+                derivers.append(native_drv)
+            derivers.append(derived_drv)
+            for variant, original, suffix in ((native_candidate, native_drv, 'd'),
+                                               (npm_candidate, root_drv, 'f')):
+                if variant is None:
+                    continue
+                duplicate = '/nix/store/' + suffix * 32 + '-duplicate.drv'
+                record = json.loads(json.dumps(records[original]))
+                if variant in ('pname', 'version'):
+                    record['env'][variant] += '-conflicting'
+                elif variant == 'missing-version':
+                    del record['env']['version']
+                elif variant == 'empty-pname':
+                    record['env']['pname'] = ''
+                elif variant in ('output-name', 'empty-output-name'):
+                    name = 'other' if variant == 'output-name' else ''
+                    record['outputs'] = {name: record['outputs']['out']}
+                    record['env'][name] = record['env'].pop('out')
+                elif variant == 'multiple-outputs':
+                    record['outputs']['other'] = record['outputs']['out']
+                    record['env']['other'] = record['env']['out']
+                else:
+                    assert variant == 'equivalent'
+                records[duplicate] = record
+                derivers.append(duplicate)
+            fixture = directory / 'fixture.json'
+            fixture.write_text(json.dumps({'closure': closure, 'derivers': derivers,
+                                           'records': records, 'stalePrimary': stale_primary}))
+            log = directory / 'commands.jsonl'
+            executable = directory / 'bin'
+            executable.mkdir()
+            script = '#!' + sys.executable + '\n' + '''import json, os, sys
+from pathlib import Path
+fixture = json.loads(Path(os.environ['INVENTORY_FIXTURE']).read_text())
+args = sys.argv[1:]
+with Path(os.environ['INVENTORY_COMMANDS']).open('a') as handle:
+    handle.write(json.dumps([Path(sys.argv[0]).name, *args]) + '\\n')
+if Path(sys.argv[0]).name == 'nix-store':
+    assert set(args[2:]) == set(fixture['closure'])
+    if args[:2] == ['--query', '--deriver']:
+        print(fixture['stalePrimary'])
+    else:
+        assert args[:2] == ['--query', '--valid-derivers']
+        print('\\n'.join(fixture['derivers']))
+elif args[:4] == ['path-info', '--recursive', '--json', os.environ['INVENTORY_ROOT']]:
+    print(json.dumps(fixture['closure']))
+else:
+    assert args[:2] == ['derivation', 'show']
+    assert all(arg in fixture['records'] for arg in args[2:])
+    print(json.dumps({'derivations': {arg: fixture['records'][arg] for arg in args[2:]}}))
+'''
+            for name in ('nix', 'nix-store'):
+                command = executable / name
+                command.write_text(script)
+                command.chmod(0o755)
+            output = directory / 'evidence'
+            result = subprocess.run(
+                [sys.executable, str(ROOT / 'ci/security-inventory.py'), '--root', str(root),
+                 '--profile', 'xo-latest', '--output', str(output), '--additional-root', str(native)],
+                env=dict(os.environ, PATH=str(executable) + os.pathsep + os.environ.get('PATH', ''),
+                         INVENTORY_FIXTURE=str(fixture), INVENTORY_COMMANDS=str(log),
+                         INVENTORY_ROOT=str(root), PYTHONDONTWRITEBYTECODE='1'),
+                capture_output=True, text=True, timeout=30)
+            documents = {path.name: json.loads(path.read_text()) for path in output.glob('*.json')}
+            calls = [json.loads(line) for line in log.read_text().splitlines()]
+            return result, documents, calls, closure, records
+
+    def test_stale_primary_uses_valid_index_and_preserves_complete_inventory(self):
+        result, documents, calls, closure, records = self.collect()
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(documents['closure.json'], closure)
+        self.assertEqual(documents['derivations.json'], records)
+        components = documents['runtime.cdx.json']['components']
+        self.assertEqual({component['purl'] for component in components},
+                         {'pkg:npm/dependency@1.2.3', 'pkg:nix/xo@6.9.1',
+                          'pkg:nix/native-library@2.3.4'})
+        native_locations = {prop['value'] for component in components
+                            if component['purl'].startswith('pkg:nix/')
+                            for prop in component['properties']
+                            if prop['name'] == 'xo-nixpkg:installedPath'}
+        self.assertEqual(len(native_locations), 2)
+        self.assertTrue(all(path.endswith(('/binary', '/library.so')) for path in native_locations))
+        queried = [arg for call in calls if call[:3] == ['nix', 'derivation', 'show']
+                   for arg in call[3:]]
+        self.assertEqual(set(queried), set(records))
+        self.assertFalse(any('--deriver' in call for call in calls))
+        self.assertTrue(any(call[:3] == ['nix-store', '--query', '--valid-derivers'] for call in calls))
+        manifest = documents['inventory.json']
+        self.assertEqual(manifest['coverage'], 'complete')
+        self.assertEqual(set(manifest['documents']),
+                         {'runtime.cdx.json', 'closure.json', 'derivations.json'})
+
+    def test_unknown_native_producer_still_fails(self):
+        result, documents, _, _, _ = self.collect(unknown_native=True)
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn('no exact output producer', result.stderr)
+        self.assertNotIn('inventory.json', documents)
+
+    def test_malformed_deriver_is_not_treated_as_unknown(self):
+        for malformed in ('missing', 'unknown-deriver', 'unknown-deriver-extra', ' unknown-deriver', 'unknown-deriver '):
+            with self.subTest(malformed=malformed):
+                result, documents, calls, _, _ = self.collect(malformed_native=malformed)
+                self.assertNotEqual(result.returncode, 0)
+                self.assertIn('closure derivation metadata is missing', result.stderr)
+                self.assertFalse(any(call[:3] == ['nix', 'derivation', 'show'] for call in calls))
+                self.assertNotIn('inventory.json', documents)
+
+    def test_valid_index_producer_for_unrelated_output_is_rejected(self):
+        for options, message in (({'unrelated_native': True}, 'no exact output producer'),
+                                 ({'unrelated_npm': True}, 'ambiguous installed npm output producer')):
+            with self.subTest(options=options):
+                result, documents, _, _, _ = self.collect(**options)
+                self.assertNotEqual(result.returncode, 0)
+                self.assertIn(message, result.stderr)
+                self.assertNotIn('inventory.json', documents)
+
+    def test_unknown_installed_npm_root_still_fails(self):
+        result, documents, _, _, _ = self.collect(unknown_npm=True)
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn('ambiguous installed npm output producer', result.stderr)
+        self.assertNotIn('inventory.json', documents)
+
+    def test_unversioned_native_producer_still_fails(self):
+        result, documents, _, _, _ = self.collect(unversioned=True)
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn('unversioned shipped native code', result.stderr)
+        self.assertNotIn('inventory.json', documents)
+
+    def test_equivalent_native_producers_preserve_all_provenance(self):
+        result, documents, _, _, records = self.collect(native_candidate='equivalent')
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(documents['derivations.json'], records)
+        component = next(item for item in documents['runtime.cdx.json']['components']
+                         if item['purl'] == 'pkg:nix/native-library@2.3.4')
+        producers = {prop['value'] for prop in component['properties']
+                     if prop['name'] == 'nix:derivation'}
+        self.assertEqual(producers, {drv for drv in records if drv.endswith(('-native.drv', '-duplicate.drv'))})
+        self.assertEqual(len(producers), 2)
+
+    def test_equivalent_npm_root_producers_require_identity_and_preserve_provenance(self):
+        result, documents, _, _, records = self.collect(npm_candidate='equivalent')
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(documents['derivations.json'], records)
+        component = next(item for item in documents['runtime.cdx.json']['components']
+                         if item['purl'] == 'pkg:npm/dependency@1.2.3')
+        producers = {prop['value'] for prop in component['properties']
+                     if prop['name'] == 'nix:derivation'}
+        self.assertEqual(producers, {drv for drv in records if drv.endswith(('-xo.drv', '-duplicate.drv'))})
+        self.assertEqual(len(producers), 2)
+
+    def test_conflicting_or_incomplete_producer_candidates_fail(self):
+        for kind in ('native_candidate', 'npm_candidate'):
+            for variant in ('pname', 'version', 'output-name', 'missing-version',
+                            'empty-pname', 'empty-output-name', 'multiple-outputs'):
+                with self.subTest(kind=kind, variant=variant):
+                    result, documents, _, _, _ = self.collect(**{kind: variant})
+                    self.assertNotEqual(result.returncode, 0)
+                    self.assertNotIn('inventory.json', documents)
+                    message = ('conflicting exact output producer identities' if variant in ('pname', 'version', 'output-name')
+                               else 'multiple derivation outputs map' if variant == 'multiple-outputs'
+                               else 'unversioned shipped native code or invalid output identity')
+                    self.assertIn(message, result.stderr)
+
+
 class PublicationJournalTests(unittest.TestCase):
     def test_checkpoints_use_fast_forward_cas_and_reject_conflicting_step(self):
         from unittest.mock import patch

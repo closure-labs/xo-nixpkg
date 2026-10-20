@@ -71,45 +71,58 @@ def exact_output(record, output, info):
     return path or declared
 
 
+def output_binding(path, derivations):
+    candidates = []
+    for drv, record in derivations.items():
+        outputs = [name for name, info in record.get('outputs', {}).items()
+                   if exact_output(record, name, info) == path]
+        if len(outputs) > 1:
+            raise ValueError(f'multiple derivation outputs map to {path}')
+        if not outputs:
+            continue
+        env = record.get('env', {})
+        attrs = {**env, **record.get('structuredAttrs', json.loads(env.get('__json', '{}')))}
+        identity = (attrs.get('pname'), attrs.get('version'), outputs[0])
+        if any(not isinstance(value, str) or not value.strip() for value in identity):
+            raise ValueError(f'unversioned shipped native code or invalid output identity: {path}')
+        candidates.append((drv, identity))
+    if not candidates:
+        raise ValueError(f'no exact output producer for {path}')
+    identities = {identity for _, identity in candidates}
+    if len(identities) != 1:
+        raise ValueError(f'conflicting exact output producer identities for {path}')
+    identity, = identities
+    producers = sorted({drv if drv.startswith('/') else '/nix/store/' + drv
+                        for drv, _ in candidates})
+    return identity, producers
+
+
 def inventory(root, closure, derivations, xo=True):
     components = npm_components(root / 'libexec/xen-orchestra') if xo else []
     for path in sorted(closure):
         shipped = native_files(Path(path))
         if not shipped:
             continue
-        candidates = []
-        for drv_path, record in derivations.items():
-            env = record.get('env', {})
-            structured = record.get('structuredAttrs', json.loads(env.get('__json', '{}')))
-            attrs = {**env, **structured}
-            if any(exact_output(record, output, info) == path for output, info in record.get('outputs', {}).items()):
-                candidates.append((drv_path, attrs, [output for output, info in record['outputs'].items() if exact_output(record, output, info) == path][0]))
-        if len(candidates) != 1:
-            raise ValueError(f'no unambiguous exact native derivation for {path}')
-        drv, attrs, output_name = candidates[0]
-        if not drv.startswith('/'):
-            drv = '/nix/store/' + drv
-        name, version = attrs.get('pname'), attrs.get('version')
-        if not name or not version:
-            raise ValueError(f'unversioned shipped native code: {path}')
+        (name, version, output_name), producers = output_binding(path, derivations)
         components.append({'type': 'library', 'name': name, 'version': version,
                            'purl': f'pkg:nix/{quote(name, safe="")}@{quote(version, safe="")}',
                            'bom-ref': path, 'properties': [
                                {'name': 'nix:storePath', 'value': path},
-                               {'name': 'nix:derivation', 'value': drv},
+                               *({'name': 'nix:derivation', 'value': drv} for drv in producers),
                                {'name': 'xo-nixpkg:outputName', 'value': output_name},
                                *({'name': 'xo-nixpkg:installedPath', 'value': file} for file in shipped)]})
     if not components:
         raise ValueError('empty runtime inventory')
-    for component in components:
-        if component['purl'].startswith('pkg:npm/'):
-            root_producer = [(record, output) for record in derivations.values()
-                             for output, info in record.get('outputs', {}).items()
-                             if exact_output(record, output, info) == str(root)]
-            if len(root_producer) != 1:
-                raise ValueError('ambiguous installed npm output producer')
+    npm = [component for component in components if component['purl'].startswith('pkg:npm/')]
+    if npm:
+        try:
+            (_, _, output_name), producers = output_binding(str(root), derivations)
+        except ValueError as error:
+            raise ValueError(f'ambiguous installed npm output producer: {error}') from error
+        for component in npm:
             component['properties'] += [{'name': 'nix:storePath', 'value': str(root)},
-                                        {'name': 'xo-nixpkg:outputName', 'value': root_producer[0][1]}]
+                                        {'name': 'xo-nixpkg:outputName', 'value': output_name},
+                                        *({'name': 'nix:derivation', 'value': drv} for drv in producers)]
     return {'bomFormat': 'CycloneDX', 'specVersion': '1.5', 'version': 1,
             'components': components,
             'properties': [{'name': 'xo:coverage', 'value': 'installed-npm-and-native-closure'}]}
@@ -127,7 +140,11 @@ def main():
         closure = {record['path']: record for record in closure}
     closure = {path: {key: info[key] for key in ('narHash', 'references') if key in info}
                for path, info in closure.items()}
-    drvs = sorted(set(command('nix-store', '--query', '--deriver', *closure).splitlines()))
+    # A cached output's primary deriver may no longer exist locally. Query all
+    # existing producers instead; literal store sources have no such record.
+    # Keep every closure/NAR identity and producer. inventory() still requires
+    # one consistent versioned output identity for each native output and npm root.
+    drvs = sorted(set(command('nix-store', '--query', '--valid-derivers', *closure).splitlines()))
     if any(not drv.endswith('.drv') for drv in drvs):
         raise ValueError('closure derivation metadata is missing')
     records = {}
