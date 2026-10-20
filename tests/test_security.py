@@ -1,5 +1,6 @@
 # SPDX-License-Identifier: Apache-2.0
 import importlib.util
+import hashlib
 import json
 import tempfile
 from pathlib import Path
@@ -290,58 +291,237 @@ else:
 
 
 class PublicationJournalTests(unittest.TestCase):
-    def test_checkpoints_use_fast_forward_cas_and_reject_conflicting_step(self):
-        from unittest.mock import patch
-        controller = module('publication-controller')
-        calls = []
-        reference = {}
+    class API:
+        def __init__(self):
+            self.reference = None
+            self.calls = []
+            self.commits = {}
+            self.readbacks = []
+            self.bad_ack = None
 
-        def fake_api(repository, endpoint, body=None, method=None, missing=False):
-            calls.append((endpoint, body, method))
+        def __call__(self, repository, endpoint, body=None, method=None, missing=False, timeout=None):
+            self.calls.append((endpoint, body, method))
             if endpoint.startswith('git/ref/heads/'):
-                return {'object': {'sha': reference['sha']}} if reference else None
+                if self.reference is None:
+                    return None
+                value = self.readbacks.pop(0) if self.readbacks else self.reference
+                if value == 'new':
+                    value = self.reference
+                return self.ref(endpoint.removeprefix('git/ref/heads/'), value) if value is not None else None
             if endpoint == 'git/trees':
                 return {'sha': 'tree'}
             if endpoint == 'git/commits':
-                return {'sha': 'commit-' + str(len(calls))}
+                value = hashlib.sha256(str(len(self.commits)).encode()).hexdigest()[:40]
+                self.commits[value] = body
+                return {'sha': value}
             if endpoint == 'git/refs':
-                reference['sha'] = body['sha']
-                return {}
+                if self.reference is not None:
+                    raise RuntimeError('reference already exists')
+                self.reference = body['sha']
+                return self.ref(body['ref'].removeprefix('refs/heads/'), self.bad_ack or self.reference)
             if endpoint.startswith('git/refs/heads/'):
-                self.assertFalse(body['force'])
-                self.assertEqual(method, 'PATCH')
-                reference['sha'] = body['sha']
-                return {}
-            self.fail(endpoint)
+                assert body['force'] is False and method == 'PATCH'
+                if self.commits[body['sha']]['parents'] != [self.reference]:
+                    raise RuntimeError('non-fast-forward update rejected')
+                self.reference = body['sha']
+                return self.ref(endpoint.removeprefix('git/refs/heads/'), self.bad_ack or self.reference)
+            raise AssertionError(endpoint)
 
-        with patch.object(controller, 'api', side_effect=fake_api):
-            journal = controller.Journal('closure-labs/xo-nixpkg', {'schema': 1})
-            original = journal.commit
-            journal.complete('cache', {'output': 'immutable'})
-            parent = next(body['parents'] for endpoint, body, _ in reversed(calls) if endpoint == 'git/commits')
-            self.assertEqual(parent, [original])
-            with self.assertRaisesRegex(ValueError, 'conflicting'):
-                journal.complete('cache', {'output': 'different'})
+        def ref(self, branch, value):
+            return {'ref': 'refs/heads/' + branch, 'object': {'type': 'commit', 'sha': value}}
 
-    def test_ref_race_does_not_silently_overwrite_checkpoint(self):
+    def setup_journal(self):
         from unittest.mock import patch
         controller = module('publication-controller')
-        calls = 0
+        fake = self.API()
+        api = patch.object(controller, 'api', side_effect=fake)
+        api.start()
+        self.addCleanup(api.stop)
+        sleep = patch.object(controller.time, 'sleep')
+        self.sleep = sleep.start()
+        self.addCleanup(sleep.stop)
+        return controller, fake, controller.Journal('closure-labs/xo-nixpkg', {'schema': 1})
 
-        def fake_api(repository, endpoint, body=None, method=None, missing=False):
-            nonlocal calls
+    def diagnostics(self, error, expected, observed, prior, attempts):
+        message = str(error)
+        self.assertIn('publication journal', message)
+        self.assertIn('expected=' + expected, message)
+        self.assertIn('observed=' + observed, message)
+        self.assertIn('knownPrior=' + (prior or 'none'), message)
+        self.assertIn('attempts=' + str(attempts), message)
+        self.assertLess(len(message), 350)
+
+    def test_checkpoints_use_fast_forward_cas_and_reject_conflicting_step(self):
+        controller, fake, journal = self.setup_journal()
+        original = journal.commit
+        journal.complete('cache', {'output': 'immutable'})
+        self.assertEqual(fake.commits[journal.commit]['parents'], [original])
+        self.assertEqual(fake.reference, journal.commit)
+        with self.assertRaisesRegex(ValueError, 'conflicting'):
+            journal.complete('cache', {'output': 'different'})
+
+    def test_known_prior_readback_then_new_head_succeeds(self):
+        controller, fake, journal = self.setup_journal()
+        prior = journal.commit
+        fake.readbacks = [prior, 'new']
+        journal.complete('xo-tag', {'revision': 'a' * 40})
+        self.assertEqual(journal.commit, fake.reference)
+        self.assertEqual(fake.commits[journal.commit]['parents'], [prior])
+        self.sleep.assert_called_once()
+
+    def test_perpetual_prior_head_fails_closed_with_bounded_diagnostics(self):
+        controller, fake, journal = self.setup_journal()
+        prior = journal.commit
+        fake.readbacks = [prior] * 5
+        with self.assertRaises(ValueError) as error:
+            journal.complete('xo-tag', {'revision': 'a' * 40})
+        self.diagnostics(error.exception, fake.reference, prior, prior, 5)
+        self.assertIn('readback remained at known prior head', str(error.exception))
+        self.assertEqual(journal.commit, prior)
+        self.assertEqual(self.sleep.call_count, 4)
+        self.assertLessEqual(sum(call.args[0] for call in self.sleep.call_args_list), 4)
+
+    def test_unrelated_head_rejected_without_retry(self):
+        controller, fake, journal = self.setup_journal()
+        prior, other = journal.commit, 'a' * 40
+        fake.readbacks = [other]
+        with self.assertRaises(ValueError) as error:
+            journal.complete('xo-tag', {'revision': 'b' * 40})
+        self.diagnostics(error.exception, fake.reference, other, prior, 1)
+        self.assertIn('unexpected readback head', str(error.exception))
+        self.sleep.assert_not_called()
+        self.assertEqual(journal.commit, prior)
+
+    def test_patch_acknowledgement_must_match_exact_new_head(self):
+        controller, fake, journal = self.setup_journal()
+        prior, other = journal.commit, 'a' * 40
+        fake.bad_ack = other
+        before = len(fake.calls)
+        with self.assertRaises(ValueError) as error:
+            journal.complete('cache', {'output': 'immutable'})
+        self.diagnostics(error.exception, fake.reference, other, prior, 0)
+        self.assertIn('write acknowledgement differs', str(error.exception))
+        self.assertFalse(any(endpoint.startswith('git/ref/heads/') for endpoint, _, _ in fake.calls[before:]))
+        self.sleep.assert_not_called()
+
+    def test_post_acknowledgement_and_creation_readback_race_rejected(self):
+        from unittest.mock import patch
+        controller = module('publication-controller')
+        for bad_ack in (True, False):
+            fake = self.API()
+            if bad_ack:
+                fake.bad_ack = 'a' * 40
+            else:
+                fake.readbacks = ['a' * 40]
+            with patch.object(controller, 'api', side_effect=fake), patch.object(controller.time, 'sleep') as sleep:
+                with self.assertRaises(ValueError) as error:
+                    controller.Journal('closure-labs/xo-nixpkg', {'schema': 1})
+            self.diagnostics(error.exception, fake.reference, 'a' * 40, None, 0 if bad_ack else 1)
+            sleep.assert_not_called()
+
+    def test_non_fast_forward_writer_is_not_retried_or_overwritten(self):
+        controller, fake, journal = self.setup_journal()
+        fake.reference = 'a' * 40
+        with self.assertRaisesRegex(RuntimeError, 'non-fast-forward'):
+            journal.complete('cache', {'output': 'immutable'})
+        self.assertEqual(fake.reference, 'a' * 40)
+        self.sleep.assert_not_called()
+
+    def test_invalid_sha_never_reaches_diagnostics_or_retry(self):
+        for malformed in ('https://private.invalid/secret', 'not-a-commit'):
+            controller, fake, journal = self.setup_journal()
+            fake.readbacks = [malformed]
+            with self.assertRaisesRegex(ValueError, 'invalid reference') as error:
+                journal.complete('handoff', {'scan': 'fresh'})
+            self.assertNotIn('private.invalid', str(error.exception))
+            self.assertNotIn('secret', str(error.exception))
+        self.sleep.assert_not_called()
+
+    def test_readback_deadline_bounds_api_and_remaining_retries(self):
+        from unittest.mock import patch
+        controller, fake, journal = self.setup_journal()
+        prior = journal.commit
+        fake.readbacks = [prior, 'new']
+        with patch.object(controller.time, 'monotonic', side_effect=[0, 0, 3.8, 4.1]):
+            with self.assertRaises(ValueError) as error:
+                journal.complete('xo-tag', {'revision': 'a' * 40})
+        self.diagnostics(error.exception, fake.reference, prior, prior, 1)
+        self.assertIn('deadline exceeded', str(error.exception))
+        self.assertEqual(fake.readbacks, ['new'])
+        self.assertLessEqual(self.sleep.call_args.args[0], .21)
+
+    def test_api_timeout_is_bounded_and_does_not_echo_response_or_arguments(self):
+        from unittest.mock import patch
+        controller, fake, journal = self.setup_journal()
+        prior = journal.commit
+        def timeout_api(repository, endpoint, *args, **kwargs):
             if endpoint.startswith('git/ref/heads/'):
-                calls += 1
-                return None if calls == 1 else {'object': {'sha': 'concurrent-writer'}}
-            if endpoint == 'git/trees':
-                return {'sha': 'tree'}
-            if endpoint == 'git/commits':
-                return {'sha': 'ours'}
-            return {}
+                self.assertGreater(kwargs['timeout'], 0)
+                self.assertLessEqual(kwargs['timeout'], 4)
+                raise controller.subprocess.TimeoutExpired(['secret-url'], kwargs['timeout'])
+            return fake(repository, endpoint, *args, **kwargs)
+        with patch.object(controller, 'api', side_effect=timeout_api):
+            with self.assertRaises(ValueError) as error:
+                journal.complete('xo-tag', {'revision': 'a' * 40})
+        self.diagnostics(error.exception, fake.reference, prior, prior, 1)
+        self.assertNotIn('secret', str(error.exception))
+        self.assertTrue(error.exception.__suppress_context__)
+        self.sleep.assert_not_called()
 
-        with patch.object(controller, 'api', side_effect=fake_api):
-            with self.assertRaisesRegex(ValueError, 'concurrently'):
+    def test_acknowledged_creation_missing_then_new_ref_succeeds(self):
+        from unittest.mock import patch
+        controller, fake = module('publication-controller'), self.API()
+        fake.readbacks = [None, 'new']
+        with patch.object(controller, 'api', side_effect=fake) as api, patch.object(controller.time, 'sleep') as sleep:
+            journal = controller.Journal('closure-labs/xo-nixpkg', {'schema': 1})
+        self.assertEqual(journal.commit, fake.reference)
+        self.assertEqual(fake.commits[journal.commit]['parents'], [])
+        sleep.assert_called_once()
+        readbacks = [call for call in api.call_args_list if call.kwargs.get('timeout') is not None]
+        self.assertEqual(len(readbacks), 2)
+        self.assertTrue(all(call.kwargs['missing'] is True for call in readbacks))
+
+    def test_creation_perpetually_missing_and_existing_ref_missing_fail_closed(self):
+        from unittest.mock import patch
+        controller, fake = module('publication-controller'), self.API()
+        fake.readbacks = [None] * 5
+        with patch.object(controller, 'api', side_effect=fake), patch.object(controller.time, 'sleep') as sleep:
+            with self.assertRaises(ValueError) as error:
                 controller.Journal('closure-labs/xo-nixpkg', {'schema': 1})
+        self.diagnostics(error.exception, fake.reference, 'none', None, 5)
+        self.assertEqual(sleep.call_count, 4)
+        controller, fake, journal = self.setup_journal()
+        prior = journal.commit
+        fake.readbacks = [None]
+        with self.assertRaises(ValueError) as error:
+            journal.complete('cache', {'output': 'immutable'})
+        self.diagnostics(error.exception, fake.reference, 'none', prior, 1)
+        self.assertIn('unexpected readback head', str(error.exception))
+        self.sleep.assert_not_called()
+
+    def test_creation_readback_api_error_is_not_retried_or_exposed(self):
+        from unittest.mock import patch
+        controller, fake = module('publication-controller'), self.API()
+        def failing_readback(repository, endpoint, *args, **kwargs):
+            if endpoint.startswith('git/ref/heads/') and fake.reference is not None:
+                raise RuntimeError('https://private.invalid/secret response')
+            return fake(repository, endpoint, *args, **kwargs)
+        with patch.object(controller, 'api', side_effect=failing_readback), patch.object(controller.time, 'sleep') as sleep:
+            with self.assertRaises(ValueError) as error:
+                controller.Journal('closure-labs/xo-nixpkg', {'schema': 1})
+        self.diagnostics(error.exception, fake.reference, 'none', None, 1)
+        self.assertIn('readback API failed', str(error.exception))
+        self.assertNotIn('private.invalid', str(error.exception))
+        self.assertNotIn('secret', str(error.exception))
+        sleep.assert_not_called()
+
+    def test_fresh_handoff_is_saved_even_for_same_product(self):
+        controller, fake, journal = self.setup_journal()
+        journal.complete('handoff', {'scan': 'previous'})
+        previous = journal.commit
+        journal.complete('handoff', {'scan': 'fresh'})
+        self.assertNotEqual(journal.commit, previous)
+        self.assertEqual(journal.value['steps'], [{'name': 'handoff', 'identity': {'scan': 'fresh'}, 'state': 'complete'}])
 
 
 class HandoffPublicationTests(unittest.TestCase):
