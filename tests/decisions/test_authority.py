@@ -450,7 +450,8 @@ class Authority(unittest.TestCase):
             self.assertEqual(kwargs['timeout'], 60)
             self.assertEqual(kwargs['stderr'], subprocess.DEVNULL)
             self.assertTrue(callable(kwargs['preexec_fn']))
-            kwargs['stdout'].write(b'{"safe":true}')
+            self.assertIn('--include', arguments)
+            kwargs['stdout'].write(b'HTTP/2.0 200 OK\r\nContent-Type: application/json\r\n\r\n{"safe":true}')
             return subprocess.CompletedProcess(arguments, 0)
         with patch.object(mod.subprocess, 'run', side_effect=bounded):
             self.assertEqual(mod.github_api('repos/example/repository'), {'safe': True})
@@ -462,9 +463,79 @@ class Authority(unittest.TestCase):
              patch.object(mod.json, 'load') as parse, self.assertRaises(mod.AuthorityError):
             mod.github_api('repos/example/repository')
         parse.assert_not_called()
-        with patch.object(mod.subprocess, 'run', side_effect=subprocess.TimeoutExpired('gh', 60)), \
+        with patch.object(mod.subprocess, 'run', side_effect=subprocess.TimeoutExpired('gh', 60)) as run, \
+             patch.object(mod.time, 'sleep') as sleep, \
              self.assertRaises(mod.AuthorityError):
             mod.github_api('repos/example/repository')
+        self.assertEqual(run.call_count, 3)
+        self.assertEqual(sleep.call_args_list, [unittest.mock.call(1), unittest.mock.call(2)])
+
+    def test_github_api_retries_temporary_read_failures(self):
+        for transient in (408, 429, 500, 502, 503, 504, 'transport', 'timeout'):
+            responses = iter([transient, 200])
+            def request(arguments, **kwargs):
+                self.assertEqual(arguments, ['gh', 'api', '--method', 'GET', '--include', 'repos/example/repository'])
+                status = next(responses)
+                if status == 'timeout':
+                    raise subprocess.TimeoutExpired('gh', 60)
+                if status == 'transport':
+                    return subprocess.CompletedProcess(arguments, 1)
+                kwargs['stdout'].write(f'HTTP/2.0 {status}\r\n\r\n{{"fresh":true}}'.encode())
+                return subprocess.CompletedProcess(arguments, 0 if status == 200 else 1)
+            with self.subTest(transient=transient), \
+                 patch.object(mod.subprocess, 'run', side_effect=request) as run, \
+                 patch.object(mod.time, 'sleep') as sleep:
+                self.assertEqual(mod.github_api('repos/example/repository'), {'fresh': True})
+                self.assertEqual(run.call_count, 2)
+                sleep.assert_called_once_with(1)
+
+    def test_github_api_permanent_errors_never_retry_or_expose_response(self):
+        for status in (301, 400, 401, 403, 404, 409, 422):
+            def request(arguments, **kwargs):
+                kwargs['stdout'].write(f'HTTP/2.0 {status}\r\nSecret: private-header\r\n\r\nprivate-body'.encode())
+                return subprocess.CompletedProcess(arguments, 1)
+            with self.subTest(status=status), patch.object(mod.subprocess, 'run', side_effect=request) as run, \
+                 patch.object(mod.time, 'sleep') as sleep, \
+                 self.assertRaisesRegex(mod.AuthorityError,
+                                        rf'^GitHub authority API failed: repos/example/repository \(HTTP {status}; attempt 1\)$'):
+                mod.github_api('repos/example/repository?private-query')
+            self.assertEqual(run.call_count, 1)
+            sleep.assert_not_called()
+
+    def test_github_api_exhaustion_reports_only_status_and_attempts(self):
+        def request(arguments, **kwargs):
+            kwargs['stdout'].write(b'HTTP/2.0 503 Service Unavailable\nSecret: private\n\nprivate-body')
+            return subprocess.CompletedProcess(arguments, 1)
+        with patch.object(mod.subprocess, 'run', side_effect=request) as run, \
+             patch.object(mod.time, 'sleep') as sleep, self.assertRaisesRegex(
+                 mod.AuthorityError, r'^GitHub authority API failed: repos/example/repository \(HTTP 503; 3 attempts\)$'):
+            mod.github_api('repos/example/repository?private-query')
+        self.assertEqual(run.call_count, 3)
+        self.assertEqual(sleep.call_count, 2)
+
+    def test_github_api_malformed_responses_fail_without_retry(self):
+        for response in (b'', b'{"safe":true}', b'HTTP/2.0 200\n',
+                         b'HTTP/2.0 200\n' + b'x' * 8193,
+                         b'HTTP/2.0 200\n' + b'x: y\n' * 14000 + b'\n{}',
+                         b'HTTP/2.0 200\n\ninvalid-json', b'HTTP/2.0 200\n\n\xff'):
+            def request(arguments, **kwargs):
+                kwargs['stdout'].write(response)
+                return subprocess.CompletedProcess(arguments, 0)
+            with self.subTest(response=response[:30]), patch.object(mod.subprocess, 'run', side_effect=request) as run, \
+                 patch.object(mod.time, 'sleep') as sleep, self.assertRaises(mod.AuthorityError):
+                mod.github_api('repos/example/repository')
+            self.assertEqual(run.call_count, 1)
+            sleep.assert_not_called()
+
+    def test_github_api_launch_and_signal_failures_never_retry(self):
+        for failure in (OSError('private error'), subprocess.CompletedProcess('gh', -25)):
+            with self.subTest(failure=type(failure).__name__), \
+                 patch.object(mod.subprocess, 'run', **({'side_effect': failure} if isinstance(failure, OSError)
+                                                       else {'return_value': failure})) as run, \
+                 patch.object(mod.time, 'sleep') as sleep, self.assertRaises(mod.AuthorityError):
+                mod.github_api('repos/example/repository')
+            self.assertEqual(run.call_count, 1)
+            sleep.assert_not_called()
 
     def test_large_blob_metadata_encoding_size_and_object_hash_must_agree(self):
         _, metadata, original = self.large_blob()

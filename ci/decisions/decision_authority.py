@@ -12,6 +12,7 @@ import resource
 import subprocess
 import sys
 import tempfile
+import time
 from urllib.parse import quote
 
 from security_decisions import TechnicalError, canonical_hash, load_json
@@ -49,20 +50,50 @@ def github_api(endpoint):
     # the child output before allocating or parsing it, including on API errors.
     def bound_output():
         resource.setrlimit(resource.RLIMIT_FSIZE, (MAX_API_BYTES, MAX_API_BYTES))
-    with tempfile.TemporaryFile() as output:
-        try:
-            result = subprocess.run(['gh', 'api', '--method', 'GET', endpoint],
-                                    stdout=output, stderr=subprocess.DEVNULL,
-                                    timeout=60, check=False, preexec_fn=bound_output)
-        except (OSError, subprocess.TimeoutExpired) as error:
-            raise AuthorityError('GitHub authority API unavailable') from error
-        if result.returncode or output.tell() > MAX_API_BYTES:
-            raise AuthorityError('GitHub authority API failed: ' + endpoint.split('?')[0])
-        output.seek(0)
-        try:
-            return json.load(output)
-        except (ValueError, UnicodeError) as error:
-            raise AuthorityError('Invalid GitHub API response') from error
+    for attempt in range(1, 4):
+        with tempfile.TemporaryFile() as output:
+            try:
+                result = subprocess.run(['gh', 'api', '--method', 'GET', '--include', endpoint],
+                                        stdout=output, stderr=subprocess.DEVNULL,
+                                        timeout=60, check=False, preexec_fn=bound_output)
+            except OSError as error:
+                raise AuthorityError('GitHub authority API unavailable') from error
+            except subprocess.TimeoutExpired:
+                failure = 'timeout'
+            else:
+                if output.tell() >= MAX_API_BYTES or result.returncode < 0:
+                    raise AuthorityError('GitHub authority API output failed or exceeded limit')
+                output.seek(0)
+                line = output.readline(8193)
+                if not line and result.returncode:
+                    failure = 'transport'
+                else:
+                    status = re.fullmatch(rb'HTTP/[0-9.]+ ([0-9]{3})[^\r\n]*\r?\n', line)
+                    if not status:
+                        raise AuthorityError('Invalid GitHub API status')
+                    status = int(status[1])
+                    header_bytes = len(line)
+                    while True:
+                        line = output.readline(8193)
+                        header_bytes += len(line)
+                        if not line or len(line) > 8192 or header_bytes > 64 * 1024:
+                            raise AuthorityError('Invalid bounded GitHub API headers')
+                        if line in (b'\n', b'\r\n'):
+                            break
+                    failure = f'HTTP {status}'
+                    if status == 200 and result.returncode == 0:
+                        try:
+                            return json.load(output)
+                        except (ValueError, UnicodeError) as error:
+                            raise AuthorityError('Invalid GitHub API response') from error
+                    if status not in (408, 429, 500, 502, 503, 504):
+                        raise AuthorityError('GitHub authority API failed: ' + endpoint.split('?')[0]
+                                             + f' ({failure}; attempt {attempt})')
+        # Retry only fresh read requests. No response or authority is cached.
+        if attempt == 3:
+            raise AuthorityError('GitHub authority API failed: ' + endpoint.split('?')[0]
+                                 + f' ({failure}; 3 attempts)')
+        time.sleep(attempt)
 
 
 def collection(api, endpoint):
