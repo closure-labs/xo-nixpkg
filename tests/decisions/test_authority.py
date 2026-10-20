@@ -19,6 +19,7 @@ spec.loader.exec_module(mod)
 REPO = 'closure-labs/finite'
 BOT = 'finite-review[bot]'
 HEAD, MERGE, MAIN = 'a' * 40, 'b' * 40, 'c' * 40
+MERGED_AT = '2026-10-20T12:34:56Z'
 PROPOSAL = {'schema': 1, 'kind': 'security-findings', 'payload': {'profiles': {'finite': []}, 'disposition': 'accepted'}}
 
 
@@ -28,7 +29,9 @@ class GitHub:
         self.pr = {'number': 7, 'user': {'type': 'Bot', 'login': BOT},
                    'head': {'sha': HEAD, 'repo': {'full_name': REPO}},
                    'base': {'ref': 'main', 'repo': {'full_name': REPO}},
-                   'merged': True, 'state': 'closed', 'merge_commit_sha': MERGE, 'changed_files': 1}
+                   'merged': True, 'state': 'closed', 'merge_commit_sha': MERGE,
+                   'merged_at': MERGED_AT, 'changed_files': 1}
+        self.timeline = [{'id': 100, 'event': 'merged', 'commit_id': MERGE, 'created_at': MERGED_AT}]
         self.reviews = [{'id': 10, 'state': 'APPROVED', 'commit_id': HEAD,
                          'user': {'id': 1, 'login': 'maintainer', 'type': 'User'}}]
         self.roles = {'maintainer': 'maintain'}
@@ -58,6 +61,8 @@ class GitHub:
             return copy.deepcopy(self.reviews)
         if '/pulls/7/files?' in endpoint:
             return copy.deepcopy(self.files)
+        if '/issues/7/timeline?' in endpoint:
+            return copy.deepcopy(self.timeline)
         if '/collaborators/' in endpoint:
             login = endpoint.split('/collaborators/')[1].split('/')[0]
             return {'permission': 'write', 'role_name': self.roles.get(login.lower(), 'read')}
@@ -287,12 +292,99 @@ class Authority(unittest.TestCase):
         with self.assertRaises(mod.AuthorityError):
             verify(api)
 
+    def test_completed_merge_event_overrides_observed_stale_preview_merge_sha(self):
+        api = GitHub()
+        stale = 'b9bd5d80f375f36bcdba8950142cb258f04c1523'
+        actual = '6d6a535aa6afb6f4bd617f22c507bb50fc64e719'
+        api.pr['merge_commit_sha'] = stale
+        api.timeline[0]['commit_id'] = actual
+        api.blobs[stale] = {**PROPOSAL, 'payload': {'wrong_preceding_pr': True}}
+        result = verify(api)
+        self.assertEqual(result['mergeCommit'], actual)
+        self.assertEqual(result['reviewedHead'], HEAD)
+        self.assertTrue(any('/compare/' + actual + '...' + MAIN in call for call in api.calls))
+        self.assertFalse(any('?ref=' + stale in call for call in api.calls))
+        self.assertEqual(sum('/issues/7/timeline?' in call for call in api.calls), 2)
+
+    def test_missing_ambiguous_or_malformed_merge_events_fail_closed(self):
+        valid = GitHub().timeline[0]
+        alternatives = [[], [dict(valid, event='closed')], [valid, valid],
+                        [valid, dict(valid, id=101, commit_id='d' * 40)], [None]]
+        for key, value in [('id', True), ('id', 0), ('commit_id', 'refs/heads/main'),
+                           ('commit_id', None), ('created_at', '2026-10-20T12:34:57Z'),
+                           ('commit_url', 'https://api.github.com/repos/attacker/repo/commits/' + MERGE)]:
+            alternatives.append([dict(valid, **{key: value})])
+        for timeline in alternatives:
+            api = GitHub()
+            api.timeline = timeline
+            with self.subTest(timeline=timeline), self.assertRaises(mod.AuthorityError): verify(api)
+        for timestamp in (None, '', 'not-a-timestamp'):
+            api = GitHub()
+            api.pr['merged_at'] = timestamp
+            with self.subTest(timestamp=timestamp), self.assertRaises(mod.AuthorityError): verify(api)
+        api = GitHub()
+        api.pr['merged_at'] = api.timeline[0]['created_at'] = '2026-99-99T99:99:99Z'
+        with self.assertRaisesRegex(mod.AuthorityError, 'timestamp'): verify(api)
+
+    def test_completed_event_commit_requires_reviewed_content_and_current_main_ancestry(self):
+        for status in ('behind', 'diverged'):
+            api = GitHub()
+            api.pr['merge_commit_sha'] = 'd' * 40
+            api.compare = status
+            with self.subTest(status=status), self.assertRaisesRegex(mod.AuthorityError, 'ancestor'):
+                verify(api)
+        api = GitHub()
+        api.pr['merge_commit_sha'] = 'd' * 40
+        api.blobs[MERGE] = {**PROPOSAL, 'payload': {'wrong_event_content': True}}
+        with self.assertRaisesRegex(mod.AuthorityError, 'Merged proposal differs'): verify(api)
+
+    def test_merge_event_is_refetched_and_authority_changes_fail_closed(self):
+        for change in ({'id': 101}, {'commit_id': 'd' * 40},
+                       {'created_at': '2026-10-20T12:34:57Z'}):
+            api = GitHub()
+            reads = 0
+            def changing(endpoint):
+                nonlocal reads
+                if '/issues/7/timeline?' in endpoint:
+                    reads += 1
+                    if reads == 2:
+                        api.timeline[0].update(change)
+                return api(endpoint)
+            with self.subTest(change=change), self.assertRaises(mod.AuthorityError): verify(changing)
+            self.assertEqual(reads, 2)
+        api = GitHub()
+        pulls = 0
+        def changed_pr_time(endpoint):
+            nonlocal pulls
+            if endpoint == f'repos/{REPO}/pulls/7':
+                pulls += 1
+                if pulls == 2:
+                    api.pr['merged_at'] = '2026-10-20T12:34:57Z'
+            return api(endpoint)
+        with self.assertRaisesRegex(mod.AuthorityError, 'PR changed'): verify(changed_pr_time)
+
+    def test_merge_event_api_and_pagination_failures_never_fall_back_to_preview_or_main(self):
+        api = GitHub()
+        api.fail = '/timeline?'
+        with self.assertRaisesRegex(mod.AuthorityError, 'API unavailable'): verify(api)
+        first = [{'id': index + 1000, 'event': 'commented'} for index in range(100)]
+        api = GitHub()
+        def paginated(endpoint):
+            if '/issues/7/timeline?' in endpoint:
+                return first if endpoint.endswith('&page=1') else api.timeline
+            return api(endpoint)
+        self.assertEqual(verify(paginated)['mergeCommit'], MERGE)
+        def unbounded(endpoint):
+            return first if '/issues/7/timeline?' in endpoint else api(endpoint)
+        with self.assertRaisesRegex(mod.AuthorityError, 'bounded pagination'): verify(unbounded)
+
     def test_open_approval_only_usable_for_premerge_check(self):
         api = GitHub()
         api.pr.update(merged=False, state='open', merge_commit_sha=None)
         with self.assertRaises(mod.AuthorityError):
             verify(api)
         self.assertEqual(verify(api, require_merged=False)['status'], 'authorized')
+        self.assertFalse(any('/timeline?' in call for call in api.calls))
 
     def test_unexpected_renamed_deleted_or_missing_files_rejected(self):
         for files in ([], [{'filename': 'scripts/backdoor.py', 'status': 'added'}],
