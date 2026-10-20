@@ -10,6 +10,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- Reconcile only the latest successful qualification by default, with an explicit
+  historical run input for recovery. Avoid duplicate active refreshes and active
+  or completed publications for the same qualification run, attempt and purpose.
+- Give read-only runtime prewarming its own concurrency group so it cannot hold
+  the publication queue, and reuse resolved supply-protector paths during scans.
 - Reuse authenticated exact CI build outputs across pull requests, the merge queue,
   and fresh main qualification, while preserving current tests, scans and release
   approval. Keep candidate builders separate from the job that signs receipts.
@@ -25,6 +30,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- Confirm acknowledged journal checkpoints with bounded retries of only the
+  known prior reference, preserving conflict detection and immutable recovery.
+- Treat absent historical pull-request associations as unavailable build-cache
+  candidates, while rejecting malformed provenance and retaining cold builds.
+- Bind optional publication and refresh requests to an exact qualification
+  attempt, and verify the downloaded native producer before using its evidence.
+- Report bounded rate-limit metadata and fixed authority API failure categories
+  without printing raw headers, response messages or credentials.
 - Retry temporary GitHub authority read failures within three attempts and report
   bounded HTTP status diagnostics when publication or reconciliation is blocked.
 - Report bounded registry error categories when private evidence uploads fail,

@@ -36,11 +36,26 @@ JSON under `security/` or `releases/`.
 
 `security-reconcile.yml` retains evidence in `ghcr.io/closure-labs/xo-nixpkg-decisions`
 and opens content-addressed bot proposal PRs. It reconciles retained candidates
-hourly, requests a refreshed scan when health expires, and dispatches publication
-after live approval. Daily qualification refreshes the most recent retained product
+hourly for the latest successful main qualification, requests a refreshed scan when
+health expires, and dispatches publication after live approval. An optional
+`qualification_run` input explicitly selects an older successful product; older
+approvals no longer automatically resurrect historical publications each hour.
+Daily qualification refreshes the most recent retained product
 without changing its product document or release approval identity. A manually
 requested new qualification builds current main; `qualification_run` instead
 refreshes an existing exact product with the current trusted scanner.
+
+Refresh and publication requests carry the qualification run and attempt. Stable
+workflow run names let the serialized reconciler avoid duplicate active requests.
+It also skips a successful release publication for that exact requested attempt
+while the selected scan remains fresh. A rerun or rescan has a new attempt or run
+identity and needs its own handoff; a matching product hash alone never suppresses
+fresh publication. Failed lookups stop scheduling rather than imply an empty queue.
+The bounded lookup considers up to 1,000 dispatches created since the selected
+qualification run began; reaching that bound without a match stops scheduling
+with an explicit recovery diagnostic. Failed producer completions do not wake the
+expensive reconciliation job. A tick downloads at most one complete product packet,
+instead of replaying up to 20 historical packets.
 
 ## Publication and recovery
 
@@ -48,6 +63,13 @@ refreshes an existing exact product with the current trusted scanner.
 main controller code. The live gate protects all eight public cache roots, tags,
 GitHub releases, and downstream handoffs. The publisher substitutes exact output
 paths and checks their NAR hashes; it never builds candidate derivations.
+
+For explicit repair or recovery, dispatch `publish.yml` with `qualification_run`
+and `purpose`. Optional `qualification_attempt` rejects a race with a newer rerun;
+omitting it resolves the current successful attempt. This direct path always
+revalidates authority and remote state, even if scheduled reconciliation found a
+previous successful publication. Downloaded `scans.json` must identify the requested
+run and resolved attempt before either refresh or publication admission.
 
 Publication checkpoints use independent Git branches named
 `automation/publication-<canonical-product-sha256>`. Each commit contains one
