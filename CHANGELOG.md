@@ -8,6 +8,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## Unreleased
 
+### Changed
+
+- Reuse authenticated exact CI build outputs across pull requests, the merge queue,
+  and fresh main qualification, while preserving current tests, scans and release
+  approval. Keep candidate builders separate from the job that signs receipts.
+- Prepare one fresh verified vulnerability database per qualification or refresh
+  run, with separate matcher probes and complete reports for every profile.
+- Remove verified native-addon build metadata and the installed node-gyp build tool
+  after compilation, keeping the compiled runtime addons and stock Node/OpenSSL.
+- Export transient Nix closures with Zstandard and avoid recompressing their
+  artifact uploads. Retain candidate caches for seven days.
+- Add a bounded two-build concurrency option for CI measurements; keep the default
+  serial until comparable hosted measurements justify changing it.
+
 ### Fixed
 
 - Keep repeated private evidence uploads byte-identical by normalizing only the

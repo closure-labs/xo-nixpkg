@@ -8,6 +8,7 @@ import json
 import os
 from pathlib import Path
 import subprocess
+import tempfile
 
 
 def run(*args):
@@ -19,43 +20,53 @@ def main():
     if output.exists():
         raise ValueError('qualification requires a fresh evidence directory')
     output.mkdir(parents=True)
-    for name in ('GH_TOKEN', 'GITHUB_TOKEN', 'CACHIX_AUTH_TOKEN', 'SECAUDIT_PEM'):
+    # Reuse is identity-only and uses an independently authenticated producer.
+    # The helper isolates candidate evaluation from this read credential.
+    subprocess.run(['xo-nixpkg-build-reuse', 'restore', '--candidate', str(Path.cwd()),
+                    '--controller', str(Path.cwd()), '--output', str(output / 'build-reuse.json')], check=True)
+    for name in ('GH_TOKEN', 'GITHUB_TOKEN', 'CACHIX_AUTH_TOKEN', 'SECAUDIT_PEM',
+                 'REGISTRY_TOKEN', 'DECIDER_KEY', 'XO_AUTHORITY_TOKEN',
+                 'ACTIONS_ID_TOKEN_REQUEST_TOKEN', 'ACTIONS_RUNTIME_TOKEN'):
         os.environ.pop(name, None)
     revision = run('git', 'rev-parse', 'HEAD')
     started = datetime.datetime.now(datetime.timezone.utc)
     profiles = {}
     products = {}
     roots = {}
-    for profile, attribute in [('xo-latest', 'latest'), ('xo-stable', 'stable'), ('xo-rolling', 'rolling'), ('libvhdi', 'libvhdi')]:
-        root = run('nix', 'build', '--accept-flake-config', '--no-link', '--print-out-paths', '.#' + attribute)
-        if '\n' in root or not root.startswith('/nix/store/'):
-            raise ValueError('expected exactly one immutable product output')
-        directory = output / profile
-        additional = []
-        if profile != 'libvhdi':
-            assertion = run('nix', 'build', '--accept-flake-config', '--no-link', '--print-out-paths', '.#supply-protector-' + attribute)
-            additional.append(('supply-protector-' + attribute, assertion))
-        if profile == 'xo-latest':
-            additional.append(('automation-runtime', run('nix', 'build', '--accept-flake-config', '--no-link', '--print-out-paths', '.#automation-runtime')))
-        inventory_args = ['xo-nixpkg-security-inventory', '--root', root, '--profile', profile, '--output', str(directory)]
-        for _, extra_root in additional:
-            inventory_args += ['--additional-root', extra_root]
-        subprocess.run(inventory_args, check=True)
-        subprocess.run(['xo-nixpkg-security-native-scan', str(directory), str(directory)], check=True)
-        profiles[profile] = json.loads((directory / 'scan.json').read_text())
-        info = json.loads(run('nix', 'path-info', '--json', root))
-        item = info[0] if isinstance(info, list) else info[root]
-        products[profile] = {'storePath': root, 'narHash': item['narHash']}
-        profiles[profile]['subjects'] = [products[profile]]
-        for name, path in additional:
-            extra_info = json.loads(run('nix', 'path-info', '--json', path))
-            extra_item = extra_info[0] if isinstance(extra_info, list) else extra_info[path]
-            roots[name] = {'storePath': path, 'narHash': extra_item['narHash'], 'profile': profile}
-            profiles[profile]['subjects'].append({'storePath': path, 'narHash': extra_item['narHash']})
-        # Preserve existing reproducible closure assertion as additional evidence.
-        if profile != 'libvhdi':
-            assertion = run('nix', 'build', '--accept-flake-config', '--no-link', '--print-out-paths', '.#supply-protector-' + attribute)
-            subprocess.run(['cp', '-R', assertion, str(directory / 'supply-protector')], check=True)
+    with tempfile.TemporaryDirectory(prefix='xo-security-db-') as temporary:
+        snapshot = Path(temporary) / 'snapshot'
+        database_receipt = run('xo-nixpkg-security-database', 'prepare', str(snapshot))
+        for profile, attribute in [('xo-latest', 'latest'), ('xo-stable', 'stable'), ('xo-rolling', 'rolling'), ('libvhdi', 'libvhdi')]:
+            root = run('nix', 'build', '--accept-flake-config', '--no-link', '--print-out-paths', '.#' + attribute)
+            if '\n' in root or not root.startswith('/nix/store/'):
+                raise ValueError('expected exactly one immutable product output')
+            directory = output / profile
+            additional = []
+            if profile != 'libvhdi':
+                assertion = run('nix', 'build', '--accept-flake-config', '--no-link', '--print-out-paths', '.#supply-protector-' + attribute)
+                additional.append(('supply-protector-' + attribute, assertion))
+            if profile == 'xo-latest':
+                additional.append(('automation-runtime', run('nix', 'build', '--accept-flake-config', '--no-link', '--print-out-paths', '.#automation-runtime')))
+            inventory_args = ['xo-nixpkg-security-inventory', '--root', root, '--profile', profile, '--output', str(directory)]
+            for _, extra_root in additional:
+                inventory_args += ['--additional-root', extra_root]
+            subprocess.run(inventory_args, check=True)
+            subprocess.run(['xo-nixpkg-security-native-scan', str(directory), str(directory),
+                            '--database', str(snapshot), '--database-receipt-sha256', database_receipt], check=True)
+            profiles[profile] = json.loads((directory / 'scan.json').read_text())
+            info = json.loads(run('nix', 'path-info', '--json', root))
+            item = info[0] if isinstance(info, list) else info[root]
+            products[profile] = {'storePath': root, 'narHash': item['narHash']}
+            profiles[profile]['subjects'] = [products[profile]]
+            for name, path in additional:
+                extra_info = json.loads(run('nix', 'path-info', '--json', path))
+                extra_item = extra_info[0] if isinstance(extra_info, list) else extra_info[path]
+                roots[name] = {'storePath': path, 'narHash': extra_item['narHash'], 'profile': profile}
+                profiles[profile]['subjects'].append({'storePath': path, 'narHash': extra_item['narHash']})
+            # Preserve existing reproducible closure assertion as additional evidence.
+            if profile != 'libvhdi':
+                assertion = run('nix', 'build', '--accept-flake-config', '--no-link', '--print-out-paths', '.#supply-protector-' + attribute)
+                subprocess.run(['cp', '-R', assertion, str(directory / 'supply-protector')], check=True)
     scans = {'schema': 1, 'repository': 'closure-labs/xo-nixpkg', 'revision': revision,
              'producer': {'workflow': '.github/workflows/qualification.yml',
                           'runId': int(os.environ.get('GITHUB_RUN_ID', '0')),

@@ -204,6 +204,8 @@ rec {
           fetch-evidence = mkApp applications.fetchEvidence "Fetch an authenticated immutable qualification packet";
           security-lint = mkApp applications.securityLint "Validate workflow security and evidence contracts";
           qualify-products = mkApp applications.qualifyProducts "Build complete four-profile runtime security evidence";
+          build-reuse = mkApp applications.buildReuse "Build sandboxed candidates and restore authenticated exact CI outputs";
+          security-database = mkApp applications.securityDatabase "Prepare one verified run-local vulnerability database";
           ci-verdict = mkApp applications.ciVerdict "Enforce the classified validation result";
           decision-reconcile = mkApp applications.decisionReconcile "Reconcile authenticated security or release proposals";
           decision-readiness = mkApp (pkgs.writeShellScriptBin "xo-nixpkg-readiness" ''

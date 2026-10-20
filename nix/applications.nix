@@ -131,6 +131,7 @@ rec {
       git
       nix
       securityNativeScan
+      securityDatabase
     ];
     prelude = ''
       export XO_NIXPKG_REFRESHER=${../ci/refresh-products.py}
@@ -226,6 +227,16 @@ rec {
     ];
     prelude = "export XO_NIXPKG_SECURITY_INVENTORY=${../ci/security-inventory.py}";
   };
+  securityDatabase = pkgs.writeShellApplication {
+    name = "xo-nixpkg-security-database";
+    runtimeInputs = with pkgs; [
+      python3
+      grype
+    ];
+    text = ''
+      exec python3 ${../ci/security-database.py} "$@"
+    '';
+  };
   securityNativeScan = mkRepositoryApplication {
     name = "xo-nixpkg-security-native-scan";
     script = ../ci/security-native-scan.sh;
@@ -234,6 +245,7 @@ rec {
       grype
       jq
       python3
+      securityDatabase
     ];
     prelude = "export XO_NIXPKG_SECURITY_NORMALIZER=${../ci/security-normalize.py}";
   };
@@ -247,6 +259,8 @@ rec {
       python3
       securityInventory
       securityNativeScan
+      securityDatabase
+      buildReuse
     ];
     prelude = ''
       export XO_NIXPKG_QUALIFIER=${../ci/qualify-products.py}
@@ -309,6 +323,25 @@ rec {
         classifyCi
         planRunner
       ];
+  };
+
+  buildReuse = mkRepositoryApplication {
+    name = "xo-nixpkg-build-reuse";
+    script = ../ci/build-reuse.sh;
+    runtimeInputs = with pkgs; [
+      python3
+      gh
+      git
+      nix
+      planRunner
+    ];
+    prelude = ''
+      export XO_NIXPKG_BUILD_REUSE_SOURCE=${../ci/build-reuse.py}
+      export XO_NIXPKG_TRUSTED_NIX=${pkgs.lib.getExe pkgs.nix}
+      export XO_NIXPKG_PLAN_RUNNER=${pkgs.lib.getExe planRunner}
+      export XO_NIXPKG_DISTRIBUTION_CACHE_SOURCE=${../ci/distribution-cache.py}
+      export XO_NIXPKG_CI_EVIDENCE="''${RUNNER_TEMP:-''${TMPDIR:-/tmp}}/xo-nixpkg-ci-evidence"
+    '';
   };
 
   publish = mkRepositoryApplication {

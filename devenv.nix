@@ -20,6 +20,8 @@ in
   tasks = {
     "ci:classify".exec = "nix run .#classify-ci -- \"$GITHUB_OUTPUT\"";
     "ci:validate".exec = "nix run .#ci";
+    "ci:trusted-validate".exec = "nix run .#build-reuse -- validate";
+    "ci:restore-builds".exec = "nix run .#build-reuse -- restore";
     "ci:verdict".exec = "nix run .#ci-verdict";
     "ci:security-lint".exec = "nix run .#security-lint";
     "ci:repository-audit".exec = "nix run .#repository-audit";
