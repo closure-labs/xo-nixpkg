@@ -65,7 +65,6 @@ def main():
                 profiles[profile]['subjects'].append({'storePath': path, 'narHash': extra_item['narHash']})
             # Preserve existing reproducible closure assertion as additional evidence.
             if profile != 'libvhdi':
-                assertion = run('nix', 'build', '--accept-flake-config', '--no-link', '--print-out-paths', '.#supply-protector-' + attribute)
                 subprocess.run(['cp', '-R', assertion, str(directory / 'supply-protector')], check=True)
     scans = {'schema': 1, 'repository': 'closure-labs/xo-nixpkg', 'revision': revision,
              'producer': {'workflow': '.github/workflows/qualification.yml',
