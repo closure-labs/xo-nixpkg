@@ -5,8 +5,11 @@ import os
 from pathlib import Path, PurePosixPath
 import re
 import resource
+import selectors
+import signal
 import subprocess
 import tempfile
+import time
 from urllib.parse import quote
 
 from security_decisions import canonical_hash, load_json
@@ -32,16 +35,102 @@ def file_hash(path):
         return hashlib.file_digest(stream, 'sha256').hexdigest()
 
 
+MAX_COMMAND_OUTPUT = 2 * 1024**2
+MAX_COMMAND_STDERR = 16 * 1024
+COMMAND_TIMEOUT = 1800
+
+
+def command_operation(args):
+    # No arbitrary argv, path, registry reference or URL reaches diagnostics.
+    if Path(args[0]).name == 'oras':
+        if args[1:2] == ['push']:
+            return 'oras-push'
+        if args[1:3] in (['manifest', 'fetch'], ['blob', 'fetch']):
+            return 'oras-' + '-'.join(args[1:3])
+    return 'registry-command'
+
+
+def command_failure(args, code, tail, stderr_bytes, limit, timed_out=False, launch_errno=None):
+    # Registry stderr may contain credentials, URLs or arbitrary remote text.
+    # Classify it using fixed vocabulary; never print even a redacted excerpt.
+    text = tail.decode('utf-8', errors='replace').lower()
+    statuses = sorted({int(value) for value in re.findall(
+        r'\b(?:status(?:\s+code)?|http/[0-9.]+)\s*[:=]?\s*(401|403|404|405|409|413|429|500|502|503|504)\b', text)})
+    patterns = {
+        'registry-write-denied': r'permission_denied:\s*write_package|insufficient[_ ]scope',
+        'authorization-denied': r'\bunauthorized\b|\bforbidden\b|requested access.+denied|\baccess denied\b',
+        'rate-limited': r'too many requests|\btoomanyrequests\b',
+        'file-size-limit': r'file too large|file size limit exceeded|sigxfsz',
+        'disk-full': r'no space left on device|disk quota exceeded',
+        'network': r'connection reset|connection refused|no such host|temporary failure in name resolution',
+        'tls': r'tls handshake|certificate signed by unknown authority|certificate verify failed|x509:',
+        'timeout': r'context deadline exceeded|i/o timeout|timed out',
+        'registry-blob': r'\b(?:blob_upload_invalid|blob_upload_unknown|digest_invalid|size_invalid)\b',
+        'registry-manifest': r'\b(?:manifest_invalid|manifest_unknown|manifest_blob_unknown)\b',
+    }
+    categories = {name for name, pattern in patterns.items() if re.search(pattern, text)}
+    if code == -signal.SIGXFSZ:
+        categories.add('file-size-limit')
+    if timed_out:
+        categories.add('timeout')
+    if launch_errno is not None:
+        categories.add('start-failed')
+    if 401 in statuses or 403 in statuses:
+        categories.add('authorization-denied')
+    if 429 in statuses:
+        categories.add('rate-limited')
+    if 413 in statuses:
+        categories.add('payload-too-large')
+    return ValueError('Registry command failed: ' + json.dumps({
+        'operation': command_operation(args), 'exitCode': code,
+        'signal': -code if code is not None and code < 0 else None,
+        'categories': sorted(categories or {'unclassified'}), 'httpStatus': statuses,
+        'stderrBytes': stderr_bytes, 'stderrTruncated': stderr_bytes > MAX_COMMAND_STDERR,
+        'fileLimitBytes': limit, 'errno': launch_errno}, sort_keys=True))
+
+
 def command(args, max_file_bytes=None, **kwargs):
-    # Bound registry-controlled output before loading it in memory and bound
-    # oras-created blobs before checking their declared size and digest.
-    limit = max(2 * 1024**2, max_file_bytes or 0)
+    # Preserve existing output/blob file limits. Drain stderr separately, so a
+    # large authenticated blob allowance cannot enlarge diagnostic storage.
+    limit = max(MAX_COMMAND_OUTPUT, max_file_bytes or 0)
     def restrict_files():
         resource.setrlimit(resource.RLIMIT_FSIZE, (limit, limit))
     with tempfile.TemporaryFile() as capture:
-        subprocess.run(args, stdout=capture, stderr=subprocess.DEVNULL, timeout=1800,
-                       check=True, preexec_fn=restrict_files, **kwargs)
-        if capture.tell() > 2 * 1024**2:
+        tail, stderr_bytes = bytearray(), 0
+        try:
+            child = subprocess.Popen(args, stdout=capture, stderr=subprocess.PIPE,
+                                     preexec_fn=restrict_files, **kwargs)
+        except OSError as error:
+            raise command_failure(args, None, tail, 0, limit, launch_errno=error.errno) from None
+        with child:
+            deadline = time.monotonic() + COMMAND_TIMEOUT
+            try:
+                with selectors.DefaultSelector() as selector:
+                    selector.register(child.stderr, selectors.EVENT_READ)
+                    while selector.get_map():
+                        remaining = deadline - time.monotonic()
+                        if remaining <= 0:
+                            raise subprocess.TimeoutExpired(args, COMMAND_TIMEOUT)
+                        for key, _ in selector.select(min(remaining, 1)):
+                            block = os.read(key.fd, 64 * 1024)
+                            if not block:
+                                selector.unregister(key.fileobj)
+                            else:
+                                stderr_bytes += len(block)
+                                tail.extend(block)
+                                del tail[:-MAX_COMMAND_STDERR]
+                child.wait(timeout=max(.001, deadline - time.monotonic()))
+            except subprocess.TimeoutExpired:
+                child.kill()
+                child.wait()
+                raise command_failure(args, child.returncode, tail, stderr_bytes, limit, timed_out=True) from None
+            except BaseException:
+                child.kill()
+                child.wait()
+                raise
+            if child.returncode:
+                raise command_failure(args, child.returncode, tail, stderr_bytes, limit) from None
+        if capture.tell() > MAX_COMMAND_OUTPUT:
             raise ValueError('Registry command output exceeds bound')
         capture.seek(0)
         return capture.read()

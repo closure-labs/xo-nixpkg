@@ -25,6 +25,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- Report bounded registry error categories when private evidence uploads fail,
+  without printing credentials, request URLs, or raw registry responses.
 - Authenticate the unique GitHub merged event for decision provenance when a
   queued PR retains a stale merge-preview SHA; keep exact content, protected-main
   ancestry, and live human authority checks unchanged.
