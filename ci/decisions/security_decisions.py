@@ -91,8 +91,38 @@ def validate_score(value):
 def validate_context(context):
     fields = {'schema', 'tcpPorts', 'udpPorts', 'managementCIDRs', 'ssh', 'execution',
               'capabilities', 'ambientCapabilities', 'helpers', 'sudo', 'mountsDir'}
-    if not isinstance(context, dict) or set(context) != fields or type(context['schema']) is not int or context['schema'] != 1:
+    if isinstance(context, dict) and context.get('schema') == 2:
+        fields.add('installer')
+    if not isinstance(context, dict) or set(context) != fields or type(context['schema']) is not int or context['schema'] not in (1, 2):
         raise TechnicalError('Invalid native security context')
+    if context['schema'] == 2:
+        installer = context['installer']
+        if (not isinstance(installer, dict) or set(installer) != {'ssh', 'firewall', 'sudo', 'operator', 'systemdInitrd', 'bootModes', 'bootPolicy'}
+                or not isinstance(installer['ssh'], dict) or not isinstance(installer['firewall'], dict)
+                or set(installer['firewall']) != {'allowedTCPPorts', 'allowedUDPPorts', 'extraCommands'}
+                or not isinstance(installer['sudo'], dict) or set(installer['sudo']) != {'enable', 'wheelNeedsPassword', 'extraRules'}
+                or not isinstance(installer['operator'], dict) or set(installer['operator']) != {'extraGroups', 'passwordState', 'rootPasswordState', 'mutableUsers'}
+                or any(installer['operator'][field] not in ('absent', 'locked', 'empty', 'configured') for field in ('passwordState', 'rootPasswordState'))
+                or not isinstance(installer['bootModes'], dict) or set(installer['bootModes']) != {'bios', 'efi', 'memtest'}
+                or any(type(value) is not bool for value in installer['bootModes'].values())
+                or not isinstance(installer['bootPolicy'], dict) or set(installer['bootPolicy']) != {'kernelParams', 'emergencyMode', 'initrdEmergencyAccess'}
+                or not isinstance(installer['bootPolicy']['kernelParams'], list)
+                or any(not isinstance(value, str) for value in installer['bootPolicy']['kernelParams'])
+                or type(installer['bootPolicy']['emergencyMode']) is not bool
+                or installer['bootPolicy']['initrdEmergencyAccess'] not in ('disabled', 'unauthenticated', 'locked', 'configured')
+                or type(installer['systemdInitrd']) is not bool):
+            raise TechnicalError('Invalid installer security policy')
+        for field in ('allowedTCPPorts', 'allowedUDPPorts'):
+            values = installer['firewall'][field]
+            if not isinstance(values, list) or any(type(v) is not int or not 1 <= v <= 65535 for v in values):
+                raise TechnicalError('Invalid installer firewall ports')
+        if (not isinstance(installer['firewall']['extraCommands'], str)
+                or not isinstance(installer['operator']['extraGroups'], list)
+                or any(not isinstance(v, str) for v in installer['operator']['extraGroups'])
+                or type(installer['operator']['mutableUsers']) is not bool
+                or any(type(installer['sudo'][field]) is not bool for field in ('enable', 'wheelNeedsPassword'))
+                or not isinstance(installer['sudo']['extraRules'], list)):
+            raise TechnicalError('Invalid installer privilege policy')
     for field in ('tcpPorts', 'udpPorts'):
         values = context[field]
         if not isinstance(values, list) or any(type(v) is not int or not 1 <= v <= 65535 for v in values) or values != sorted(set(values)):
@@ -125,6 +155,8 @@ def compare_context(current, previous):
         return False, False
     if previous is None:
         return True, False
+    if 'installer' in previous and 'installer' not in current:
+        raise TechnicalError('Previously known installer security context disappeared')
     expanded, reduced = False, False
     for field in ('tcpPorts', 'udpPorts', 'capabilities', 'ambientCapabilities'):
         old, new = set(previous[field]), set(current[field])
@@ -145,6 +177,9 @@ def compare_context(current, previous):
     # Sudo rule ordering, authentication changes and user/group privilege
     # relationships have no safe general partial order. Ask for review.
     expanded |= any(current[field] != previous[field] for field in ('ssh', 'sudo', 'execution', 'mountsDir'))
+    # Installer boot/authentication/sudo policy has no safe general ordering.
+    # An unchanged policy survives package/ISO rebuilds; every change is reviewed.
+    expanded |= current.get('installer') != previous.get('installer')
     return bool(expanded), bool(reduced)
 
 

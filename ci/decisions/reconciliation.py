@@ -7,7 +7,8 @@ import tempfile
 import decision_authority as authority
 import decision_packets as packets
 from common import (require, command, scans, product, ledger, active_security, active_release,
-                    authorize, historical_provenance, config, attest, required_check)
+                    authorize, historical_provenance, config, attest, required_check,
+                    security_contexts, accepted_contexts, compare_security_contexts)
 from security_decisions import load_json, canonical_hash, normalize_findings, compare_findings
 
 CHECK_CONFIG = None
@@ -26,6 +27,7 @@ def validate_proposal_packet(proposal, cfg=None):
         require(parent is not None and parent['payload']['disposition'] == 'accepted'
                 and payload.get('supersedes') == [digest]
                 and payload.get('profiles') == parent['payload']['profiles']
+                and payload.get('securityContexts') == parent['payload'].get('securityContexts')
                 and packet == parent['payload']['packet'] and payload['disposition'] == 'revoked',
                 'Revocation must copy current accepted decision exactly')
         return
@@ -44,6 +46,9 @@ def validate_proposal_packet(proposal, cfg=None):
             expected = {profile: normalize_findings(scan, profile) for profile, scan in native['profiles'].items()}
             require(set(expected) == set(cfg['profiles']) and payload.get('profiles') == expected,
                     'Proposed findings differ from complete authenticated native observations')
+            if 'securityContexts' in payload:
+                require(accepted_contexts(payload) == security_contexts(native),
+                        'Proposed policy differs from authenticated native context')
             _, records = ledger(cfg)
             digest, _ = active_security(cfg, records, authenticate=False)
             require(payload.get('supersedes') == ([digest] if digest else []), 'Security proposal has stale supersession parent')
@@ -146,7 +151,8 @@ def reconcile(cfg, scan_path, product_path, kind, directory, rationale, disposit
         findings = {p: normalize_findings(s, p) for p, s in native['profiles'].items()}
         if current and current['payload']['disposition'] == 'accepted' and disposition == 'accepted':
             comparisons = [compare_findings(findings[p], current['payload']['profiles'][p]) for p in findings]
-            if all(not c['new'] and not c['worsened'] for c in comparisons):
+            if (all(not c['new'] and not c['worsened'] for c in comparisons)
+                    and all(not expanded for expanded, _ in compare_security_contexts(native, current['payload']).values())):
                 try:
                     authorize(cfg, current)
                     return {'schema': 1, 'status': 'covered', 'decisionHash': digest}
@@ -174,7 +180,7 @@ def reconcile(cfg, scan_path, product_path, kind, directory, rationale, disposit
     packet = packets.push(directory, producer)
     payload = {'disposition': disposition, 'rationale': rationale, 'packet': packet}
     if kind == 'security-findings':
-        payload.update(profiles=findings, supersedes=[digest] if digest else [])
+        payload.update(profiles=findings, securityContexts=security_contexts(native), supersedes=[digest] if digest else [])
     else:
         payload['product'] = identity
         payload['supersedes'] = [release_digest] if release_digest else []

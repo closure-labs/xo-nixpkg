@@ -10,7 +10,8 @@ import tempfile
 
 import decision_authority as authority
 import decision_packets as packets
-from security_decisions import canonical_hash, load_json, evaluate, validate_normalized
+from security_decisions import (canonical_hash, load_json, evaluate, validate_normalized,
+                                validate_context, compare_context)
 
 HASH = re.compile(r'[0-9a-f]{64}')
 SHA = authority.SHA
@@ -59,6 +60,10 @@ def config(path, live=False, enabled=False, api=None):
     require(isinstance(profiles, list) and profiles and len(set(profiles)) == len(profiles)
             and all(isinstance(p, str) and re.fullmatch(r'[a-z][a-z0-9-]{0,63}', p) for p in profiles),
             'Invalid complete profile set')
+    coverage = value.get('requiredCoverage', {})
+    require(isinstance(coverage, dict) and set(coverage).issubset(profiles)
+            and all(isinstance(contract, str) and re.fullmatch(r'[a-z][a-z0-9-]{0,63}', contract)
+                    for contract in coverage.values()), 'Invalid required native coverage policy')
     require(value.get('decisionRoot', 'automation/decisions') == 'automation/decisions', 'Unsupported decision root')
     require(isinstance(value.get('producerWorkflows'), list) and value['producerWorkflows']
             and all(re.fullmatch(r'\.github/workflows/[A-Za-z0-9_.-]+\.ya?ml', w)
@@ -123,6 +128,37 @@ def historical_provenance(cfg, proposal, api=None):
                                      require_merged=True, github=api, require_live_review=False)
 
 
+def security_contexts(native):
+    return {profile: validate_context(scan['securityContext'])
+            for profile, scan in native['profiles'].items() if 'securityContext' in scan}
+
+
+def accepted_contexts(payload):
+    """Retain policy review even when a profile has no vulnerability findings."""
+    profiles = payload['profiles']
+    if 'securityContexts' in payload:
+        contexts = payload['securityContexts']
+        require(isinstance(contexts, dict) and set(contexts).issubset(profiles),
+                'Invalid accepted profile security contexts')
+        return {profile: validate_context(context) for profile, context in contexts.items()}
+    # Existing nonempty decisions already bind a context in each finding.
+    # Empty legacy decisions cannot claim knowledge of an unrecorded policy.
+    contexts = {}
+    for profile, findings in profiles.items():
+        values = [finding['securityContext'] for finding in findings if 'securityContext' in finding]
+        if values:
+            require(len(values) == len(findings) and all(value == values[0] for value in values),
+                    'Ambiguous accepted profile security context')
+            contexts[profile] = validate_context(values[0])
+    return contexts
+
+
+def compare_security_contexts(native, payload):
+    current, accepted = security_contexts(native), accepted_contexts(payload)
+    return {profile: compare_context(current.get(profile), accepted.get(profile))
+            for profile in native['profiles']}
+
+
 def active_security(cfg, records, api=None, authenticate=True):
     candidates = {h: p for h, p in records.items() if p['kind'] in ('security-findings', 'security-revocation')}
     superseded = set()
@@ -134,6 +170,7 @@ def active_security(cfg, records, api=None, authenticate=True):
         for profile, findings in payload['profiles'].items():
             validate_normalized(findings)
             require(all(f['profile'] == profile for f in findings), 'Cross-profile decision confusion')
+        accepted_contexts(payload)
         parents = payload.get('supersedes', [])
         require(isinstance(parents, list) and len(set(parents)) == len(parents)
                 and all(h in candidates and h != digest for h in parents), 'Invalid supersession parents')
@@ -145,6 +182,7 @@ def active_security(cfg, records, api=None, authenticate=True):
             require(payload['disposition'] == 'revoked' and len(parents) == 1, 'Revocation requires one parent')
             parent = candidates[parents[0]]['payload']
             require(parent['disposition'] == 'accepted' and payload['profiles'] == parent['profiles']
+                    and payload.get('securityContexts') == parent.get('securityContexts')
                     and packet == parent['packet'], 'Revocation must preserve exact accepted scope and evidence')
         superseded.update(parents)
     # Detect cycles even when a separate apparently-valid leaf exists.
@@ -266,6 +304,21 @@ def verify_producer(cfg, producer, source_revision, api=None, require_main=False
     return revision, signer
 
 
+def coverage_roots(native, contract):
+    coverage = native.get('coverage')
+    require(isinstance(coverage, dict) and coverage.get('contract') == contract,
+            'Native scan predates required distribution coverage')
+    manifest = coverage.get('manifest')
+    roots = manifest.get('roots') if isinstance(manifest, dict) else None
+    require(isinstance(roots, dict) and roots
+            and all(isinstance(name, str) and name and isinstance(path, str)
+                    and re.fullmatch(r'/nix/store/[a-z0-9]{32}-[^/\s]+', path)
+                    for name, path in roots.items()), 'Invalid distribution coverage roots')
+    require(set(roots.values()) <= {subject.get('storePath') for subject in native.get('subjects', [])},
+            'Distribution coverage roots absent from authenticated scanned subjects')
+    return set(roots.values())
+
+
 def scans(path, cfg, api=None, allow_expired=False):
     api = api or authority.github_api
     value = load_json(path)
@@ -284,8 +337,11 @@ def scans(path, cfg, api=None, allow_expired=False):
     producer = value.get('producer', {})
     producer_revision, signer = verify_producer(cfg, producer, value['revision'], api)
     attest(path, cfg, producer_revision, signer)
-    for native in value['profiles'].values():
+    for profile, native in value['profiles'].items():
         require(native.get('status') == 'complete' and native.get('scannerHealth') == 'healthy', 'Native scanner unhealthy')
+        required_coverage = cfg.get('requiredCoverage', {}).get(profile)
+        if required_coverage and not allow_expired:
+            coverage_roots(native, required_coverage)
         native_time = timestamp(native.get('scannedAt'))
         require(scanned <= native_time <= now, 'Native observation predates envelope or is in the future')
         database = native.get('database', {})
@@ -320,6 +376,17 @@ def product(path, cfg, scan, api=None):
                 and set(identity) == {'storePath', 'narHash', 'profile'}
                 and identity['profile'] in value['products'], 'Invalid auxiliary root profile')
         root(identity, identity['profile'])
+    for profile, primary in value['products'].items():
+        native = scan['profiles'][profile]
+        contract = cfg.get('requiredCoverage', {}).get(profile)
+        # Historical products without the new marker remain restorable. A product
+        # claiming complete coverage must retain every authenticated manifest root.
+        if contract and native.get('coverage', {}).get('contract') == contract:
+            retained = {primary['storePath']} | {
+                identity['storePath'] for identity in value.get('roots', {}).values()
+                if identity['profile'] == profile}
+            require(coverage_roots(native, contract) <= retained,
+                    'Distribution coverage roots absent from retained product')
     require(isinstance(value.get('assets'), dict)
             and all(re.fullmatch(r'[A-Za-z0-9_.+-]+', name) and isinstance(digest, str) and HASH.fullmatch(digest)
                     for name, digest in value['assets'].items()), 'Invalid product asset hashes')
@@ -336,6 +403,8 @@ def product(path, cfg, scan, api=None):
 def admission(cfg, scan, records, api=None):
     digest, proposal = active_security(cfg, records, api)
     require(proposal is not None and proposal['payload']['disposition'] == 'accepted', 'Current human risk acceptance required')
+    require(all(not expanded for expanded, _ in compare_security_contexts(scan, proposal['payload']).values()),
+            'Runtime security policy changes require a human decision')
     result = {profile: evaluate(native, profile, proposal['payload']['profiles'][profile])
               for profile, native in scan['profiles'].items()}
     require(all(r['status'] == 'covered' for r in result.values()), 'New or worsened findings require a human decision')

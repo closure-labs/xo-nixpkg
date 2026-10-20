@@ -23,6 +23,10 @@ and auxiliary Nix outputs by store path and NAR hash, plus deterministic invento
 asset hashes. Human decisions cover all severities and the complete profile set;
 CVSS increases, exploitation, or expanded exposure require review. Stable relative
 output/file exposure permits accepted risk to carry across unchanged paths.
+Security decisions also bind each profile's runtime policy independently of its
+findings. An empty report cannot authorize previously unreviewed exposure. The
+shared validator understands Maestro's installer coverage contract and requires
+all declared roots in both scanned subjects and retained products.
 
 The protected controller verifies the current policy, exact proposal head,
 App-origin check, current SuperAdmins membership, maintain/admin permissions,
