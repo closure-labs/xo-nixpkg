@@ -8,6 +8,8 @@ import json
 from pathlib import Path
 import sys
 import unittest
+from unittest.mock import patch
+import subprocess
 
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT / 'ci/decisions'))
@@ -308,8 +310,8 @@ class Authority(unittest.TestCase):
             with self.assertRaises(mod.AuthorityError):
                 verify(api)
 
-    def large_blob(self):
-        proposal = {**PROPOSAL, 'payload': {'rationale': 'x' * (1024 * 1024 + 1)}}
+    def large_blob(self, payload_bytes=1024 * 1024 + 1):
+        proposal = {**PROPOSAL, 'payload': {'rationale': 'x' * payload_bytes}}
         raw = json.dumps(proposal).encode()
         identity = hashlib.sha1(b'blob ' + str(len(raw)).encode() + b'\0' + raw).hexdigest()
         metadata = {'type': 'file', 'sha': identity, 'size': len(raw), 'encoding': 'none', 'content': ''}
@@ -327,11 +329,56 @@ class Authority(unittest.TestCase):
         self.assertEqual(calls[-1], f'repos/{REPO}/git/blobs/{metadata["sha"]}')
         self.assertEqual(len(calls), 2)
 
+    def test_complete_four_profile_ledger_above_old_limit_is_authenticated(self):
+        proposal, metadata, blob = self.large_blob(payload_bytes=9_533_480)
+        self.assertGreater(metadata['size'], 8 * 1024**2)
+        self.assertLess(metadata['size'], mod.MAX_PROPOSAL_BYTES)
+        self.assertEqual(mod.document_at(
+            lambda endpoint: metadata if '/contents/' in endpoint else blob,
+            REPO, 'proposal.json', HEAD), proposal)
+
+    def test_exact_document_limit_accepts_and_one_extra_byte_never_fetches(self):
+        empty, _, _ = self.large_blob(payload_bytes=0)
+        overhead = len(json.dumps(empty).encode())
+        proposal, metadata, blob = self.large_blob(payload_bytes=mod.MAX_PROPOSAL_BYTES - overhead)
+        self.assertEqual(metadata['size'], mod.MAX_PROPOSAL_BYTES)
+        self.assertEqual(mod.document_at(
+            lambda endpoint: metadata if '/contents/' in endpoint else blob,
+            REPO, 'proposal.json', HEAD), proposal)
+        calls = []
+        def oversized(endpoint):
+            calls.append(endpoint)
+            return {**metadata, 'size': mod.MAX_PROPOSAL_BYTES + 1}
+        with self.assertRaises(mod.AuthorityError):
+            mod.document_at(oversized, REPO, 'proposal.json', HEAD)
+        self.assertEqual(len(calls), 1)
+
+    def test_github_api_bounds_output_before_json_parse(self):
+        def bounded(arguments, **kwargs):
+            self.assertEqual(kwargs['timeout'], 60)
+            self.assertEqual(kwargs['stderr'], subprocess.DEVNULL)
+            self.assertTrue(callable(kwargs['preexec_fn']))
+            kwargs['stdout'].write(b'{"safe":true}')
+            return subprocess.CompletedProcess(arguments, 0)
+        with patch.object(mod.subprocess, 'run', side_effect=bounded):
+            self.assertEqual(mod.github_api('repos/example/repository'), {'safe': True})
+        def oversized(arguments, **kwargs):
+            kwargs['stdout'].truncate(mod.MAX_API_BYTES + 1)
+            kwargs['stdout'].seek(0, 2)
+            return subprocess.CompletedProcess(arguments, 0)
+        with patch.object(mod.subprocess, 'run', side_effect=oversized), \
+             patch.object(mod.json, 'load') as parse, self.assertRaises(mod.AuthorityError):
+            mod.github_api('repos/example/repository')
+        parse.assert_not_called()
+        with patch.object(mod.subprocess, 'run', side_effect=subprocess.TimeoutExpired('gh', 60)), \
+             self.assertRaises(mod.AuthorityError):
+            mod.github_api('repos/example/repository')
+
     def test_large_blob_metadata_encoding_size_and_object_hash_must_agree(self):
         _, metadata, original = self.large_blob()
         tampered = bytearray(base64.b64decode(original['content']))
         tampered[-4] = ord('z')
-        changes = [{'sha': 'f' * 40}, {'size': original['size'] + 1}, {'size': 8 * 1024**2 + 1},
+        changes = [{'sha': 'f' * 40}, {'size': original['size'] + 1}, {'size': mod.MAX_PROPOSAL_BYTES + 1},
                    {'encoding': 'none'}, {'content': '#'},
                    {'content': base64.b64encode(tampered).decode()}]
         for change in changes:
@@ -342,7 +389,7 @@ class Authority(unittest.TestCase):
 
     def test_oversize_or_nonfile_metadata_never_fetches_a_blob(self):
         _, original, blob = self.large_blob()
-        for change in ({'size': 8 * 1024**2 + 1}, {'type': 'dir'}, {'sha': 'bad'}, {'size': True}):
+        for change in ({'size': mod.MAX_PROPOSAL_BYTES + 1}, {'type': 'dir'}, {'sha': 'bad'}, {'size': True}):
             metadata = {**original, **change}
             calls = []
             def api(endpoint):

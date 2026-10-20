@@ -136,7 +136,10 @@ def push(directory, producer):
         with tempfile.TemporaryDirectory() as temporary:
             manifest = Path(temporary) / 'manifest.json'
             tag = REGISTRY + ':packet-' + canonical_hash(packet)
+            # ORAS otherwise inserts wall-clock time and changes the immutable
+            # reference on every retry. Producer and scan times remain in files.
             command(['oras', 'push', '--artifact-type', TYPE, '--export-manifest', str(manifest),
+                     '--annotation', 'org.opencontainers.image.created=1970-01-01T00:00:00Z',
                      tag, 'decision-packet.json:application/json',
                      *[name + ':application/octet-stream' for name in packet['files']]], cwd=directory)
             private_review_registry()

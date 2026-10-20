@@ -145,6 +145,8 @@ class Checks(unittest.TestCase):
             self.assertTrue(mod.governed('scripts/ci/' + boundary))
         self.assertTrue(mod.governed('scripts/ci/decision_revocation.py'))
         self.assertTrue(mod.governed('scripts/ci/execute-release-set.py'))
+        for path in ('.gitleaks.toml', 'gitleaks.toml', '.gitleaksignore'):
+            self.assertTrue(mod.governed(path), path)
         self.assertFalse(mod.governed('docs/README.md'))
 
 

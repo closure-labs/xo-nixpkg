@@ -77,6 +77,7 @@ let
       mkCheck "repository-policy"
         (with pkgs; [
           actionlint
+          gitleaks
           coreutils
           findutils
           git
@@ -167,9 +168,12 @@ let
           jq
           python3
           nodejs_22
+          oras
         ])
         ''
           python3 source/tests/supply-inventory.py
+          PYTHONDONTWRITEBYTECODE=1 python3 source/tests/packet-manifest-reproducibility.py \
+            --oras ${pkgs.lib.getExe pkgs.oras} --output "$TMPDIR/packet-manifest-proof"
           PYTHONDONTWRITEBYTECODE=1 python3 source/tests/security-applicability.py
           PYTHONDONTWRITEBYTECODE=1 python3 source/tests/security-normalize.py
           bash source/tests/security-scan.sh

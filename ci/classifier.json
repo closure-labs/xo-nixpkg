@@ -36,6 +36,42 @@
   ],
   "pathRules": [
     {
+      "pattern": "^ci/decisions/",
+      "validation": [
+        "repository-policy",
+        "ci-runtime-fixtures",
+        "application-composition",
+        "automation-fixtures",
+        "automation-runtime"
+      ],
+      "publication": [
+        "automation-runtime"
+      ]
+    },
+    {
+      "pattern": "^(tests/decisions/|automation/decisions/)",
+      "validation": [
+        "repository-policy",
+        "automation-fixtures"
+      ],
+      "publication": []
+    },
+    {
+      "pattern": "^(\\.gitleaks\\.toml|gitleaks\\.toml|\\.gitleaksignore|tests/test_secret_inventory\\.py)$",
+      "validation": ["repository-policy", "automation-fixtures"],
+      "publication": []
+    },
+    {
+      "pattern": "^tests/packet-manifest-reproducibility\\.py$",
+      "validation": ["repository-policy", "automation-fixtures"],
+      "publication": []
+    },
+    {
+      "pattern": "^nix/repository-checks\\.nix$",
+      "validation": ["yarn-cache-fixtures", "repository-policy", "ci-runtime-fixtures", "application-composition", "source-update-fixtures", "automation-fixtures", "plan-runner-fixtures", "classifier-fixtures", "automation-runtime"],
+      "publication": []
+    },
+    {
       "pattern": "^tests/yarn-cache\\.sh$",
       "validation": ["yarn-cache-fixtures", "repository-policy"],
       "publication": []

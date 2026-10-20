@@ -1,0 +1,17 @@
+# SPDX-License-Identifier: Apache-2.0
+# Generated security finding keys are SHA-256 identities, not credentials.
+# Preserve every built-in rule, including generic-api-key outside this exact
+# canonical ledger path AND complete serialized finding-key line.
+[extend]
+useDefault = true
+
+[[rules]]
+id = "generic-api-key"
+
+[[rules.allowlists]]
+description = "Canonical SHA-256 finding identity in governed security decisions"
+condition = "AND"
+regexTarget = "line"
+paths = ['''^automation/decisions/security/[a-f0-9]{64}\.json$''']
+# Gitleaks may retain the preceding newline in its line target.
+regexes = ['''^\n?          "key": "[a-f0-9]{64}",$''']

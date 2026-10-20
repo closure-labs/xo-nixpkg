@@ -8,6 +8,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## Unreleased
 
+### Fixed
+
+- Keep repeated private evidence uploads byte-identical by normalizing only the
+  OCI transport timestamp, while preserving actual producer and scan timestamps.
+- Recognize validated risk-identity hashes in security decision JSON without
+  exempting neighboring credentials, other files, or deleted-secret history.
+  Require human review of secret-scanner configuration changes.
+- Authenticate complete four-profile decision ledgers up to a bounded 16 MiB
+  using immutable Git object identity and the existing exact-commit human review.
+- Run all repository contracts for repository-check definitions without rebuilding
+  unchanged XO applications. Decision controller and ledger edits likewise run
+  their native contracts without recompiling unchanged application outputs.
+
 ## [0.10.1] - 2026-10-19
 
 ### Security
