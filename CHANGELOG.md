@@ -10,6 +10,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- Authenticate the unique GitHub merged event for decision provenance when a
+  queued PR retains a stale merge-preview SHA; keep exact content, protected-main
+  ancestry, and live human authority checks unchanged.
+
 - Keep repeated private evidence uploads byte-identical by normalizing only the
   OCI transport timestamp, while preserving actual producer and scan timestamps.
 - Recognize validated risk-identity hashes in security decision JSON without
