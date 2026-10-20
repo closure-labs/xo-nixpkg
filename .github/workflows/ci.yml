@@ -12,7 +12,7 @@ on:
         description: Bounded runtime-build concurrency for matched performance measurements
         type: choice
         options: ['1', '2']
-        default: '1'
+        default: '2'
 
 concurrency:
   group: ci-${{ github.event.pull_request.number || github.event.merge_group.head_ref || github.ref }}
@@ -77,7 +77,7 @@ jobs:
     outputs:
       cache_eligible: ${{ steps.trusted.outputs.cache_eligible }}
     env:
-      XO_NIXPKG_BUILD_JOBS: ${{ github.event_name == 'workflow_dispatch' && inputs.build_jobs || '1' }}
+      XO_NIXPKG_BUILD_JOBS: ${{ github.event_name == 'workflow_dispatch' && inputs.build_jobs || '2' }}
       PREPARED_CI_WORKFLOW: ${{ needs.classify.outputs.workflow }}
     steps:
       - name: Audit runner traffic

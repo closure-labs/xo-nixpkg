@@ -73,12 +73,32 @@ The local acceptance receipts are retained in
 [`ci-performance-local-2026-10-20.json`](benchmarks/ci-performance-local-2026-10-20.json).
 They identify measured bytes and scopes; they are not release admission.
 
-## Concurrency pilot
+## Hosted concurrency
 
-CI workflow dispatch accepts `build_jobs=1` or `2`; the default remains one.
+Hosted CI defaults to two concurrent runtime builds. Workflow dispatch accepts
+`build_jobs=1` to run serially or `2` to use the default. Native CLI execution and
+cheap preflight checks remain serial.
+
+One matched pair of successful Ubuntu 24.04 hosted runs used the same source,
+`e7516001aacf0248eadb727086495b8451634405`, and produced identical successful
+result arrays for all nine preflight and ten runtime targets:
+
+| Runtime build slots | Validation run | Validation job elapsed |
+| --- | --- | --- |
+| 1 | [39400904119](https://github.com/closure-labs/xo-nixpkg/actions/runs/39400904119) | 37m 53s |
+| 2 | [39401010290](https://github.com/closure-labs/xo-nixpkg/actions/runs/39401010290) | 32m 24s |
+
+Two slots reduced the measured validation job by 329 seconds (14.47%). This is
+one paired cold bootstrap measurement; it does not establish a repeated-run
+average or an artifact-reuse saving. CPU, peak RAM and disk use were not measured.
+The larger individual target times in the parallel run also show contention;
+future runner or dependency changes may change the tradeoff. The hosted receipt
+retains job intervals, all matched outputs and hashes of the eight raw evidence
+files in
+[`ci-performance-hosted-2026-10-20.json`](benchmarks/ci-performance-hosted-2026-10-20.json).
+
 The runner refills the first completed slot, preserves plan-ordered diagnostics,
 runs every target on failure, and promotes result links only after full success.
-Cancellation terminates its own build children. Cheap preflight remains serial.
-Compare matched hosted runs for elapsed time, CPU/RAM/disk, artifact bytes and
-reuse export/download/verification overhead before raising the default. A branch
-benchmark cannot certify cache output until its producer workflow is reviewed.
+Cancellation terminates its own build children. The bound remains two. A branch
+benchmark cannot certify cache output until its producer workflow is reviewed;
+the measured runs are performance evidence, without release or cache authority.
