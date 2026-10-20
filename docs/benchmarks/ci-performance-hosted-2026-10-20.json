@@ -1,0 +1,493 @@
+{
+  "artifactReuseSavingClaim": false,
+  "authorityClaim": false,
+  "comparison": {
+    "allTargetResultArraysIdentical": true,
+    "elapsedReductionPercent": 14.47,
+    "elapsedReductionSeconds": 329,
+    "failureCount": 0,
+    "matchedResults": {
+      "preflight": [
+        {
+          "attribute": "checks.x86_64-linux.native-runtime-cleanup",
+          "name": "native-runtime-cleanup",
+          "outputs": [
+            "/nix/store/i4f2v98wnj5lpxgvmypq6x49qa5gpskb-xo-nixpkg-native-runtime-cleanup"
+          ],
+          "status": "success"
+        },
+        {
+          "attribute": "checks.x86_64-linux.yarn-cache-fixtures",
+          "name": "yarn-cache-fixtures",
+          "outputs": [
+            "/nix/store/iss62vp2qp10w6j97y4vlic1znakdqhl-xo-nixpkg-yarn-cache-fixtures"
+          ],
+          "status": "success"
+        },
+        {
+          "attribute": "checks.x86_64-linux.repository-policy",
+          "name": "repository-policy",
+          "outputs": [
+            "/nix/store/5ijq3q2w384b30m598220izjw5lhblrg-xo-nixpkg-repository-policy"
+          ],
+          "status": "success"
+        },
+        {
+          "attribute": "checks.x86_64-linux.ci-runtime-fixtures",
+          "name": "ci-runtime-fixtures",
+          "outputs": [
+            "/nix/store/7y1w3m558nlyb3g8iycxh50kxk2ssp8d-xo-nixpkg-ci-runtime-fixtures"
+          ],
+          "status": "success"
+        },
+        {
+          "attribute": "checks.x86_64-linux.application-composition",
+          "name": "application-composition",
+          "outputs": [
+            "/nix/store/pasclijxprrhq8b297g0liyvsm69xc23-xo-nixpkg-application-composition"
+          ],
+          "status": "success"
+        },
+        {
+          "attribute": "checks.x86_64-linux.source-update-fixtures",
+          "name": "source-update-fixtures",
+          "outputs": [
+            "/nix/store/lryxfsy0l06qiql9mlpqg5xxkm89a3hb-xo-nixpkg-source-update-fixtures"
+          ],
+          "status": "success"
+        },
+        {
+          "attribute": "checks.x86_64-linux.automation-fixtures",
+          "name": "automation-fixtures",
+          "outputs": [
+            "/nix/store/5g9szlazbhzn4m2560rk4aa3i4jzblxs-xo-nixpkg-automation-fixtures"
+          ],
+          "status": "success"
+        },
+        {
+          "attribute": "checks.x86_64-linux.plan-runner-fixtures",
+          "name": "plan-runner-fixtures",
+          "outputs": [
+            "/nix/store/l4644fbizzl8fd4db9951cvfvrwfrpz4-xo-nixpkg-plan-runner-fixtures"
+          ],
+          "status": "success"
+        },
+        {
+          "attribute": "checks.x86_64-linux.classifier-fixtures",
+          "name": "classifier-fixtures",
+          "outputs": [
+            "/nix/store/yvj65ssb6a5w35ac2h1kl2lxbxh6f4vg-xo-nixpkg-classifier-fixtures"
+          ],
+          "status": "success"
+        }
+      ],
+      "runtime": [
+        {
+          "attribute": "checks.x86_64-linux.xo-latest",
+          "name": "xo-latest",
+          "outputs": [
+            "/nix/store/7rgckrz7zf9l3rvidb4987gcxgi07a8i-xen-orchestra-ce-6.9.1"
+          ],
+          "status": "success"
+        },
+        {
+          "attribute": "checks.x86_64-linux.xo-stable",
+          "name": "xo-stable",
+          "outputs": [
+            "/nix/store/isdd9f6z1yd81aiimhzdcdcckdffl4lk-xen-orchestra-ce-6.9.0"
+          ],
+          "status": "success"
+        },
+        {
+          "attribute": "checks.x86_64-linux.xo-rolling",
+          "name": "xo-rolling",
+          "outputs": [
+            "/nix/store/qbskrgbrlfil2f4nm5ran41ixp4ffnfa-xen-orchestra-ce-unstable-2026-10-19"
+          ],
+          "status": "success"
+        },
+        {
+          "attribute": "checks.x86_64-linux.supply-protector-latest",
+          "name": "supply-protector-latest",
+          "outputs": [
+            "/nix/store/ma21c8myvvn7pkcv3zc8mb5k400giq58-xo-latest-supply-protector-6.9.1"
+          ],
+          "status": "success"
+        },
+        {
+          "attribute": "checks.x86_64-linux.supply-protector-stable",
+          "name": "supply-protector-stable",
+          "outputs": [
+            "/nix/store/v0nhj3yb6vnk2akl1zrn40w8gvwk355s-xo-stable-supply-protector-6.9.0"
+          ],
+          "status": "success"
+        },
+        {
+          "attribute": "checks.x86_64-linux.supply-protector-rolling",
+          "name": "supply-protector-rolling",
+          "outputs": [
+            "/nix/store/p309krshpp5np46fpzm6gbwwr65mcqkv-xo-rolling-supply-protector-unstable-2026-10-19"
+          ],
+          "status": "success"
+        },
+        {
+          "attribute": "checks.x86_64-linux.xo-fuse-linkage",
+          "name": "xo-fuse-linkage",
+          "outputs": [
+            "/nix/store/7rgckrz7zf9l3rvidb4987gcxgi07a8i-xen-orchestra-ce-6.9.1"
+          ],
+          "status": "success"
+        },
+        {
+          "attribute": "checks.x86_64-linux.xo-server-service",
+          "name": "xo-server-service",
+          "outputs": [
+            "/nix/store/5xzqalr1mzv8i9r1wf9c8ka8avvl189m-vm-test-run-xo-server-service"
+          ],
+          "status": "success"
+        },
+        {
+          "attribute": "checks.x86_64-linux.libvhdi",
+          "name": "libvhdi",
+          "outputs": [
+            "/nix/store/8nzizs27j3kyidj2rlffwa1hxx2palvi-libvhdi-20260901"
+          ],
+          "status": "success"
+        },
+        {
+          "attribute": "checks.x86_64-linux.automation-runtime",
+          "name": "automation-runtime",
+          "outputs": [
+            "/nix/store/lvj11v3r7y6wgvij82532szm0jshv6cy-xo-nixpkg-automation-runtime-0.10.1"
+          ],
+          "status": "success"
+        }
+      ]
+    },
+    "parallelElapsedSeconds": 1944,
+    "serialElapsedSeconds": 2273,
+    "targetCount": 19
+  },
+  "limitations": [
+    "One paired sample, without a repeated-run average.",
+    "CPU, peak RAM and disk use were not measured.",
+    "Branch workflow bootstrap did not certify reusable artifacts.",
+    "Individual target durations increased under contention; this comparison measures whole validation jobs."
+  ],
+  "measuredAt": "2026-10-20",
+  "pairedSampleCount": 1,
+  "publicationInvoked": false,
+  "repository": "closure-labs/xo-nixpkg",
+  "resourceMeasurements": {
+    "cpu": null,
+    "peakDiskBytes": null,
+    "peakRamBytes": null
+  },
+  "runner": "ubuntu-24.04",
+  "runs": {
+    "parallel": {
+      "conclusion": "success",
+      "rawEvidence": {
+        "preflight-timings.json": {
+          "sha256": "88ee2643d4980b4fca2ecd22d88abfd5e93491aaf25494088adac2cacf3aeefe",
+          "size": 1603
+        },
+        "preflight.json": {
+          "sha256": "20154632cb4a360b49146f57f9b96e34676488762059723680678407717033a8",
+          "size": 2488
+        },
+        "runtime-timings.json": {
+          "sha256": "1caae0a3fbce7ec207ec7d938fc86d29c538768873cbe40baac05f20e84ecb60",
+          "size": 1687
+        },
+        "runtime.json": {
+          "sha256": "ab262ba062e11e95ad13c607a93f3888153d13dc9f93e7c25e94ed32096a23d5",
+          "size": 2643
+        }
+      },
+      "runId": 39401010290,
+      "runtimeBuildSlots": 2,
+      "targetElapsedSeconds": {
+        "preflight": [
+          {
+            "attribute": "checks.x86_64-linux.native-runtime-cleanup",
+            "elapsedSeconds": 1,
+            "name": "native-runtime-cleanup",
+            "status": "success"
+          },
+          {
+            "attribute": "checks.x86_64-linux.yarn-cache-fixtures",
+            "elapsedSeconds": 29,
+            "name": "yarn-cache-fixtures",
+            "status": "success"
+          },
+          {
+            "attribute": "checks.x86_64-linux.repository-policy",
+            "elapsedSeconds": 15,
+            "name": "repository-policy",
+            "status": "success"
+          },
+          {
+            "attribute": "checks.x86_64-linux.ci-runtime-fixtures",
+            "elapsedSeconds": 1,
+            "name": "ci-runtime-fixtures",
+            "status": "success"
+          },
+          {
+            "attribute": "checks.x86_64-linux.application-composition",
+            "elapsedSeconds": 5,
+            "name": "application-composition",
+            "status": "success"
+          },
+          {
+            "attribute": "checks.x86_64-linux.source-update-fixtures",
+            "elapsedSeconds": 6,
+            "name": "source-update-fixtures",
+            "status": "success"
+          },
+          {
+            "attribute": "checks.x86_64-linux.automation-fixtures",
+            "elapsedSeconds": 13,
+            "name": "automation-fixtures",
+            "status": "success"
+          },
+          {
+            "attribute": "checks.x86_64-linux.plan-runner-fixtures",
+            "elapsedSeconds": 1,
+            "name": "plan-runner-fixtures",
+            "status": "success"
+          },
+          {
+            "attribute": "checks.x86_64-linux.classifier-fixtures",
+            "elapsedSeconds": 3,
+            "name": "classifier-fixtures",
+            "status": "success"
+          }
+        ],
+        "runtime": [
+          {
+            "attribute": "checks.x86_64-linux.xo-latest",
+            "elapsedSeconds": 962,
+            "name": "xo-latest",
+            "status": "success"
+          },
+          {
+            "attribute": "checks.x86_64-linux.xo-stable",
+            "elapsedSeconds": 960,
+            "name": "xo-stable",
+            "status": "success"
+          },
+          {
+            "attribute": "checks.x86_64-linux.xo-rolling",
+            "elapsedSeconds": 697,
+            "name": "xo-rolling",
+            "status": "success"
+          },
+          {
+            "attribute": "checks.x86_64-linux.supply-protector-latest",
+            "elapsedSeconds": 56,
+            "name": "supply-protector-latest",
+            "status": "success"
+          },
+          {
+            "attribute": "checks.x86_64-linux.supply-protector-stable",
+            "elapsedSeconds": 44,
+            "name": "supply-protector-stable",
+            "status": "success"
+          },
+          {
+            "attribute": "checks.x86_64-linux.supply-protector-rolling",
+            "elapsedSeconds": 644,
+            "name": "supply-protector-rolling",
+            "status": "success"
+          },
+          {
+            "attribute": "checks.x86_64-linux.xo-fuse-linkage",
+            "elapsedSeconds": 1,
+            "name": "xo-fuse-linkage",
+            "status": "success"
+          },
+          {
+            "attribute": "checks.x86_64-linux.xo-server-service",
+            "elapsedSeconds": 67,
+            "name": "xo-server-service",
+            "status": "success"
+          },
+          {
+            "attribute": "checks.x86_64-linux.libvhdi",
+            "elapsedSeconds": 58,
+            "name": "libvhdi",
+            "status": "success"
+          },
+          {
+            "attribute": "checks.x86_64-linux.automation-runtime",
+            "elapsedSeconds": 8,
+            "name": "automation-runtime",
+            "status": "success"
+          }
+        ]
+      },
+      "url": "https://github.com/closure-labs/xo-nixpkg/actions/runs/39401010290",
+      "validationJob": {
+        "completedAt": "2026-10-20T10:03:00Z",
+        "elapsedSeconds": 1944,
+        "name": "Flake-defined validation",
+        "startedAt": "2026-10-20T09:30:36Z"
+      }
+    },
+    "serial": {
+      "conclusion": "success",
+      "rawEvidence": {
+        "preflight-timings.json": {
+          "sha256": "ebb61bfc84c6dd702e6b9fbfd378db1f9885ee619f078d3aaac3ac3c5d777bec",
+          "size": 1603
+        },
+        "preflight.json": {
+          "sha256": "20154632cb4a360b49146f57f9b96e34676488762059723680678407717033a8",
+          "size": 2488
+        },
+        "runtime-timings.json": {
+          "sha256": "ea5258a0e846a66f2231ecc836878ff8f27b03a86271a2c977134d53aac17245",
+          "size": 1686
+        },
+        "runtime.json": {
+          "sha256": "ab262ba062e11e95ad13c607a93f3888153d13dc9f93e7c25e94ed32096a23d5",
+          "size": 2643
+        }
+      },
+      "runId": 39400904119,
+      "runtimeBuildSlots": 1,
+      "targetElapsedSeconds": {
+        "preflight": [
+          {
+            "attribute": "checks.x86_64-linux.native-runtime-cleanup",
+            "elapsedSeconds": 2,
+            "name": "native-runtime-cleanup",
+            "status": "success"
+          },
+          {
+            "attribute": "checks.x86_64-linux.yarn-cache-fixtures",
+            "elapsedSeconds": 26,
+            "name": "yarn-cache-fixtures",
+            "status": "success"
+          },
+          {
+            "attribute": "checks.x86_64-linux.repository-policy",
+            "elapsedSeconds": 15,
+            "name": "repository-policy",
+            "status": "success"
+          },
+          {
+            "attribute": "checks.x86_64-linux.ci-runtime-fixtures",
+            "elapsedSeconds": 1,
+            "name": "ci-runtime-fixtures",
+            "status": "success"
+          },
+          {
+            "attribute": "checks.x86_64-linux.application-composition",
+            "elapsedSeconds": 4,
+            "name": "application-composition",
+            "status": "success"
+          },
+          {
+            "attribute": "checks.x86_64-linux.source-update-fixtures",
+            "elapsedSeconds": 7,
+            "name": "source-update-fixtures",
+            "status": "success"
+          },
+          {
+            "attribute": "checks.x86_64-linux.automation-fixtures",
+            "elapsedSeconds": 11,
+            "name": "automation-fixtures",
+            "status": "success"
+          },
+          {
+            "attribute": "checks.x86_64-linux.plan-runner-fixtures",
+            "elapsedSeconds": 1,
+            "name": "plan-runner-fixtures",
+            "status": "success"
+          },
+          {
+            "attribute": "checks.x86_64-linux.classifier-fixtures",
+            "elapsedSeconds": 3,
+            "name": "classifier-fixtures",
+            "status": "success"
+          }
+        ],
+        "runtime": [
+          {
+            "attribute": "checks.x86_64-linux.xo-latest",
+            "elapsedSeconds": 611,
+            "name": "xo-latest",
+            "status": "success"
+          },
+          {
+            "attribute": "checks.x86_64-linux.xo-stable",
+            "elapsedSeconds": 606,
+            "name": "xo-stable",
+            "status": "success"
+          },
+          {
+            "attribute": "checks.x86_64-linux.xo-rolling",
+            "elapsedSeconds": 657,
+            "name": "xo-rolling",
+            "status": "success"
+          },
+          {
+            "attribute": "checks.x86_64-linux.supply-protector-latest",
+            "elapsedSeconds": 38,
+            "name": "supply-protector-latest",
+            "status": "success"
+          },
+          {
+            "attribute": "checks.x86_64-linux.supply-protector-stable",
+            "elapsedSeconds": 35,
+            "name": "supply-protector-stable",
+            "status": "success"
+          },
+          {
+            "attribute": "checks.x86_64-linux.supply-protector-rolling",
+            "elapsedSeconds": 35,
+            "name": "supply-protector-rolling",
+            "status": "success"
+          },
+          {
+            "attribute": "checks.x86_64-linux.xo-fuse-linkage",
+            "elapsedSeconds": 1,
+            "name": "xo-fuse-linkage",
+            "status": "success"
+          },
+          {
+            "attribute": "checks.x86_64-linux.xo-server-service",
+            "elapsedSeconds": 55,
+            "name": "xo-server-service",
+            "status": "success"
+          },
+          {
+            "attribute": "checks.x86_64-linux.libvhdi",
+            "elapsedSeconds": 51,
+            "name": "libvhdi",
+            "status": "success"
+          },
+          {
+            "attribute": "checks.x86_64-linux.automation-runtime",
+            "elapsedSeconds": 6,
+            "name": "automation-runtime",
+            "status": "success"
+          }
+        ]
+      },
+      "url": "https://github.com/closure-labs/xo-nixpkg/actions/runs/39400904119",
+      "validationJob": {
+        "completedAt": "2026-10-20T10:07:57Z",
+        "elapsedSeconds": 2273,
+        "name": "Flake-defined validation",
+        "startedAt": "2026-10-20T09:30:04Z"
+      }
+    }
+  },
+  "schema": 1,
+  "scope": "one matched hosted cold-bootstrap pair",
+  "sourceRevision": "e7516001aacf0248eadb727086495b8451634405",
+  "workflow": ".github/workflows/ci.yml"
+}

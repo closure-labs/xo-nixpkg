@@ -19,11 +19,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   after compilation, keeping the compiled runtime addons and stock Node/OpenSSL.
 - Export transient Nix closures with Zstandard and avoid recompressing their
   artifact uploads. Retain candidate caches for seven days.
-- Add a bounded two-build concurrency option for CI measurements; keep the default
-  serial until comparable hosted measurements justify changing it.
+- Default hosted runtime validation to two bounded build slots after a matched
+  hosted pair completed 329 seconds (14.47%) faster with identical outputs for all
+  19 targets. Preserve the serial dispatch option and serial native/preflight runs.
 
 ### Fixed
 
+- Report bounded registry error categories when private evidence uploads fail,
+  without printing credentials, request URLs, or raw registry responses.
 - Authenticate the unique GitHub merged event for decision provenance when a
   queued PR retains a stale merge-preview SHA; keep exact content, protected-main
   ancestry, and live human authority checks unchanged.
