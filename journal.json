@@ -47,6 +47,22 @@
       },
       "name": "cache",
       "state": "complete"
+    },
+    {
+      "identity": {
+        "producer": {
+          "repository": "closure-labs/xo-nixpkg",
+          "revision": "4cdcae52167f3b2bc910debb079c6b5e4260a7d6",
+          "runAttempt": 1,
+          "runId": 39405616827,
+          "sourceRevision": "0f2aafca491b721c160f2d8f6d0d0763f8dc7118",
+          "workflow": ".github/workflows/qualification.yml"
+        },
+        "reference": "ghcr.io/closure-labs/xo-nixpkg-products@sha256:38ef1300de688cdd000660451e5b9d4f3789b8f936c70e01e497ad36316dcb19",
+        "sha256": "002e0502ebe648b34c2cf8bd394378b3ebb48e1aeb6728e5dcb49c59245fcb29"
+      },
+      "name": "handoff",
+      "state": "complete"
     }
   ]
 }
