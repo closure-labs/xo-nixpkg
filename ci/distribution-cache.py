@@ -93,7 +93,9 @@ def export(directory, roots):
     verify_roots(roots)
     with tempfile.TemporaryDirectory() as temporary:
         cache, archive = Path(temporary) / 'cache', Path(temporary) / 'distribution-cache.tar'
-        command(['nix', 'copy', '--to', cache.as_uri(), *sorted(expected)])
+        # Explicit fast compression avoids XZ's expensive default for transient
+        # multi-GiB CI transports. NAR identity is independent of compression.
+        command(['nix', 'copy', '--to', cache.as_uri() + '?compression=zstd&compression-level=3', *sorted(expected)])
         require(cache.is_dir() and (cache / 'nix-cache-info').is_file(), 'Nix did not export a valid binary cache')
         pack(cache, archive)
         manifest = {'schema': 1, 'parts': {}, 'archiveSha256': digest(archive), 'archiveSize': archive.stat().st_size}

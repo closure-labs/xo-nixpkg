@@ -4,12 +4,13 @@
     "publish": { "event": "push", "ref": "refs/heads/main" },
     "release": { "event": "push", "ref": "refs/heads/main" }
   },
-  "preflightTargets": ["yarn-cache-fixtures", "repository-policy", "ci-runtime-fixtures", "application-composition", "source-update-fixtures", "automation-fixtures", "plan-runner-fixtures", "classifier-fixtures"],
+  "preflightTargets": ["native-runtime-cleanup", "yarn-cache-fixtures", "repository-policy", "ci-runtime-fixtures", "application-composition", "source-update-fixtures", "automation-fixtures", "plan-runner-fixtures", "classifier-fixtures"],
   "validationTargets": [
+    { "name": "native-runtime-cleanup", "attribute": "checks.x86_64-linux.native-runtime-cleanup", "requires": [] },
     { "name": "yarn-cache-fixtures", "attribute": "checks.x86_64-linux.yarn-cache-fixtures", "requires": [] },
-    { "name": "xo-latest", "attribute": "checks.x86_64-linux.xo-latest", "requires": ["yarn-cache-fixtures"] },
-    { "name": "xo-stable", "attribute": "checks.x86_64-linux.xo-stable", "requires": ["yarn-cache-fixtures"] },
-    { "name": "xo-rolling", "attribute": "checks.x86_64-linux.xo-rolling", "requires": ["yarn-cache-fixtures"] },
+    { "name": "xo-latest", "attribute": "checks.x86_64-linux.xo-latest", "requires": ["native-runtime-cleanup", "yarn-cache-fixtures"] },
+    { "name": "xo-stable", "attribute": "checks.x86_64-linux.xo-stable", "requires": ["native-runtime-cleanup", "yarn-cache-fixtures"] },
+    { "name": "xo-rolling", "attribute": "checks.x86_64-linux.xo-rolling", "requires": ["native-runtime-cleanup", "yarn-cache-fixtures"] },
     { "name": "supply-protector-latest", "attribute": "checks.x86_64-linux.supply-protector-latest", "requires": ["xo-latest"] },
     { "name": "supply-protector-stable", "attribute": "checks.x86_64-linux.supply-protector-stable", "requires": ["xo-stable"] },
     { "name": "supply-protector-rolling", "attribute": "checks.x86_64-linux.supply-protector-rolling", "requires": ["xo-rolling"] },
@@ -68,7 +69,17 @@
     },
     {
       "pattern": "^nix/repository-checks\\.nix$",
-      "validation": ["yarn-cache-fixtures", "repository-policy", "ci-runtime-fixtures", "application-composition", "source-update-fixtures", "automation-fixtures", "plan-runner-fixtures", "classifier-fixtures", "automation-runtime"],
+      "validation": ["native-runtime-cleanup", "yarn-cache-fixtures", "repository-policy", "ci-runtime-fixtures", "application-composition", "source-update-fixtures", "automation-fixtures", "plan-runner-fixtures", "classifier-fixtures", "automation-runtime"],
+      "publication": []
+    },
+    {
+      "pattern": "^nix/cleanup-native-build-metadata\\.py$",
+      "validation": ["native-runtime-cleanup", "xo-latest", "xo-stable", "xo-rolling", "xo-fuse-linkage", "xo-server-service", "repository-policy"],
+      "publication": ["xo-latest", "xo-stable", "xo-rolling", "supply-protector-latest", "supply-protector-stable", "supply-protector-rolling"]
+    },
+    {
+      "pattern": "^tests/native-runtime-cleanup\\.py$",
+      "validation": ["native-runtime-cleanup", "repository-policy"],
       "publication": []
     },
     {

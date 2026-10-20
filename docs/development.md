@@ -39,6 +39,9 @@ valkey-server --bind 127.0.0.1
 
 The XO updater enters the pure `.#updater` shell automatically when needed.
 
+CI output reuse, scanner database sharing, compression measurements and the
+bounded concurrency pilot are documented in [Build performance](ci-build-performance.md).
+
 ## Build and Evaluate
 
 ```bash

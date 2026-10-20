@@ -179,6 +179,12 @@ stdenv.mkDerivation (
       stdenv.cc.cc.lib
     ];
 
+    # Generated node-gyp metadata must not retain its build-only toolchain.
+    disallowedRequisites = [
+      python3
+      node-gyp
+    ];
+
     env = {
       HUSKY = "0";
       CI = "1";
@@ -387,6 +393,11 @@ stdenv.mkDerivation (
       mkdir -p $out/libexec/xen-orchestra/docs
       cp -a docs/build-embed $out/libexec/xen-orchestra/docs/
 
+      # All native compilation is complete. Keep runtime addons/assets while
+      # removing verified generated metadata that otherwise captures Python,
+      # node-gyp and its unrelated Node runtime in the shipped closure.
+      ${python3}/bin/python3 ${./nix/cleanup-native-build-metadata.py} "$out/libexec/xen-orchestra"
+
       makeWrapper ${runtimeNode.nodejs}/bin/node $out/bin/xo-server \
         --chdir $out/libexec/xen-orchestra \
         --prefix LD_LIBRARY_PATH : ${lib.makeLibraryPath [ fuse ]} \
@@ -411,6 +422,40 @@ stdenv.mkDerivation (
       '
 
       xo_root="$out/libexec/xen-orchestra"
+      XO_INSTALL_ROOT="$xo_root" ${runtimeNode.nodejs}/bin/node <<'JS'
+      const assert = require("node:assert/strict");
+      const fs = require("node:fs");
+      const os = require("node:os");
+      const path = require("node:path");
+      const root = process.env.XO_INSTALL_ROOT;
+      async function checkNativeAddons() {
+        const argon2 = require(root + "/node_modules/argon2");
+        const hash = await argon2.hash("xo-native-install-check", { memoryCost: 8192, timeCost: 2, parallelism: 1 });
+        assert(await argon2.verify(hash, "xo-native-install-check"));
+        assert.equal(await argon2.verify(hash, "incorrect-password"), false);
+        const temporary = fs.mkdtempSync(path.join(os.tmpdir(), "xo-leveldown-check-"));
+        const db = require(root + "/node_modules/leveldown")(path.join(temporary, "db"));
+        const call = (method, ...args) => new Promise((resolve, reject) => {
+          db[method](...args, (error, value) => error ? reject(error) : resolve(value));
+        });
+        let opened = false;
+        try {
+          await call("open", { createIfMissing: true });
+          opened = true;
+          await call("put", "native-check", "installed-runtime");
+          assert.equal((await call("get", "native-check")).toString(), "installed-runtime");
+        } finally {
+          if (opened) await call("close");
+          fs.rmSync(temporary, { recursive: true, force: true });
+        }
+        require(root + "/node_modules/fuse-native");
+        for (const name of ["argon2", "fuse-native", "leveldown"]) {
+          assert.equal(fs.existsSync(path.join(root, "node_modules", name, "build/config.gypi")), false);
+        }
+      }
+      checkNativeAddons().catch(error => { console.error(error); process.exitCode = 1; });
+      JS
+
       fuse_native_root="$xo_root/node_modules/fuse-native"
       test -d "$fuse_native_root"
 

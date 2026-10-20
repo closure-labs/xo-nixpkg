@@ -10,7 +10,7 @@ from pathlib import Path
 import tarfile
 import tempfile
 from unittest.mock import patch
-from urllib.parse import urlparse
+from urllib.parse import parse_qs, urlparse
 
 spec = importlib.util.spec_from_file_location('distribution_cache', Path(__file__).parents[1] / 'ci/distribution-cache.py')
 cache = importlib.util.module_from_spec(spec)
@@ -39,6 +39,7 @@ class Nix:
             return json.dumps({ROOT: {'narHash': self.nar_hash}}).encode()
         assert args[:2] == ['nix', 'copy']
         if args[2] == '--to':
+            assert parse_qs(urlparse(args[3]).query) == {'compression': ['zstd'], 'compression-level': ['3']}
             output = Path(urlparse(args[3]).path)
             output.mkdir()
             (output / 'nix-cache-info').write_text('StoreDir: /nix/store\n')

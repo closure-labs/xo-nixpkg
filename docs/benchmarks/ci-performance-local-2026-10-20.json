@@ -1,0 +1,171 @@
+{
+  "authorityClaim": false,
+  "measuredAt": "2026-10-20",
+  "nativeCleanup": {
+    "addedPaths": [
+      "/nix/store/7rgckrz7zf9l3rvidb4987gcxgi07a8i-xen-orchestra-ce-6.9.1"
+    ],
+    "afterNarBytes": 2010110608,
+    "afterPaths": 55,
+    "authorityClaim": false,
+    "beforeNarBytes": 2270465672,
+    "beforePaths": 74,
+    "kind": "actual-native-cleanup-closure-comparison",
+    "nativeInstallChecksPassed": true,
+    "newRoot": "/nix/store/7rgckrz7zf9l3rvidb4987gcxgi07a8i-xen-orchestra-ce-6.9.1",
+    "oldRoot": "/nix/store/k03ang69fdb55fj37v78rpvm6wl4l8n9-xen-orchestra-ce-6.9.1",
+    "publicationInvoked": false,
+    "removedPaths": [
+      "/nix/store/20d48zxzx014s43kdmc2zjksy1h3bhfk-merve-1.2.2",
+      "/nix/store/65sjy017bdrypxl0hb2pzbdshgq20lpf-gtest-1.18.0",
+      "/nix/store/7rx5im6jbgyfhrl0lc0kyxd9yf14rdxc-expat-2.9.0",
+      "/nix/store/fisi9algzl2pcxb2xfhgp2yw5mzjfdwg-nodejs-slim-24.21.0",
+      "/nix/store/fsrw69w5mx838p7xydbdvywhwl6wnbjw-tzdata-2026e",
+      "/nix/store/hxg65alxvkr4gbpbbxwcn5g8wwz5mygw-nodejs-slim-24.21.0-corepack",
+      "/nix/store/i68jrr4ixqmpb5dk5phddx7bnhlwqffs-mailcap-2.1.54",
+      "/nix/store/j1j9b0w3mhpccdli73ycj5w7nf6fkzqz-nodejs-24.21.0",
+      "/nix/store/j9436i4mh2hlhnlqlk59fq5dc2sprs4i-readline-8.3p3",
+      "/nix/store/k03ang69fdb55fj37v78rpvm6wl4l8n9-xen-orchestra-ce-6.9.1",
+      "/nix/store/kwnng131d6nb0k6vlrm2rr6q77m81ikp-nodejs-slim-24.21.0-npm",
+      "/nix/store/nh206cbbnzcl0pab6ym63sfsglgxazp6-nbytes-0.1.4",
+      "/nix/store/pfav6492acf7d8m41lggwqghpprkq9di-gdbm-1.26-lib",
+      "/nix/store/pfds9zw10xksh0zr7qplqg1lj9avs2gz-libffi-3.8.0",
+      "/nix/store/pn560hmfi1m59bg6ifdi7v13h2bnvyw4-node-gyp-13.1.0",
+      "/nix/store/qnwk2r737q9yc6m1532aq52q7z12nqqx-hdrhistogram_c-0.11.10",
+      "/nix/store/qwzgw6wlb5ghsy3ph0x1p9mvf3mxwms5-mpdecimal-4.0.1",
+      "/nix/store/r9nlzwasmr1hgcbrfzcp2b2cz33scij2-ncurses-6.6",
+      "/nix/store/xahxrjs30p3mw0a42bqg9ikgkikskw8m-python3-3.14.8",
+      "/nix/store/zx4ag3v11v9rl0iqvg6vzbpflzlg0dk2-bzip2-1.0.8"
+    ],
+    "schema": 1
+  },
+  "publicationInvoked": false,
+  "sandbox": {
+    "childContainsCredentialKeys": [],
+    "dummyCredentialsOnly": true,
+    "launcherSha256": "9053d3862e950e499d426a5c9b6c242ab58595a89d2b2a0346a0cab1acbe533e",
+    "operations": [
+      {
+        "exitCode": 0,
+        "label": "version"
+      },
+      {
+        "exitCode": 0,
+        "label": "hostile-config-environment"
+      },
+      {
+        "exitCode": 1,
+        "label": "out-of-flake-dummy-credential"
+      },
+      {
+        "exitCode": 1,
+        "label": "forced-sandbox-no-chroot"
+      },
+      {
+        "exitCode": 0,
+        "label": "executing-sandboxed-builder"
+      }
+    ],
+    "outsideStoreMarkerExists": false,
+    "packagedPlanNix": "/nix/store/zfmvn2xhih6ywajc0i9g36gxhc810sik-xo-nixpkg-candidate-nix/bin/xo-nixpkg-candidate-nix",
+    "pinnedNix": "/nix/store/z3fxqxbjggzsqa23076csafqyvx042zh-nix-2.34.9/bin/nix"
+  },
+  "schema": 1,
+  "scope": "local acceptance host; no network-transfer or hosted end-to-end performance claim",
+  "serviceVm": {
+    "output": "/nix/store/5xzqalr1mzv8i9r1wf9c8ka8avvl189m-vm-test-run-xo-server-service",
+    "status": "pass"
+  },
+  "sharedDatabase": {
+    "authorityClaim": false,
+    "database": {
+      "built": "2026-10-20T06:29:49Z",
+      "schemaVersion": "v6.1.10"
+    },
+    "databasePreparations": 1,
+    "elapsedSeconds": 24.009,
+    "fullDatabaseHashesUnchanged": true,
+    "kind": "actual-shared-database-native-integration",
+    "normalizer": "/nix/store/yjhmgwp11kid1bdwdcwmrn636q9w1wly-security-normalize.py",
+    "profileCount": 2,
+    "profiles": {
+      "libvhdi": {
+        "bothMatcherProbesPassed": true,
+        "elapsedSeconds": 8.952,
+        "inventorySha256": "defe65bc9d86ddacbdea274954a27ce501b7ace7db1d8a7a799f9f1ca75389cf",
+        "observations": 1,
+        "scanSha256": "7f24adca2480afb46cd2c8bef29a84ebfbfe062264e819520790bd90837a5c3d",
+        "scannerHealth": "healthy",
+        "status": "complete",
+        "subject": {
+          "narHash": "sha256-ciXqX2X8pP59CpFL3Xg+NYk5yDqAaBlgf/eTpJxJGJk=",
+          "storePath": "/nix/store/pg2bz23bd9a8567gqavq3iy01rydljsj-libvhdi-20251119"
+        }
+      },
+      "xo-latest": {
+        "bothMatcherProbesPassed": true,
+        "elapsedSeconds": 12.2,
+        "inventorySha256": "d729552d29294390fd8047773156459dfa65a2b4296cfbfe9671264e50736ad2",
+        "observations": 290,
+        "scanSha256": "c95e8a038afa0da83d9badfec5b121d4aca6f2d7848240bfd9cf5a5109f747b3",
+        "scannerHealth": "healthy",
+        "status": "complete",
+        "subject": {
+          "narHash": "sha256-5qzZOfDZjl47awUA0fFX/6vwUPHiHTB0keijKmQwKtg=",
+          "storePath": "/nix/store/7rgckrz7zf9l3rvidb4987gcxgi07a8i-xen-orchestra-ce-6.9.1"
+        }
+      }
+    },
+    "publicationInvoked": false,
+    "scannerSourceSha256": "6ea75c8001ec7912dd6b0aad38bae6da361805bbac5b6a9b10f434d59a4180f0",
+    "schema": 1,
+    "snapshotReceiptSha256": "48be830774c35ff520d9d2b482c615cb1c98361d6b3cd24533872a53035b2a6f",
+    "status": "pass"
+  },
+  "transport": {
+    "coldRestore": {
+      "allClosureNarHashesUnchanged": true,
+      "archiveBytes": 645171200,
+      "authorityClaim": false,
+      "buildsExecuted": 0,
+      "closurePaths": 74,
+      "coldRestoreSeconds": 9.43,
+      "emptyStoreBeforeImport": true,
+      "exportSeconds": 7.652,
+      "kind": "actual-empty-store-zstd-roundtrip",
+      "physicalVerificationSeconds": 6.616,
+      "publicationInvoked": false,
+      "root": "/nix/store/k03ang69fdb55fj37v78rpvm6wl4l8n9-xen-orchestra-ce-6.9.1",
+      "rootNarHash": "sha256-I5V+n5JvgYZilwHRHpenh0yf8ph/n/IvUuIcAWTGA7Y=",
+      "schema": 1
+    },
+    "xz": {
+      "archiveBytes": 451860480,
+      "archiveParts": 1,
+      "authorityClaim": false,
+      "closureNarBytes": 2270465672,
+      "closurePaths": 74,
+      "exportSeconds": 1378.87,
+      "kind": "local-existing-closure-export-measurement",
+      "narHash": "sha256-I5V+n5JvgYZilwHRHpenh0yf8ph/n/IvUuIcAWTGA7Y=",
+      "notes": "Existing transport/default compression; local machine only. No network transfer or cold restore measured.",
+      "publicationInvoked": false,
+      "root": "/nix/store/k03ang69fdb55fj37v78rpvm6wl4l8n9-xen-orchestra-ce-6.9.1",
+      "schema": 1
+    },
+    "zstd": {
+      "archiveBytes": 645171200,
+      "archiveParts": 1,
+      "authorityClaim": false,
+      "closureNarBytes": 2270465672,
+      "closurePaths": 74,
+      "exportSeconds": 15.51,
+      "kind": "local-existing-closure-export-measurement",
+      "narHash": "sha256-I5V+n5JvgYZilwHRHpenh0yf8ph/n/IvUuIcAWTGA7Y=",
+      "notes": "Existing transport/Zstandard level 3; local machine only. No network transfer or cold restore measured.",
+      "publicationInvoked": false,
+      "root": "/nix/store/k03ang69fdb55fj37v78rpvm6wl4l8n9-xen-orchestra-ce-6.9.1",
+      "schema": 1
+    }
+  }
+}

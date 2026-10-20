@@ -9,6 +9,7 @@ import os
 from pathlib import Path
 import shutil
 import subprocess
+import tempfile
 
 
 def command(*args):
@@ -20,7 +21,9 @@ def main():
     output = Path(os.environ.get('XO_NIXPKG_EVIDENCE', 'security-evidence'))
     product = json.loads((source / 'product.json').read_text())
     # Fetch wrapper authenticated the immutable product before credentials were removed.
-    for key in ('GH_TOKEN', 'GITHUB_TOKEN', 'CACHIX_AUTH_TOKEN', 'REGISTRY_TOKEN'):
+    for key in ('GH_TOKEN', 'GITHUB_TOKEN', 'CACHIX_AUTH_TOKEN', 'REGISTRY_TOKEN',
+                'SECAUDIT_PEM', 'DECIDER_KEY', 'XO_AUTHORITY_TOKEN',
+                'ACTIONS_ID_TOKEN_REQUEST_TOKEN', 'ACTIONS_RUNTIME_TOKEN'):
         os.environ.pop(key, None)
     previous_scan = json.loads((source / 'scans.json').read_text())
     spec = importlib.util.spec_from_file_location('distribution_cache', os.environ['XO_NIXPKG_DISTRIBUTION_CACHE_SOURCE'])
@@ -37,27 +40,36 @@ def main():
         if path.is_symlink() or hashlib.sha256(path.read_bytes()).hexdigest() != expected:
             raise ValueError('retained immutable inventory differs from signed product')
     shutil.copytree(source, output, symlinks=False)
+    # A failed refresh must not leave the retained aggregate looking like a
+    # newly completed invocation. Immutable product/inventory bytes stay intact.
+    (output / 'scans.json').unlink()
+    for handoff in output.glob('handoff-*.json'):
+        handoff.unlink()
     started = datetime.datetime.now(datetime.timezone.utc)
     profiles = {}
-    for profile, root in product['products'].items():
-        subjects = [root, *({k: v for k, v in extra.items() if k != 'profile'}
-                           for extra in product.get('roots', {}).values() if extra['profile'] == profile)]
-        for subject in subjects:
-            path = subject['storePath']
-            subprocess.run(['nix-store', '--realise', path], check=True)
-            response = json.loads(command('nix', 'path-info', '--json', path))
-            actual = response[0] if isinstance(response, list) else response[path]
-            if actual['narHash'] != subject['narHash']:
-                raise ValueError('retained output NAR hash mismatch')
-        directory = output / profile
-        # Inventory is copied from an immutable product asset and includes exact
-        # deployed paths. Raw scanner output is replaced with fresh observations.
-        flat_inventory = output / (profile + '--runtime.cdx.json')
-        if (directory / 'runtime.cdx.json').read_bytes() != flat_inventory.read_bytes():
-            raise ValueError('runtime inventory differs from authenticated product asset')
-        subprocess.run(['xo-nixpkg-security-native-scan', str(directory), str(directory)], check=True)
-        profiles[profile] = json.loads((directory / 'scan.json').read_text())
-        profiles[profile]['subjects'] = subjects
+    with tempfile.TemporaryDirectory(prefix='xo-security-db-') as temporary:
+        snapshot = Path(temporary) / 'snapshot'
+        database_receipt = command('xo-nixpkg-security-database', 'prepare', str(snapshot))
+        for profile, root in product['products'].items():
+            subjects = [root, *({k: v for k, v in extra.items() if k != 'profile'}
+                               for extra in product.get('roots', {}).values() if extra['profile'] == profile)]
+            for subject in subjects:
+                path = subject['storePath']
+                subprocess.run(['nix-store', '--realise', path], check=True)
+                response = json.loads(command('nix', 'path-info', '--json', path))
+                actual = response[0] if isinstance(response, list) else response[path]
+                if actual['narHash'] != subject['narHash']:
+                    raise ValueError('retained output NAR hash mismatch')
+            directory = output / profile
+            # Inventory is copied from an immutable product asset and includes exact
+            # deployed paths. Raw scanner output is replaced with fresh observations.
+            flat_inventory = output / (profile + '--runtime.cdx.json')
+            if (directory / 'runtime.cdx.json').read_bytes() != flat_inventory.read_bytes():
+                raise ValueError('runtime inventory differs from authenticated product asset')
+            subprocess.run(['xo-nixpkg-security-native-scan', str(directory), str(directory),
+                            '--database', str(snapshot), '--database-receipt-sha256', database_receipt], check=True)
+            profiles[profile] = json.loads((directory / 'scan.json').read_text())
+            profiles[profile]['subjects'] = subjects
     scan = {'schema': 1, 'repository': product['repository'], 'revision': product['revision'],
             'producer': {'workflow': '.github/workflows/qualification.yml',
                          'revision': command('git', 'rev-parse', 'HEAD'),

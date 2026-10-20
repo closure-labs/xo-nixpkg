@@ -50,5 +50,6 @@ if jq -e '.targets | length > 0' "$preflight_plan" >/dev/null; then
 fi
 if jq -e '.targets | length > 0' "$runtime_plan" >/dev/null; then
   flake-plan-runner --flake "$flake_ref" --plan-file "$runtime_plan" \
-    --manifest "$evidence_dir/runtime.json" --timings "$evidence_dir/runtime-timings.json"
+    --manifest "$evidence_dir/runtime.json" --timings "$evidence_dir/runtime-timings.json" \
+    --jobs "${XO_NIXPKG_BUILD_JOBS:-1}"
 fi

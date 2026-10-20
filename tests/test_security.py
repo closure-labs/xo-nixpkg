@@ -421,6 +421,9 @@ class RefreshTests(unittest.TestCase):
                     (Path(args[2]) / 'scan.json').write_text(json.dumps({'status': 'complete', 'scannerHealth': 'healthy', 'observations': []}))
 
             def fake_command(*args):
+                if args[0] == 'xo-nixpkg-security-database':
+                    self.assertEqual(args[1], 'prepare')
+                    return 'c' * 64
                 return 'b' * 40 if args[0] == 'git' else json.dumps({'/nix/store/immutable': {'narHash': 'sha256-fixture'}})
 
             with patch.dict(os.environ, {'XO_NIXPKG_RESCAN_SOURCE': str(source), 'XO_NIXPKG_EVIDENCE': str(output),
