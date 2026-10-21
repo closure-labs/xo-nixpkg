@@ -32,15 +32,22 @@ class ConsumerProbe(unittest.TestCase):
     def test_clean_destination_recursive_signature_and_byte_verification(self):
         result = probe.probe(PRODUCT, 'https://cache.example', 'cache-key', self.execute)
         self.assertEqual(result['status'], 'verified')
-        copy, verify, metadata = self.calls
-        store = copy[copy.index('--to') + 1]
+        realise, verify, metadata = self.calls
+        self.assertEqual(realise[:2],['nix-store','--realise'])
+        store = realise[realise.index('--store') + 1]
         self.assertTrue(store.startswith('local?root='))
         self.assertFalse(Path(store.removeprefix('local?root=')).exists())
         self.assertEqual(verify[verify.index('--store') + 1], store)
         self.assertIn('--recursive', verify)
         self.assertEqual(verify[verify.index('--sigs-needed') + 1], '1')
-        self.assertNotIn('--no-check-sigs', copy)
-        self.assertEqual(copy[-1], PATH)
+        self.assertNotIn('--no-check-sigs', realise)
+        self.assertIn(' '.join(('cache-key',*probe.UPSTREAM_KEYS)),realise)
+        self.assertIn(' '.join(('https://cache.example',*probe.UPSTREAM_CACHES)),realise)
+        self.assertIn(['--option','max-jobs','0'],[realise[i:i+3] for i in range(len(realise)-2)])
+        self.assertIn(['--option','builders',''],[realise[i:i+3] for i in range(len(realise)-2)])
+        self.assertIn(['--option','fallback','false'],[realise[i:i+3] for i in range(len(realise)-2)])
+        self.assertIn(['--option','substitute','true'],[realise[i:i+3] for i in range(len(realise)-2)])
+        self.assertEqual(realise[-1], PATH)
         self.assertEqual(metadata[-1], PATH)
 
     def test_hash_mismatch_blocks(self):
@@ -49,10 +56,16 @@ class ConsumerProbe(unittest.TestCase):
             probe.probe(PRODUCT, 'https://cache.example', 'cache-key', self.execute)
 
     def test_download_or_signature_failure_blocks(self):
-        for operation in ('copy', 'verify'):
+        for operation in ('--realise', 'verify'):
             self.failure = operation
             with self.assertRaises(subprocess.CalledProcessError):
                 probe.probe(PRODUCT, 'https://cache.example', 'cache-key', self.execute)
+
+    def test_derivations_and_non_store_paths_are_rejected_before_execution(self):
+        for path in [PATH+'.drv','--repair','/tmp/fixture']:
+            product={'products':{'fixture':{'storePath':path,'narHash':HASH}}}
+            with self.assertRaises(ValueError):probe.probe(product,'https://cache.example','cache-key',self.execute)
+        self.assertEqual(self.calls,[])
 
 
 if __name__ == '__main__':

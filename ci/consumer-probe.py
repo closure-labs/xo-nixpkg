@@ -3,29 +3,40 @@
 """Download public bytes into a disposable store and verify hashes and signatures."""
 import argparse
 import json
+import re
 from pathlib import Path
-import subprocess
 import tempfile
 import sys
 import common
+import operations
+
+UPSTREAM_CACHES = ('https://cache.nixos.org',)
+UPSTREAM_KEYS = ('cache.nixos.org-1:6NCHdD59X431o0gWypbMrAURkbJ16ZPMQFGspcDShjY=',)
 
 
-def probe(product, cache, public_key, execute=subprocess.run):
+def probe(product, cache, public_key, execute=operations.run):
     entries = [*product['products'].values(), *product.get('roots', {}).values()]
     expected = {}
     for entry in entries:
         path, digest = entry['storePath'], entry['narHash']
+        common.require(isinstance(path,str) and re.fullmatch(r'/nix/store/[0-9abcdfghijklmnpqrsvwxyz]{32}-[^/\s]+',path)
+                       and not path.endswith('.drv'), 'Consumer roots must be output paths')
         common.require(path not in expected or expected[path] == digest, 'Conflicting consumer roots')
         expected[path] = digest
     common.require(expected, 'Consumer probe needs exact approved roots')
     paths = sorted(expected)
     with tempfile.TemporaryDirectory(prefix='public-consumer-') as temporary:
         store = 'local?root=' + temporary
-        options = ['--option', 'trusted-public-keys', public_key,
-                   '--option', 'require-sigs', 'true', '--option', 'substituters', '',
+        options = ['--option', 'trusted-public-keys', ' '.join((public_key, *UPSTREAM_KEYS)),
+                   '--option', 'require-sigs', 'true',
+                   '--option', 'substituters', ' '.join((cache, *UPSTREAM_CACHES)),
+                   '--option', 'max-jobs', '0', '--option', 'builders', '',
+                   '--option', 'substitute', 'true', '--option', 'fallback', 'false',
                    '--option', 'narinfo-cache-positive-ttl', '0', '--option', 'narinfo-cache-negative-ttl', '0']
-        # The disposable destination cannot satisfy a request from the runner store.
-        execute(['nix', 'copy', '--from', cache, '--to', store, *options, *paths],
+        # Cachix omits paths available upstream. Substitute into an empty store
+        # using exactly the pinned public caches/keys, never the runner's store or
+        # a local/remote builder. Input derivations are explicitly rejected.
+        execute(['nix-store', '--realise', '--store', store, *options, *paths],
                 check=True, capture_output=True, timeout=900)
         execute(['nix', 'store', 'verify', '--store', store, '--recursive', '--sigs-needed', '1',
                  *options, *paths], check=True, capture_output=True, timeout=600)
