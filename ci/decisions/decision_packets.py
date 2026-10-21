@@ -326,10 +326,13 @@ def metadata_bytes(reference, expected, name, producer=None):
     with operations.budget(90), tempfile.TemporaryDirectory() as temporary:
         directory = Path(temporary)
         _, members = inspect(reference)
-        if name not in members or members[name]['size'] > 16 * 1024**2:
+        # Native observations aggregate every profile and can exceed 60 MiB.
+        # Only this exact document gets the larger bounded read allowance.
+        limit = (128 if name == 'scans.json' else 16) * 1024**2
+        if name not in members or members[name]['size'] > limit:
             raise ValueError('Packet metadata member is absent or oversized')
         descriptor = packet_descriptor(fetch_member('decision-packet.json', directory, members), members, expected)
-        if producer is not None and descriptor['producer'] != producer:
+        if producer is not None and canonical_hash(descriptor['producer']) != canonical_hash(producer):
             raise ValueError('Packet metadata producer differs from reviewed descriptor')
         path = directory / 'decision-packet.json' if name == 'decision-packet.json' else fetch_member(name, directory, members)
         return path.read_bytes()

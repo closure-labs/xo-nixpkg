@@ -47,6 +47,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- Read the native multi-profile scans.json observation document with a dedicated 128 MiB bound while retaining 16 MiB limits for other packet metadata and all integrity/deadline checks.
+
 - Read back all eight approved paths and NAR hashes from the protected public
   cache after upload, bypassing local metadata caches. Stop before publication
   checkpoints and downstream handoffs if remote bytes differ or are unavailable.
