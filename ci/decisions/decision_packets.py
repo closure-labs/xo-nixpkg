@@ -105,6 +105,20 @@ def command(args, max_file_bytes=None, **kwargs):
         return bounded_command(args, max_file_bytes=max_file_bytes, **kwargs)
 
 
+def public_manifest_not_found(args, stderr):
+    # ORAS1.3.4 maps the registry's HTTP404 to this typed ErrNotFound message.
+    # Match the entire native diagnostic and repeated requested reference only;
+    # arbitrary "not found" text is never evidence of destination absence.
+    if (len(args) != 4 or Path(args[0]).name != 'oras'
+            or args[1:3] != ['manifest', 'fetch']):
+        return False
+    reference = args[3]
+    if not re.fullmatch(r'ghcr[.]io/closure-labs/xo-nixpkg-products(?:@sha256:[0-9a-f]{64}|:packet-[0-9a-f]{64})', reference):
+        return False
+    expected = f'Error response from registry: failed to fetch the content of "{reference}": {reference}: not found\n'
+    return stderr == expected.encode()
+
+
 def bounded_command(args, max_file_bytes=None, allow_missing=False, **kwargs):
     # Preserve existing output/blob file limits. Drain stderr separately, so a
     # large authenticated blob allowance cannot enlarge diagnostic storage.
@@ -142,11 +156,11 @@ def bounded_command(args, max_file_bytes=None, allow_missing=False, **kwargs):
             except BaseException:
                 operations.terminate(child)
                 raise
-            if child.returncode == 1 and allow_missing and args[1:3] == ['manifest', 'fetch'] and stderr_bytes <= MAX_COMMAND_STDERR:
+            if child.returncode == 1 and allow_missing and args[1:3] == ['manifest', 'fetch'] and stderr_bytes <= MAX_COMMAND_STDERR and capture.tell() == 0:
                 diagnostic = json.loads(str(command_failure(args,child.returncode,tail,stderr_bytes,limit)).split(': ',1)[1])
                 if (set(diagnostic['categories']) <= {'registry-manifest','unclassified'}
                         and {int(code) for code in re.findall(rb'(?i)\b(?:status(?:\s+code)?|http/[0-9.]+)\s*[:=]?\s*([0-9]{3})\b',tail)} <= {404}
-                        and re.search(rb'(?i)\b(?:MANIFEST_UNKNOWN|NAME_UNKNOWN)\b|manifest unknown|name unknown',tail)):
+                        and re.search(rb'(?i)\b(?:MANIFEST_UNKNOWN|NAME_UNKNOWN)\b|manifest unknown|name unknown',tail)) or public_manifest_not_found(args, bytes(tail)):
                     return None
             if child.returncode:
                 raise command_failure(args, child.returncode, tail, stderr_bytes, limit) from None
