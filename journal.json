@@ -63,6 +63,13 @@
       },
       "name": "handoff",
       "state": "complete"
+    },
+    {
+      "identity": {
+        "revision": "6e04e763cbee17b3d6a83ec38122812261a71bf4"
+      },
+      "name": "xo-tag",
+      "state": "complete"
     }
   ]
 }
