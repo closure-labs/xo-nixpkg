@@ -61,7 +61,8 @@ workflow_state() {
 work=$(mktemp -d)
 trap 'rm -rf -- "$work"; oras logout ghcr.io >/dev/null 2>&1 || true' EXIT
 export XO_NIXPKG_EVIDENCE="$work/$run_id"
-if ! gh run download "$run_id" --repo "$GITHUB_REPOSITORY" --name "qualified-products-$run_id-$attempt" --dir "$XO_NIXPKG_EVIDENCE"; then
+# Bound optional artifact transport before the existing authenticated recovery path.
+if ! timeout --signal=TERM --kill-after=10s 600s gh run download "$run_id" --repo "$GITHUB_REPOSITORY" --name "qualified-products-$run_id-$attempt" --dir "$XO_NIXPKG_EVIDENCE"; then
   rm -rf -- "$XO_NIXPKG_EVIDENCE"
   printf '%s' "$REGISTRY_TOKEN" | oras login ghcr.io --username "$GITHUB_ACTOR" --password-stdin
   export QUALIFICATION_RUN="$run_id" QUALIFICATION_ATTEMPT="$attempt"
