@@ -29,12 +29,16 @@ wrong signing key and corrupt compressed NAR bytes. The weekly probe tests the
 latest accepted product; an approved product still awaiting publication fails
 this expectation rather than silently falling back to an older product.
 
-For #119, retained closure manifests show differing NAR hashes on the same
-three XO root paths. Stable and rolling have identical closure membership;
-latest additionally changed three automation helper paths. Inventory differences
-are confined to closure/derivation-document bindings. These observations do not
-locate the differing file contents. Admitted records and public objects remain
-unchanged. Comparing retained exact NARs is still required to establish a cause.
+For #119, complete retained and public NAR downloads match their respective
+admitted hashes but differ at 124 latest, 126 stable and 131 rolling paths under
+the same immutable store names. Every changed path is a retained Turbo build
+log, embedded documentation asset or generated runtime source/bundle/map.
+Generated mixin and locale indexes contain identical lines in different orders;
+logs include elapsed build times and documentation includes timestamped search
+assets. These are observed nondeterministic build outputs, never an exemption
+from exact byte approval or remote conflict checks. The [file-hash comparison](benchmarks/xo-product-119-nar-comparison.json)
+records each difference and verified NAR identity. Admitted records and public
+objects remain unchanged; deterministic-build remediation is separate.
 
 No percentage savings are claimed from the incident-heavy audit sample.
 
