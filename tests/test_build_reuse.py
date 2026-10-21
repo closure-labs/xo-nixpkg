@@ -203,6 +203,36 @@ class ProducerTests(ReuseFixture):
 
 
 class IsolationAndPlanTests(ReuseFixture):
+    def test_disabled_artifact_reuse_still_builds_every_selected_phase(self):
+        candidate = self.directory / 'candidate'
+        candidate.mkdir()
+        (self.controller / 'ci').mkdir(exist_ok=True)
+        (self.controller / 'ci/classifier.json').write_text(json.dumps({'preflightTargets': ['policy']}))
+        targets = [{'name': 'policy', 'attribute': 'checks.x86_64-linux.policy'},
+                   {'name': 'xo-latest', 'attribute': 'checks.x86_64-linux.xo-latest'}]
+        plan = {'schemaVersion': 2, 'name': 'selected', 'targets': targets}
+        environment = {'PATH': '/trusted/bin', 'GH_TOKEN': 'read-only-fixture',
+                       'XO_NIXPKG_REUSE_BUILDS': 'false',
+                       'PREPARED_CI_WORKFLOW': json.dumps({'jobs': {'validate': {'plan': plan}}}),
+                       'XO_NIXPKG_TRUSTED_PLAN_NIX': '/nix/store/' + '4' * 32 + '-candidate-nix/bin/xo-nixpkg-candidate-nix',
+                       'XO_NIXPKG_PLAN_RUNNER': '/nix/store/trusted-plan-runner/bin/runner'}
+        built = []
+        def build(args, **kwargs):
+            built.extend(json.loads(Path(args[args.index('--plan-file') + 1]).read_text())['targets'])
+            self.assertNotIn('GH_TOKEN', kwargs['env'])
+        with patch.dict(os.environ, environment, clear=True), \
+             patch.object(reuse, 'nix', return_value='') as native, \
+             patch.object(reuse, 'api') as discovery, \
+             patch.object(reuse.subprocess, 'run', side_effect=build):
+            reuse.validate(candidate, self.controller, self.directory / 'evidence')
+        self.assertEqual(built, targets)
+        discovery.assert_not_called()
+        self.assertEqual(native.call_count, 1)
+        self.assertEqual(native.call_args.args[1:4], ('flake', 'check', '--no-build'))
+        receipt = json.loads((self.directory / 'evidence/reuse-restore.json').read_text())
+        self.assertEqual(receipt['status'], 'miss')
+        self.assertFalse(receipt['authorityClaim'])
+
     def test_native_child_has_no_inherited_credentials_or_user_nix_configuration(self):
         poison = {'GH_TOKEN': 'secret', 'GITHUB_TOKEN': 'secret', 'AWS_SECRET_ACCESS_KEY': 'secret',
                   'CACHIX_AUTH_TOKEN': 'secret', 'ACTIONS_ID_TOKEN_REQUEST_TOKEN': 'secret',
@@ -350,6 +380,32 @@ class RestoreTests(ReuseFixture):
         return reuse.restore(self.directory / 'candidate', self.controller,
                              self.directory / 'result.json', ['xo-latest'])
 
+    def test_explicitly_disabled_imports_do_not_discover_or_evaluate_artifacts(self):
+        with patch.dict(os.environ, {'XO_NIXPKG_REUSE_BUILDS': 'false'}), \
+             patch.object(reuse, 'api') as discovery, \
+             patch.object(reuse, 'identity') as evaluate:
+            result = self.restore()
+        self.assertEqual(result['status'], 'miss')
+        self.assertEqual(result['reason'], 'Actions artifact imports disabled')
+        self.assertFalse(result['authorityClaim'])
+        self.assertEqual(json.loads((self.directory / 'result.json').read_text()), result)
+        discovery.assert_not_called()
+        evaluate.assert_not_called()
+        self.download.assert_not_called()
+        self.attestation.assert_not_called()
+        self.transport.restore.assert_not_called()
+        self.native.assert_not_called()
+
+    def test_import_option_rejects_invalid_values_before_discovery(self):
+        for value in ('', 'False', '0', 'yes', 'true\n'):
+            with self.subTest(value=value), \
+                 patch.dict(os.environ, {'XO_NIXPKG_REUSE_BUILDS': value}), \
+                 patch.object(reuse, 'api') as discovery:
+                with self.assertRaisesRegex(ValueError, 'must be true or false'):
+                    self.restore()
+                discovery.assert_not_called()
+        self.transport.restore.assert_not_called()
+
     def test_authenticated_hit_imports_expected_nar_and_physically_verifies_without_build(self):
         result = self.restore()
         self.assertEqual(result['status'], 'hit')
@@ -377,6 +433,90 @@ class RestoreTests(ReuseFixture):
         self.receipt['tree'] = 'e' * 40
         self.assertEqual(self.restore()['status'], 'miss')
         self.transport.restore.assert_not_called()
+
+    def test_missing_historical_pr_association_is_cold_build_miss(self):
+        # GitHub can drop a merged PR's association from historical run metadata.
+        for association in ([], None):
+            with self.subTest(association=association):
+                if association is None:
+                    self.run.pop('pull_requests', None)
+                else:
+                    self.run['pull_requests'] = association
+                result = self.restore()
+                self.assertEqual(result['status'], 'miss')
+        self.assertFalse(result['authorityClaim'])
+        self.attestation.assert_not_called()
+        self.transport.restore.assert_not_called()
+        self.native.assert_not_called()
+        self.assertEqual(json.loads((self.directory / 'result.json').read_text()), result)
+
+    def test_missing_pr_association_continues_to_an_authenticated_candidate(self):
+        unavailable = dict(self.run, id=102, pull_requests=[])
+        self.runs = [unavailable, self.run]
+        original_api = self.api
+
+        def api(path):
+            if path.endswith('/actions/runs/102/attempts/2'):
+                return copy.deepcopy(unavailable)
+            if path.endswith('/actions/runs/102/artifacts'):
+                return {'artifacts': [dict(self.artifacts[0], name='xo-ci-reuse-receipt-102-2')]}
+            return original_api(path)
+
+        def download(args, **kwargs):
+            if args[3] == '102':
+                destination = Path(args[args.index('--dir') + 1])
+                destination.mkdir(parents=True)
+                (destination / 'receipt.json').write_text(json.dumps(dict(self.receipt, runId=102)))
+                return ''
+            return self.command(args, **kwargs)
+
+        with patch.object(reuse, 'api', side_effect=api), \
+             patch.object(reuse, 'command', side_effect=download):
+            result = self.restore()
+        self.assertEqual(result['status'], 'hit')
+        self.assertEqual(result['runId'], 101)
+        self.attestation.assert_called_once()
+        self.transport.restore.assert_called_once()
+
+    def test_invalid_supplied_pr_provenance_remains_a_hard_failure(self):
+        original = copy.deepcopy(self.run['pull_requests'])
+        for association in (None, {}, 'untrusted', original * 2,
+                            [dict(original[0], base=dict(original[0]['base'], sha='f' * 40))]):
+            with self.subTest(association=association):
+                self.run['pull_requests'] = association
+                with self.assertRaises(ValueError):
+                    self.restore()
+                self.assertFalse((self.directory / 'result.json').exists())
+        self.attestation.assert_not_called()
+        self.transport.restore.assert_not_called()
+        self.native.assert_not_called()
+
+    def test_authenticated_previous_controller_bytes_are_cold_build_misses(self):
+        for key in ('launcherSha256', 'workflowSha256'):
+            with self.subTest(key=key):
+                original = self.receipt[key]
+                # Independently queried historical blobs agree with this receipt.
+                self.receipt[key] = '0' * 64
+                result = self.restore()
+                self.assertEqual(result['status'], 'miss')
+                self.assertFalse(result['authorityClaim'])
+                self.receipt[key] = original
+        self.assertEqual(self.attestation.call_count, 2)
+        self.transport.restore.assert_not_called()
+        self.native.assert_not_called()
+
+    def test_previous_controller_still_requires_valid_attestation_and_receipt(self):
+        self.receipt['launcherSha256'] = '0' * 64
+        self.attestation.side_effect = ValueError('signature invalid')
+        with self.assertRaisesRegex(ValueError, 'signature invalid'):
+            self.restore()
+        self.attestation.side_effect = None
+        self.receipt['outputs']['xo-latest']['storePath'] = '/tmp/forged-output'
+        with self.assertRaisesRegex(ValueError, 'Invalid authenticated output'):
+            self.restore()
+        self.transport.restore.assert_not_called()
+        self.native.assert_not_called()
+        self.assertFalse((self.directory / 'result.json').exists())
 
     def test_changed_evaluated_derivation_cannot_reuse_same_named_output(self):
         self.evaluated['derivation'] = '/nix/store/' + '4' * 32 + '-changed.drv'

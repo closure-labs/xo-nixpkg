@@ -27,6 +27,10 @@ ATTRIBUTES = {
 }
 
 
+class UnavailableProducer(ValueError):
+    """Optional historical run metadata cannot authenticate this cache candidate."""
+
+
 def require(value, message):
     if not value:
         raise ValueError(message)
@@ -118,7 +122,7 @@ def blob(repository, revision, path):
 
 
 def producer(receipt, controller, tree):
-    """Return eligibility; a receipt is never its own source of authority."""
+    """Validate historical provenance; a receipt never supplies its own authority."""
     require(isinstance(receipt, dict) and receipt.get('schema') == 1
             and receipt.get('repository') == REPOSITORY, 'Invalid reuse receipt identity')
     require(receipt.get('tree') == tree and receipt.get('system') == 'x86_64-linux', 'Reuse tree/platform mismatch')
@@ -150,7 +154,11 @@ def producer(receipt, controller, tree):
             'Reuse run does not identify the built commit')
     if receipt['event'] == 'pull_request':
         pulls = run.get('pull_requests', [])
-        require(len(pulls) == 1, 'Reuse run must identify one protected-base PR')
+        # GitHub may omit a merged PR's historical run association. Never infer
+        # its protected base from today's mutable PR state; try another cache.
+        if pulls == []:
+            raise UnavailableProducer('Reuse run must identify one protected-base PR: historical association unavailable')
+        require(isinstance(pulls, list) and len(pulls) == 1, 'Reuse run must identify one protected-base PR')
         base, head = pulls[0].get('base', {}), pulls[0].get('head', {})
         repo_url = f'https://api.github.com/repos/{REPOSITORY}'
         require(base.get('ref') == 'main' and base.get('sha') == receipt['controller']
@@ -170,16 +178,20 @@ def producer(receipt, controller, tree):
     current = api(f'repos/{REPOSITORY}/git/ref/heads/main')['object']['sha']
     ancestry = api(f'repos/{REPOSITORY}/compare/{receipt["controller"]}...{current}')
     require(ancestry.get('status') in ('ahead', 'identical'), 'Reuse controller was not protected main')
-    expected_workflow = digest(controller / WORKFLOW)
-    require(receipt.get('workflowSha256') == expected_workflow
-            and blob(REPOSITORY, receipt['source'], WORKFLOW) == expected_workflow
-            and blob(REPOSITORY, receipt['controller'], WORKFLOW) == expected_workflow,
-            'Candidate workflow differs from trusted controller')
-    expected_launcher = digest(Path(__file__))
-    require(receipt.get('launcherSha256') == expected_launcher
-            and blob(REPOSITORY, receipt['controller'], 'ci/build-reuse.py') == expected_launcher,
-            'Reuse launcher differs from trusted controller')
+    historical_workflow = blob(REPOSITORY, receipt['controller'], WORKFLOW)
+    require(receipt.get('workflowSha256') == historical_workflow
+            and blob(REPOSITORY, receipt['source'], WORKFLOW) == historical_workflow,
+            'Candidate workflow differs from historical protected controller')
+    require(receipt.get('launcherSha256') == blob(REPOSITORY, receipt['controller'], 'ci/build-reuse.py'),
+            'Reuse launcher differs from historical protected controller')
     return run
+
+
+def compatible_producer(receipt, controller):
+    # Apply only after historical provenance, signature and output validation.
+    # Legitimate protected-controller upgrades make old bytes ineligible.
+    if receipt['workflowSha256'] != digest(controller / WORKFLOW) or receipt['launcherSha256'] != digest(Path(__file__)):
+        raise UnavailableProducer('Authenticated historical controller differs from current trusted controller')
 
 
 def verify_attestation(path, receipt):
@@ -212,6 +224,13 @@ def restore(candidate, controller, output, names):
 def restore_available(candidate, controller, output, names):
     """An authentic cache hit imports bytes, never a validation/admission verdict."""
     started = time.monotonic()
+    reuse_builds = os.environ.get('XO_NIXPKG_REUSE_BUILDS', 'true')
+    require(reuse_builds in ('true', 'false'), 'XO_NIXPKG_REUSE_BUILDS must be true or false')
+    if reuse_builds == 'false':
+        result = {'schema': 1, 'status': 'miss', 'reason': 'Actions artifact imports disabled',
+                  'authorityClaim': False}
+        write_json(output, result)
+        return result
     if not os.environ.get('GH_TOKEN'):
         result = {'schema': 1, 'status': 'miss', 'reason': 'no read-only artifact credential', 'authorityClaim': False}
         write_json(output, result)
@@ -239,8 +258,11 @@ def restore_available(candidate, controller, output, names):
             receipt = read_json(path)
             if receipt.get('tree') != tree:
                 continue
-            producer(receipt, controller, tree)
-            require(receipt['runId'] == run_id and receipt['runAttempt'] == attempt, 'Artifact/run substitution')
+            require(receipt.get('runId') == run_id and receipt.get('runAttempt') == attempt, 'Artifact/run substitution')
+            try:
+                producer(receipt, controller, tree)
+            except UnavailableProducer:
+                continue
             verify_attestation(path, receipt)
             outputs = receipt.get('outputs')
             require(isinstance(outputs, dict) and outputs and set(outputs) <= ATTRIBUTES.keys(), 'Invalid reuse output set')
@@ -251,6 +273,10 @@ def restore_available(candidate, controller, output, names):
                         and re.fullmatch(r'sha256-[A-Za-z0-9+/]{43}=', item['narHash']), 'Invalid authenticated output')
                 if name in expected and all(item[key] == expected[name][key] for key in expected[name]):
                     matched.append(name)
+            try:
+                compatible_producer(receipt, controller)
+            except UnavailableProducer:
+                continue
             if not matched:
                 continue
             payload = directory / 'payload'

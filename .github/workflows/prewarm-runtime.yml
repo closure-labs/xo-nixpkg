@@ -8,7 +8,7 @@ permissions:
   contents: read
 
 concurrency:
-  group: publication-${{ github.repository }}
+  group: runtime-prewarm-${{ github.repository }}
   queue: max
 
 jobs:

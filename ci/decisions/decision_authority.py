@@ -44,6 +44,47 @@ def proposal_path(proposal):
     return 'automation/decisions/' + KINDS[proposal['kind']] + '/' + canonical_hash(proposal) + '.json'
 
 
+def api_failure_details(status, headers, output):
+    """Expose typed rate-limit metadata and fixed categories, never response text."""
+    fields = {}
+    for header, name, maximum in (
+            (b'x-ratelimit-limit', 'limit', 10**9),
+            (b'x-ratelimit-remaining', 'remaining', 10**9),
+            (b'x-ratelimit-reset', 'reset', 99999999999),
+            (b'retry-after', 'retry-after', 86400)):
+        value = headers.get(header)
+        if value is not None and re.fullmatch(rb'[0-9]{1,11}', value):
+            number = int(value)
+            if number <= maximum:
+                fields[name] = str(number)
+    resource_name = headers.get(b'x-ratelimit-resource')
+    if resource_name in (b'core', b'search', b'graphql'):
+        fields['resource'] = resource_name.decode('ascii')
+    # Error messages may contain credentials or private response data. Inspect
+    # only a small bounded JSON body to select a fixed, non-reflecting category.
+    message = ''
+    body = output.read(8193)
+    if len(body) <= 8192:
+        try:
+            response = json.loads(body)
+            if isinstance(response, dict) and isinstance(response.get('message'), str):
+                message = response['message'].lower()
+        except (ValueError, UnicodeError, RecursionError):
+            pass
+    if status in (403, 429):
+        if fields.get('remaining') == '0':
+            fields['category'] = 'primary-rate-limit'
+        elif 'secondary rate limit' in message or 'retry-after' in fields:
+            fields['category'] = 'secondary-rate-limit'
+        elif 'api rate limit exceeded' in message:
+            fields['category'] = 'rate-limit'
+        elif message == 'resource not accessible by integration':
+            fields['category'] = 'permission-denied'
+    elif status == 401 and message == 'bad credentials':
+        fields['category'] = 'bad-credentials'
+    return ''.join('; ' + name + '=' + value for name, value in fields.items())
+
+
 def github_api(endpoint):
     # Endpoint is constructed from validated repository, PR numbers and hashes.
     # GitHub base64 JSON needs more space than the bounded raw document. Bound
@@ -51,6 +92,7 @@ def github_api(endpoint):
     def bound_output():
         resource.setrlimit(resource.RLIMIT_FSIZE, (MAX_API_BYTES, MAX_API_BYTES))
     for attempt in range(1, 4):
+        details = ''
         with tempfile.TemporaryFile() as output:
             try:
                 result = subprocess.run(['gh', 'api', '--method', 'GET', '--include', endpoint],
@@ -73,6 +115,7 @@ def github_api(endpoint):
                         raise AuthorityError('Invalid GitHub API status')
                     status = int(status[1])
                     header_bytes = len(line)
+                    headers = {}
                     while True:
                         line = output.readline(8193)
                         header_bytes += len(line)
@@ -80,19 +123,26 @@ def github_api(endpoint):
                             raise AuthorityError('Invalid bounded GitHub API headers')
                         if line in (b'\n', b'\r\n'):
                             break
+                        name, separator, value = line.partition(b':')
+                        name = name.lower()
+                        if separator and name in (b'x-ratelimit-limit', b'x-ratelimit-remaining',
+                                                  b'x-ratelimit-reset', b'x-ratelimit-resource', b'retry-after'):
+                            # Duplicate diagnostic headers are ambiguous: suppress them.
+                            headers[name] = None if name in headers else value.strip()
                     failure = f'HTTP {status}'
                     if status == 200 and result.returncode == 0:
                         try:
                             return json.load(output)
                         except (ValueError, UnicodeError) as error:
                             raise AuthorityError('Invalid GitHub API response') from error
+                    details = api_failure_details(status, headers, output)
                     if status not in (408, 429, 500, 502, 503, 504):
                         raise AuthorityError('GitHub authority API failed: ' + endpoint.split('?')[0]
-                                             + f' ({failure}; attempt {attempt})')
+                                             + f' ({failure}; attempt {attempt}{details})')
         # Retry only fresh read requests. No response or authority is cached.
         if attempt == 3:
             raise AuthorityError('GitHub authority API failed: ' + endpoint.split('?')[0]
-                                 + f' ({failure}; 3 attempts)')
+                                 + f' ({failure}; 3 attempts{details})')
         time.sleep(attempt)
 
 

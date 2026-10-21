@@ -200,6 +200,21 @@ class ParentDatabaseTests(unittest.TestCase):
         self.assertEqual(len(list(self.output.glob('handoff-*.json'))), 4)
         self.assertTrue(list(self.output.glob('distribution-cache.tar.part-*')))
 
+    def test_qualification_builds_each_support_output_once_and_retains_exact_assertion(self):
+        qualify.main()
+        product = json.loads((self.output / 'product.json').read_text())
+        for channel in ('latest', 'stable', 'rolling'):
+            attribute = 'supply-protector-' + channel
+            self.assertEqual(self.builds.count(attribute), 1)
+            assertion = self.output / ('xo-' + channel) / 'supply-protector/assertion.json'
+            self.assertEqual(json.loads(assertion.read_text()), {'source': self.store(attribute)})
+            flattened = 'xo-' + channel + '--supply-protector--assertion.json'
+            self.assertEqual((self.output / flattened).read_bytes(), assertion.read_bytes())
+            self.assertEqual(product['assets'][flattened], hashlib.sha256(assertion.read_bytes()).hexdigest())
+            self.assertEqual(product['roots'][attribute]['storePath'], self.store(attribute))
+        self.assertEqual(self.builds.count('automation-runtime'), 1)
+        self.assertEqual(len(self.builds), 8)
+
     def test_qualification_scan_failure_cleans_database_and_never_publishes_aggregate(self):
         self.fail_profile = 'xo-rolling'
         with self.assertRaises(subprocess.CalledProcessError): qualify.main()

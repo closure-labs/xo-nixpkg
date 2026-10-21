@@ -8,23 +8,48 @@ from pathlib import Path
 import re
 import subprocess
 import tempfile
+import time
 
 
 def canonical(value):
     return json.dumps(value, sort_keys=True, separators=(',', ':'), ensure_ascii=False, allow_nan=False).encode()
 
 
-def api(repository, endpoint, body=None, method=None, missing=False):
+def api(repository, endpoint, body=None, method=None, missing=False, timeout=None):
     args = ['gh', 'api', f'repos/{repository}/{endpoint}']
     if body is not None:
         args += ['--method', method or 'POST', '--input', '-']
     result = subprocess.run(args, input=json.dumps(body) if body is not None else None,
-                            text=True, capture_output=True, check=False)
+                            text=True, capture_output=True, check=False, timeout=timeout)
     if result.returncode:
         if missing and 'HTTP 404' in result.stderr:
             return None
         raise RuntimeError('GitHub journal API failed: ' + endpoint)
     return json.loads(result.stdout)
+
+
+def commit_sha(value):
+    if not isinstance(value, str) or not re.fullmatch(r'[0-9a-f]{40}', value):
+        raise ValueError('publication journal returned invalid commit identity')
+    return value
+
+
+def reference_sha(value, branch):
+    if (not isinstance(value, dict) or value.get('ref') != 'refs/heads/' + branch
+            or not isinstance(value.get('object'), dict) or value['object'].get('type') != 'commit'):
+        raise ValueError('publication journal returned invalid reference identity')
+    try:
+        return commit_sha(value['object'].get('sha'))
+    except ValueError:
+        raise ValueError('publication journal returned invalid reference commit identity') from None
+
+
+def readback_error(reason, expected, observed, prior, attempts):
+    # Only validated immutable identities and a bounded attempt count are safe
+    # diagnostics. A stale observation alone does not establish another writer.
+    return ValueError('publication journal ' + reason + ': expected=' + expected
+                      + ' observed=' + (observed or 'none') + ' knownPrior=' + (prior or 'none')
+                      + ' attempts=' + str(attempts))
 
 
 class Journal:
@@ -33,7 +58,7 @@ class Journal:
         self.digest = hashlib.sha256(canonical(product)).hexdigest()
         self.branch = 'automation/publication-' + self.digest
         ref = api(repository, 'git/ref/heads/' + self.branch, missing=True)
-        self.commit = ref['object']['sha'] if ref else None
+        self.commit = reference_sha(ref, self.branch) if ref is not None else None
         if self.commit:
             commit = api(repository, 'git/commits/' + self.commit)
             tree = api(repository, 'git/trees/' + commit['tree']['sha'])
@@ -54,16 +79,49 @@ class Journal:
         body = {'message': 'Record immutable publication ' + self.digest, 'tree': tree['sha'],
                 'parents': [self.commit] if self.commit else []}
         commit = api(self.repository, 'git/commits', body)
-        if self.commit:
+        expected = commit_sha(commit.get('sha'))
+        prior = self.commit
+        if prior:
             # A concurrent writer produces a sibling commit; force=false refuses
             # its non-fast-forward update instead of losing either checkpoint.
-            api(self.repository, 'git/refs/heads/' + self.branch, {'sha': commit['sha'], 'force': False}, method='PATCH')
+            acknowledged = api(self.repository, 'git/refs/heads/' + self.branch,
+                               {'sha': expected, 'force': False}, method='PATCH')
         else:
-            api(self.repository, 'git/refs', {'ref': 'refs/heads/' + self.branch, 'sha': commit['sha']})
-        live = api(self.repository, 'git/ref/heads/' + self.branch)
-        if live['object']['sha'] != commit['sha']:
-            raise ValueError('publication journal changed concurrently')
-        self.commit = commit['sha']
+            acknowledged = api(self.repository, 'git/refs',
+                               {'ref': 'refs/heads/' + self.branch, 'sha': expected})
+        try:
+            observed = reference_sha(acknowledged, self.branch)
+        except ValueError:
+            raise readback_error('write acknowledgement has invalid reference', expected, None, prior, 0) from None
+        if observed != expected:
+            raise readback_error('write acknowledgement differs', expected, observed, prior, 0)
+        deadline = time.monotonic() + 4
+        observed = prior
+        for attempt in range(1, 6):
+            remaining = deadline - time.monotonic()
+            if remaining <= 0:
+                raise readback_error('readback deadline exceeded', expected, observed or 'none', prior, attempt - 1)
+            try:
+                live = api(self.repository, 'git/ref/heads/' + self.branch, missing=True, timeout=remaining)
+            except subprocess.TimeoutExpired:
+                raise readback_error('readback deadline exceeded', expected, observed or 'none', prior, attempt) from None
+            except (RuntimeError, ValueError):
+                raise readback_error('readback API failed', expected, observed or 'none', prior, attempt) from None
+            try:
+                observed = reference_sha(live, self.branch) if live is not None else None
+            except ValueError:
+                raise readback_error('readback returned invalid reference', expected, None, prior, attempt) from None
+            if observed == expected:
+                self.commit = expected
+                return
+            if observed != prior:
+                raise readback_error('unexpected readback head', expected, observed, prior, attempt)
+            remaining = deadline - time.monotonic()
+            if attempt == 5 or remaining <= 0:
+                raise readback_error('readback remained at known prior head', expected, observed, prior, attempt)
+            # Retry only the exact previous head (or confirmed prior absence),
+            # never another writer's head or a general API failure.
+            time.sleep(min(.5, remaining))
 
     def complete(self, name, identity):
         existing = next((step for step in self.value['steps'] if step['name'] == name), None)

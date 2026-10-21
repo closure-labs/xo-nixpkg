@@ -537,6 +537,117 @@ class Authority(unittest.TestCase):
             self.assertEqual(run.call_count, 1)
             sleep.assert_not_called()
 
+    def test_github_api_primary_rate_limit_reports_only_typed_metadata(self):
+        response = (b'HTTP/2.0 403 Forbidden\r\nX-RateLimit-Limit: 5000\r\n'
+                    b'X-RateLimit-Remaining: 0\r\nX-RateLimit-Reset: 1792539852\r\n'
+                    b'X-RateLimit-Resource: core\r\nAuthorization: private-header\r\n'
+                    b'X-GitHub-Request-Id: private-request\r\n\r\n'
+                    b'{"message":"API rate limit exceeded for private-installation"}')
+        def request(arguments, **kwargs):
+            kwargs['stdout'].write(response)
+            return subprocess.CompletedProcess(arguments, 1)
+        with patch.object(mod.subprocess, 'run', side_effect=request) as run, \
+             patch.object(mod.time, 'sleep') as sleep, self.assertRaises(mod.AuthorityError) as error:
+            mod.github_api('repos/example/repository?private-query')
+        self.assertEqual(str(error.exception), 'GitHub authority API failed: repos/example/repository '
+                         '(HTTP 403; attempt 1; limit=5000; remaining=0; reset=1792539852; '
+                         'resource=core; category=primary-rate-limit)')
+        self.assertEqual(run.call_count, 1)
+        sleep.assert_not_called()
+
+    def test_github_api_secondary_limits_and_permission_denials_never_retry(self):
+        for headers, body, expected in (
+                (b'Retry-After: 60\r\nX-RateLimit-Remaining: 42\r\n',
+                 b'{"message":"You have exceeded a secondary rate limit. private-data"}',
+                 '; remaining=42; retry-after=60; category=secondary-rate-limit'),
+                (b'', b'{"message":"You have exceeded a secondary rate limit. private-data"}',
+                 '; category=secondary-rate-limit'),
+                (b'', b'{"message":"Resource not accessible by integration"}',
+                 '; category=permission-denied'),
+                (b'', b'{"message":"private-data"}', '')):
+            def request(arguments, **kwargs):
+                kwargs['stdout'].write(b'HTTP/2.0 403 Forbidden\r\n' + headers + b'\r\n' + body)
+                return subprocess.CompletedProcess(arguments, 1)
+            with self.subTest(expected=expected), patch.object(mod.subprocess, 'run', side_effect=request) as run, \
+                 patch.object(mod.time, 'sleep') as sleep, self.assertRaises(mod.AuthorityError) as error:
+                mod.github_api('repos/example/repository?private-query')
+            self.assertEqual(str(error.exception), 'GitHub authority API failed: repos/example/repository '
+                             '(HTTP 403; attempt 1' + expected + ')')
+            self.assertEqual(run.call_count, 1)
+            sleep.assert_not_called()
+
+    def test_github_api_invalid_diagnostic_headers_and_bodies_never_leak(self):
+        headers = (b'X-RateLimit-Limit: private-limit\r\nX-RateLimit-Remaining: private-token\r\n'
+                   b'X-RateLimit-Remaining: 0\r\nX-RateLimit-Reset: 999999999999\r\n'
+                   b'X-RateLimit-Resource: private-resource\r\nRetry-After: 86401\r\n'
+                   b'X-GitHub-Request-Id: ABCD:1234:1234:1234567\r\n'
+                   b'Authorization: private-token\r\n')
+        for body in (b'private-body', b'{"message":42}', b'[]', b'\xff',
+                     b'[' * 2000 + b']' * 2000,
+                     b'{"message":"' + b'x' * 8192 + b'secondary rate limit"}',
+                     b'{"message":"private-token","token":"private-token"}'):
+            def request(arguments, **kwargs):
+                kwargs['stdout'].write(b'HTTP/2.0 403 Forbidden\r\n' + headers + b'\r\n' + body)
+                return subprocess.CompletedProcess(arguments, 1)
+            with self.subTest(body=body[:20]), patch.object(mod.subprocess, 'run', side_effect=request) as run, \
+                 patch.object(mod.time, 'sleep') as sleep, self.assertRaises(mod.AuthorityError) as error:
+                mod.github_api('repos/example/repository?private-query')
+            self.assertEqual(str(error.exception), 'GitHub authority API failed: repos/example/repository '
+                             '(HTTP 403; attempt 1)')
+            self.assertEqual(run.call_count, 1)
+            sleep.assert_not_called()
+
+    def test_github_api_success_keeps_payload_with_diagnostic_headers(self):
+        def request(arguments, **kwargs):
+            kwargs['stdout'].write(b'HTTP/2.0 200 OK\r\nX-RateLimit-Remaining: 0\r\n'
+                                   b'Retry-After: 60\r\n\r\n{"safe":true}')
+            return subprocess.CompletedProcess(arguments, 0)
+        with patch.object(mod.subprocess, 'run', side_effect=request) as run, \
+             patch.object(mod.time, 'sleep') as sleep:
+            self.assertEqual(mod.github_api('repos/example/repository'), {'safe': True})
+        self.assertEqual(run.call_count, 1)
+        sleep.assert_not_called()
+
+    def test_github_api_retry_exhaustion_keeps_only_final_safe_metadata(self):
+        def request(arguments, **kwargs):
+            kwargs['stdout'].write(b'HTTP/2.0 503 Unavailable\r\nRetry-After: 7\r\n'
+                                   b'Secret: private-header\r\n\r\n{"message":"private-body"}')
+            return subprocess.CompletedProcess(arguments, 1)
+        with patch.object(mod.subprocess, 'run', side_effect=request) as run, \
+             patch.object(mod.time, 'sleep') as sleep, self.assertRaises(mod.AuthorityError) as error:
+            mod.github_api('repos/example/repository?private-query')
+        self.assertEqual(str(error.exception), 'GitHub authority API failed: repos/example/repository '
+                         '(HTTP 503; 3 attempts; retry-after=7)')
+        self.assertEqual(run.call_count, 3)
+        self.assertEqual(sleep.call_args_list, [unittest.mock.call(1), unittest.mock.call(2)])
+
+    def test_github_api_invalid_credentials_category_does_not_echo_body(self):
+        def request(arguments, **kwargs):
+            kwargs['stdout'].write(b'HTTP/2.0 401 Unauthorized\r\n\r\n'
+                                   b'{"message":"Bad credentials","token":"private-token"}')
+            return subprocess.CompletedProcess(arguments, 1)
+        with patch.object(mod.subprocess, 'run', side_effect=request) as run, \
+             patch.object(mod.time, 'sleep') as sleep, self.assertRaises(mod.AuthorityError) as error:
+            mod.github_api('repos/example/repository?private-query')
+        self.assertEqual(str(error.exception), 'GitHub authority API failed: repos/example/repository '
+                         '(HTTP 401; attempt 1; category=bad-credentials)')
+        self.assertEqual(run.call_count, 1)
+        sleep.assert_not_called()
+
+    def test_github_api_diagnostics_do_not_retain_previous_retry_response(self):
+        responses = iter([b'HTTP/2.0 503 Service Unavailable\r\nRetry-After: 7\r\n\r\n{}',
+                          b'HTTP/2.0 403 Forbidden\r\n\r\n{"message":"private-body"}'])
+        def request(arguments, **kwargs):
+            kwargs['stdout'].write(next(responses))
+            return subprocess.CompletedProcess(arguments, 1)
+        with patch.object(mod.subprocess, 'run', side_effect=request) as run, \
+             patch.object(mod.time, 'sleep') as sleep, self.assertRaises(mod.AuthorityError) as error:
+            mod.github_api('repos/example/repository?private-query')
+        self.assertEqual(str(error.exception), 'GitHub authority API failed: repos/example/repository '
+                         '(HTTP 403; attempt 2)')
+        self.assertEqual(run.call_count, 2)
+        sleep.assert_called_once_with(1)
+
     def test_large_blob_metadata_encoding_size_and_object_hash_must_agree(self):
         _, metadata, original = self.large_blob()
         tampered = bytearray(base64.b64decode(original['content']))

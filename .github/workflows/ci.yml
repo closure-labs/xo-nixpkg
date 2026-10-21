@@ -13,6 +13,10 @@ on:
         type: choice
         options: ['1', '2']
         default: '2'
+      reuse_builds:
+        description: Import authenticated Actions build artifacts when available
+        type: boolean
+        default: true
 
 concurrency:
   group: ci-${{ github.event.pull_request.number || github.event.merge_group.head_ref || github.ref }}
@@ -78,6 +82,7 @@ jobs:
       cache_eligible: ${{ steps.trusted.outputs.cache_eligible }}
     env:
       XO_NIXPKG_BUILD_JOBS: ${{ github.event_name == 'workflow_dispatch' && inputs.build_jobs || '2' }}
+      XO_NIXPKG_REUSE_BUILDS: ${{ (github.event_name != 'workflow_dispatch' || inputs.reuse_builds) && 'true' || 'false' }}
       PREPARED_CI_WORKFLOW: ${{ needs.classify.outputs.workflow }}
     steps:
       - name: Audit runner traffic

@@ -1,5 +1,6 @@
 # SPDX-License-Identifier: Apache-2.0
 name: Qualify immutable products
+run-name: ${{ inputs.qualification_run != '' && format('Refresh qualification {0} attempt {1}', inputs.qualification_run, inputs.qualification_attempt || 'current') || 'Qualify immutable products' }}
 on:
   push:
     branches: [main]
@@ -10,6 +11,10 @@ on:
     inputs:
       qualification_run:
         description: Optional retained product run to refresh without changing release identity
+        type: string
+        required: false
+      qualification_attempt:
+        description: Expected retained qualification attempt; empty resolves the current successful attempt
         type: string
         required: false
 permissions:
@@ -45,6 +50,7 @@ jobs:
         if: github.event_name == 'schedule' || inputs.qualification_run != ''
         env:
           QUALIFICATION_RUN: ${{ inputs.qualification_run }}
+          QUALIFICATION_ATTEMPT: ${{ inputs.qualification_attempt }}
           GH_TOKEN: ${{ github.token }}
           REGISTRY_TOKEN: ${{ github.token }}
           XO_NIXPKG_FETCH_FOR_RESCAN: 'true'
