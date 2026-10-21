@@ -59,18 +59,37 @@ def loads(value):
                       parse_constant=lambda value: (_ for _ in ()).throw(ValueError(f"invalid JSON constant: {value}")))
 
 
+def shared_native(record):
+    values = record.get("properties", [])
+    if not isinstance(values, list):
+        return False
+    marker = [item for item in values if isinstance(item, dict)
+              and item.get("name") == "xo-nixpkg:sharedNative"]
+    return (isinstance(record.get("bom-ref"), str)
+            and record["bom-ref"].startswith("shared-native:")
+            and marker == [{"name": "xo-nixpkg:sharedNative", "value": "true"}])
+
+
 def properties(record):
     result = {}
     values = record.get("properties", [])
     require(isinstance(values, list), "invalid inventory properties")
+    multiple = {"xo-nixpkg:installedPath", "nix:derivation"} if shared_native(record) else set()
     for item in values:
         require(isinstance(item, dict) and isinstance(item.get("name"), str)
                 and isinstance(item.get("value"), str), "invalid inventory property")
         # sbomnix emits one nix:output_path per output of a derivation.
         # Provenance and runtime properties remain single-valued.
-        require(item["name"] not in result or item["name"] == "nix:output_path",
+        require(item["name"] not in result or item["name"] == "nix:output_path" or item["name"] in multiple,
                 "duplicate inventory property")
-        result[item["name"]] = item["value"]
+        if item["name"] in multiple:
+            entries = result.setdefault(item["name"], [])
+            require(item["value"] not in entries, "duplicate native exposure value")
+            entries.append(item["value"])
+        else:
+            result[item["name"]] = item["value"]
+    for name in multiple & result.keys():
+        result[name] = sorted(result[name])
     return result
 
 
@@ -251,6 +270,24 @@ def verify_finding(record, components, context):
     require(record["component"] == component["name"] and record["version"] == component.get("version")
             and binding.get("purl") == component.get("purl"), "finding package differs from inventory")
     props = properties(component)
+    if shared_native(component):
+        output = props.get("nix:storePath")
+        installed = props.get("xo-nixpkg:installedPath", [])
+        derivations = props.get("nix:derivation", [])
+        require(isinstance(output, str) and STORE.fullmatch(output) and installed
+                and all((path == output or path.startswith(output + "/"))
+                        and str(Path(path)) == path and ".." not in Path(path).parts
+                        for path in installed), "invalid shared native file exposure")
+        require(derivations and all(STORE.fullmatch(path) and path.endswith(".drv")
+                                   for path in derivations), "invalid shared native derivations")
+        require(binding.get("normalizer") == "shared-native-v1"
+                and binding.get("installed_paths") == installed
+                and binding.get("native_derivations") == derivations,
+                "finding shared native exposure differs from inventory")
+    else:
+        require(binding.get("normalizer") != "shared-native-v1"
+                and "installed_paths" not in binding and "native_derivations" not in binding,
+                "unexpected shared native exposure binding")
     expected = {
         "output_path": props.get("nix:storePath", props.get("nix:output_path")),
         "derivation": props.get("maestro:derivation", props.get("xo-nixpkg:derivation")),

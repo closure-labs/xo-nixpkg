@@ -27,7 +27,15 @@ cp "$protector/xen-orchestra.cdx.json" "$output/inventory.cdx.json"
 cp "$protector/assertion.json" "$output/assertion.json"
 # Every invocation uses a fresh, age-validated database. Canary failures are
 # infrastructure failures even in report mode; no finding is hidden by them.
-export GRYPE_DB_CACHE_DIR="$work/grype-db"
+if [[ -n ${XO_SECURITY_DATABASE:-} ]]; then
+  python3 "${XO_OPERATIONS_SOURCE:-$(dirname -- "${BASH_SOURCE[0]}")/decisions/operations.py}" --timeout 30 -- xo-nixpkg-security-database verify "$XO_SECURITY_DATABASE" "${XO_SECURITY_DATABASE_RECEIPT:?}" --max-age-hours 24
+  for variable in "${!GRYPE_@}"; do unset "$variable"; done
+  export GRYPE_DB_CACHE_DIR="$XO_SECURITY_DATABASE/db"
+  export GRYPE_DB_AUTO_UPDATE=false GRYPE_DB_REQUIRE_UPDATE_CHECK=false
+  grype() { command grype --config "$XO_SECURITY_DATABASE/grype.yaml" "$@"; }
+else
+  export GRYPE_DB_CACHE_DIR="$work/grype-db"
+fi
 export GRYPE_DB_MAX_ALLOWED_BUILT_AGE=24h
 export GRYPE_DB_VALIDATE_AGE=true
 grype version -o json >"$output/grype-version.json"
@@ -40,9 +48,15 @@ JSON
 grype "sbom:$work/scanner-check.cdx.json" --add-cpes-if-none -o json >"$output/scanner-check.grype.json"
 jq -e 'any(.matches[]; .artifact.name == "openssl") and any(.matches[]; .artifact.name == "lodash")' \
   "$output/scanner-check.grype.json" >/dev/null
+if [[ -n ${XO_SECURITY_SHARED_INPUTS:-} && -f $XO_SECURITY_SHARED_INPUTS/shared-inventories.json ]]; then
+  python3 "$XO_ADVISORY_UNION_SOURCE" "$output/inventory.cdx.json" "$XO_SECURITY_SHARED_INPUTS" "$channel"
+fi
 grype "sbom:$output/inventory.cdx.json" --add-cpes-if-none -o json >"$output/raw.grype.json"
 python3 "$XO_SECURITY_NORMALIZE_SOURCE" normalize "$output/raw.grype.json" "$output/inventory.cdx.json" \
   "$output/grype-version.json" "$output/context.json" "$output/findings.json"
+if [[ -n ${XO_SECURITY_DATABASE:-} ]]; then
+  python3 "${XO_OPERATIONS_SOURCE:-$(dirname -- "${BASH_SOURCE[0]}")/decisions/operations.py}" --timeout 30 -- xo-nixpkg-security-database verify "$XO_SECURITY_DATABASE" "$XO_SECURITY_DATABASE_RECEIPT" --max-age-hours 24
+fi
 applicability_status=0
 xo-nixpkg-security-applicability --findings "$output/findings.json" --inventory "$output/inventory.cdx.json" \
   --context "$output/context.json" --rules "$XO_SECURITY_APPLICABILITY_RULES" \

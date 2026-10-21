@@ -3,7 +3,7 @@
 let
   yarn = pkgs.yarn.override { nodejs = pkgs.nodejs_22; };
 in
-{
+rec {
   packages = [
     pkgs.actionlint
     pkgs.cachix
@@ -28,6 +28,11 @@ in
     pkgs.valkey
     pkgs.zizmor
     yarn
+  ];
+
+  controllerEnv = builtins.removeAttrs env [
+    "npm_config_node_gyp"
+    "npm_config_python"
   ];
 
   env = {

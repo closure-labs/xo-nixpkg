@@ -1,4 +1,4 @@
-{ pkgs, ... }:
+{ pkgs, config, ... }:
 
 let
   developmentEnvironment = import ./nix/development-environment.nix { inherit pkgs; };
@@ -9,13 +9,17 @@ in
   cachix.pull = [ "xen-orchestra-ce" ];
 
   inherit (developmentEnvironment) packages;
-  env = developmentEnvironment.env // {
-    # Pin the same trust root for Nix commands run from inside the shell.
-    NIX_CONFIG = ''
-      extra-substituters = https://xen-orchestra-ce.cachix.org
-      extra-trusted-public-keys = xen-orchestra-ce.cachix.org-1:WAOajkFLXWTaFiwMbLidlGa5kWB7Icu29eJnYbeMG7E=
-    '';
-  };
+  env =
+    (
+      if config.packages == [ ] then developmentEnvironment.controllerEnv else developmentEnvironment.env
+    )
+    // {
+      # Pin the same trust root for Nix commands run from inside the shell.
+      NIX_CONFIG = ''
+        extra-substituters = https://xen-orchestra-ce.cachix.org
+        extra-trusted-public-keys = xen-orchestra-ce.cachix.org-1:WAOajkFLXWTaFiwMbLidlGa5kWB7Icu29eJnYbeMG7E=
+      '';
+    };
 
   tasks = {
     "ci:classify".exec = "nix run .#classify-ci -- \"$GITHUB_OUTPUT\"";
@@ -30,6 +34,7 @@ in
       nix run .#repository-audit
     '';
     "security:audit-policy".exec = "nix run .#audit-policy";
+    "security:review-all".exec = "nix run .#security-review-all";
     "security:review".exec = "nix run .#security-scan";
     "security:refresh".exec = "nix run .#refresh-products";
     "security:fetch-rescan".exec = "nix run .#fetch-evidence";

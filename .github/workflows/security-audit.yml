@@ -31,7 +31,7 @@ jobs:
         with:
           github-token: ${{ github.token }}
       - name: Validate workflow security and secrets history
-        run: nix run .#devenv -- tasks run ci:security-lint
+        run: nix run .#devenv -- tasks run --mode single --option 'packages:pkgs!' '' ci:security-lint
   policy:
     name: Audit effective repository protection
     if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
@@ -62,4 +62,4 @@ jobs:
         env:
           GH_TOKEN: ${{ steps.auditor.outputs.token }}
           REPOSITORY_READ_TOKEN: ${{ github.token }}
-        run: nix run .#devenv -- tasks run security:audit-policy
+        run: nix run .#devenv -- tasks run --mode single --option 'packages:pkgs!' '' security:audit-policy

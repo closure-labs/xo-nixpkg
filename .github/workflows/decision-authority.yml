@@ -48,4 +48,4 @@ jobs:
           GH_TOKEN: ${{ steps.authority.outputs.token }}
           REGISTRY_TOKEN: ${{ github.token }}
           COLLECTOR_RUN: ${{ github.event.workflow_run.id }}
-        run: nix run .#devenv -- tasks run security:authority
+        run: nix run .#devenv -- tasks run --mode single --option 'packages:pkgs!' '' security:authority

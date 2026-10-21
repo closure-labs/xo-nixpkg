@@ -318,13 +318,19 @@ class AttestationTimeout(subprocess.TimeoutExpired):
 
 
 def attestation_command(arguments):
+    with operations.termination_guard():
+        return bounded_attestation_command(arguments)
+
+
+def bounded_attestation_command(arguments):
+    timeout = operations.remaining(ATTESTATION_TIMEOUT)
     output, tail, stderr_bytes = bytearray(), bytearray(), 0
     try:
-        child = subprocess.Popen(arguments, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+        child = subprocess.Popen(arguments, stdout=subprocess.PIPE, stderr=subprocess.PIPE, start_new_session=True)
     except OSError as error:
-        raise ValueError(attestation_diagnostic(None, tail, 0, errno=error.errno)) from None
+        raise ValueError(attestation_diagnostic(None, tail, 0, errno=error.errno, timeoutSeconds=timeout)) from None
     with child:
-        deadline = time.monotonic() + ATTESTATION_TIMEOUT
+        deadline = time.monotonic() + timeout
         try:
             with selectors.DefaultSelector() as selector:
                 selector.register(child.stdout, selectors.EVENT_READ, 'stdout')
@@ -332,7 +338,7 @@ def attestation_command(arguments):
                 while selector.get_map():
                     remaining = deadline - time.monotonic()
                     if remaining <= 0:
-                        raise subprocess.TimeoutExpired('attestation', ATTESTATION_TIMEOUT)
+                        raise subprocess.TimeoutExpired('attestation', timeout)
                     for key, _ in selector.select(min(remaining, 1)):
                         block = os.read(key.fd, 64 * 1024)
                         if not block:
@@ -344,21 +350,19 @@ def attestation_command(arguments):
                         else:
                             if len(output) + len(block) > ATTESTATION_STDOUT_LIMIT:
                                 raise ValueError(attestation_diagnostic(
-                                    None, tail, stderr_bytes, outputLimitExceeded=True))
+                                    None, tail, stderr_bytes, outputLimitExceeded=True, timeoutSeconds=timeout))
                             output.extend(block)
             child.wait(timeout=max(.001, deadline - time.monotonic()))
         except subprocess.TimeoutExpired:
-            child.kill()
-            child.wait()
+            operations.terminate(child)
             raise AttestationTimeout(attestation_diagnostic(
-                child.returncode, tail, stderr_bytes, timedOut=True), ATTESTATION_TIMEOUT) from None
+                child.returncode, tail, stderr_bytes, timedOut=True, timeoutSeconds=timeout), timeout) from None
         except BaseException:
-            child.kill()
-            child.wait()
+            operations.terminate(child)
             raise
         if child.returncode:
             raise AttestationCommandError(child.returncode,
-                                          attestation_diagnostic(child.returncode, tail, stderr_bytes))
+                                          attestation_diagnostic(child.returncode, tail, stderr_bytes, timeoutSeconds=timeout))
     try:
         return json.loads(output.decode('utf-8'))
     except (ValueError, UnicodeError):

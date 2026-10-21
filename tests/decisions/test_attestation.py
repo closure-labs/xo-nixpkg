@@ -6,6 +6,8 @@ import json
 from pathlib import Path
 import subprocess
 import sys
+import tempfile
+import time
 import unittest
 from unittest.mock import patch
 
@@ -112,6 +114,29 @@ class Attestation(unittest.TestCase):
         self.assertEqual(diagnostic['categories'], ['start-failed'])
         self.assertEqual(diagnostic['errno'], 2)
         self.assertNotIn(SECRET, str(caught.exception))
+
+    def test_remaining_budget_bounds_attestation_and_kills_detached_descendants(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            pidfile=Path(temporary)/'descendant'
+            descendant='import os,signal,time; signal.signal(signal.SIGTERM,signal.SIG_IGN); open('+repr(str(pidfile))+',"w").write(str(os.getpid())); time.sleep(30)'
+            body='import signal,subprocess,sys,time; subprocess.Popen([sys.executable,"-c",'+repr(descendant)+'],start_new_session=True); signal.signal(signal.SIGTERM,signal.SIG_IGN); time.sleep(30)'
+            started=time.monotonic()
+            with common.operations.budget(.3), patch.object(common.operations,'KILL_GRACE',.05):
+                time.sleep(.03)
+                with self.assertRaises(common.AttestationTimeout) as caught:self.child(body)
+            self.assertLess(time.monotonic()-started,2)
+            diagnostic=json.loads(str(caught.exception).split(': ',1)[1])
+            self.assertLess(diagnostic['timeoutSeconds'],.3)
+            self.assertEqual(diagnostic['categories'],['timeout'])
+            try:state=Path('/proc/'+pidfile.read_text()+'/stat').read_text().rpartition(')')[2].split()[0]
+            except OSError:state=None
+            self.assertIn(state,(None,'Z'),'detached attestation descendant survived')
+
+    def test_expired_budget_starts_no_attestation_process(self):
+        with common.operations.budget(.001), patch.object(common.subprocess,'Popen') as launch:
+            time.sleep(.005)
+            with self.assertRaises(subprocess.TimeoutExpired):self.child('print("unexpected")')
+            launch.assert_not_called()
 
     def test_malformed_success_output_is_rejected_without_echoing_bytes(self):
         for body in ['print(' + repr(SECRET) + ')', "import sys; sys.stdout.buffer.write(bytes([255]))"]:

@@ -76,10 +76,11 @@ jobs:
         env:
           GH_TOKEN: ${{ steps.publisher.outputs.token }}
           REGISTRY_TOKEN: ${{ github.token }}
-        run: nix run .#devenv -- tasks run release:fetch
+          XO_NIXPKG_PUBLICATION_METADATA_ONLY: 'true'
+        run: nix run .#devenv -- tasks run --mode single --option 'packages:pkgs!' '' release:fetch
       - name: Recheck admission and publish exact closures
         env:
           CACHIX_AUTH_TOKEN: ${{ secrets.CACHIX_AUTH_TOKEN }}
           GH_TOKEN: ${{ steps.publisher.outputs.token }}
           REGISTRY_TOKEN: ${{ github.token }}
-        run: nix run .#devenv -- tasks run release:resume
+        run: nix run .#devenv -- tasks run --mode single --option 'packages:pkgs!' '' release:resume

@@ -12,6 +12,9 @@ import time
 import sys
 sys.path.insert(0, str(Path(__file__).with_name('decisions')))
 import publication_receipts
+import destinations
+import operations
+from contextlib import contextmanager
 
 
 def canonical(value):
@@ -22,8 +25,8 @@ def api(repository, endpoint, body=None, method=None, missing=False, timeout=Non
     args = ['gh', 'api', f'repos/{repository}/{endpoint}']
     if body is not None:
         args += ['--method', method or 'POST', '--input', '-']
-    result = subprocess.run(args, input=json.dumps(body) if body is not None else None,
-                            text=True, capture_output=True, check=False, timeout=timeout)
+    result = operations.run(args, input=json.dumps(body) if body is not None else None,
+                            text=True, capture_output=True, check=False, timeout=timeout or 30)
     if result.returncode:
         if missing and 'HTTP 404' in result.stderr:
             return None
@@ -56,7 +59,8 @@ def readback_error(reason, expected, observed, prior, attempts):
 
 
 class Journal:
-    def __init__(self, repository, product):
+    def __init__(self, repository, product, authorize=None):
+        self.authorize = authorize or (lambda: None)
         self.repository = repository
         self.digest = hashlib.sha256(canonical(product)).hexdigest()
         self.branch = 'automation/publication-' + self.digest
@@ -79,6 +83,7 @@ class Journal:
             self.save()
 
     def save(self):
+        self.authorize()
         tree = api(self.repository, 'git/trees', {'tree': [{'path': 'journal.json', 'mode': '100644',
             'type': 'blob', 'content': json.dumps(self.value, sort_keys=True, indent=2) + '\n'}]})
         body = {'message': 'Record immutable publication ' + self.digest, 'tree': tree['sha'],
@@ -128,7 +133,14 @@ class Journal:
             # never another writer's head or a general API failure.
             time.sleep(min(.5, remaining))
 
-    def complete(self, name, identity):
+    def complete(self, name, identity, proof=None):
+        if proof is not None:
+            publication_receipts.validate(proof, self.digest, name)
+            prior = self.value.get('receipts', {}).get(name)
+            if prior and all(canonical(prior[k]) == canonical(proof[k]) for k in ('expected', 'observed', 'verifier')):
+                self.authorize()
+                return
+            self.value.update(schema=2, receipts={**self.value.get('receipts', {}), name: proof})
         existing = next((step for step in self.value['steps'] if step['name'] == name), None)
         if existing:
             if existing['identity'] != identity and name != 'handoff':
@@ -170,43 +182,167 @@ def publish_handoff(directory, scans, repository, source_revision):
             os.environ['DOCKER_CONFIG'] = previous_config
 
 
+@contextmanager
+def registry():
+    previous = os.environ.get('DOCKER_CONFIG')
+    try:
+        with tempfile.TemporaryDirectory(prefix='xo-publication-registry-') as directory:
+            os.environ['DOCKER_CONFIG'] = directory
+            run('oras', 'login', 'ghcr.io', '--username', os.environ['GITHUB_ACTOR'],
+                '--password-stdin', input=os.environ['REGISTRY_TOKEN'], text=True)
+            try:
+                yield
+            finally:
+                run('oras', 'logout', 'ghcr.io')
+    finally:
+        if previous is None: os.environ.pop('DOCKER_CONFIG', None)
+        else: os.environ['DOCKER_CONFIG'] = previous
+
+
+def source_descriptor(source):
+    import decision_packets as packets
+    packets.REGISTRY='ghcr.io/closure-labs/xo-nixpkg-decisions'
+    packets.REFERENCE=re.compile(re.escape(packets.REGISTRY)+r'@sha256:[0-9a-f]{64}')
+    with registry(), operations.budget(90), tempfile.TemporaryDirectory() as temp:
+        _, members = packets.inspect(source['reference'])
+        descriptor = packets.packet_descriptor(packets.fetch_member('decision-packet.json', Path(temp), members),
+                                                members, source['sha256'])
+        if descriptor['producer'] != source['producer']:
+            raise ValueError('Source packet producer differs')
+        return descriptor
+
+
+def remote_handoff(source, descriptor):
+    """Copy admitted immutable OCI content once; retries inspect manifest and descriptor only."""
+    import decision_packets as packets
+    destination = 'ghcr.io/' + os.environ['GITHUB_REPOSITORY'].lower() + '-products'
+    expected_reference = destination + '@' + source['reference'].split('@')[1]
+    with registry():
+        # Only an authenticated OCI MANIFEST_UNKNOWN / NAME_UNKNOWN means missing.
+        probe = packets.command(['oras', 'manifest', 'fetch', expected_reference], allow_missing=True)
+        if probe is None:
+            tag=destination+':packet-'+source['sha256']
+            tagged=packets.command(['oras','manifest','fetch',tag], allow_missing=True)
+            if tagged is not None:
+                if hashlib.sha256(tagged).hexdigest()!=source['reference'].split(':')[-1]:
+                    raise ValueError('Public OCI tag conflicts with approved packet')
+                raise ValueError('Public OCI digest readback unavailable')
+            run('xo-nixpkg-publication-gate')
+            with operations.budget(900):
+                packets.command(['oras','copy',source['reference'],destination+':packet-'+source['sha256']])
+        old_registry,old_reference=packets.REGISTRY,packets.REFERENCE
+        try:
+            packets.REGISTRY=destination
+            packets.REFERENCE=re.compile(re.escape(destination)+r'@sha256:[0-9a-f]{64}')
+            with operations.budget(90), tempfile.TemporaryDirectory() as temp:
+                _, members=packets.inspect(expected_reference)
+                actual=packets.packet_descriptor(packets.fetch_member('decision-packet.json',Path(temp),members),members,source['sha256'])
+                if canonical(actual)!=canonical(descriptor):
+                    raise ValueError('Public handoff conflicts with approved packet')
+        finally:
+            packets.REGISTRY,packets.REFERENCE=old_registry,old_reference
+    return dict(source,reference=expected_reference)
+
+
+def verify_tag(repository, tag, revision):
+    value=api(repository,'git/ref/tags/'+tag,missing=True)
+    if value is None: return False
+    if value.get('ref')!='refs/tags/'+tag:raise ValueError('Remote tag reference differs')
+    obj=value.get('object',{})
+    for _ in range(8):
+        if obj.get('type')=='commit':
+            if commit_sha(obj.get('sha'))!=revision: raise ValueError('Remote tag conflicts with approved revision')
+            return True
+        if obj.get('type')!='tag': break
+        obj=api(repository,'git/tags/'+commit_sha(obj.get('sha'))).get('object',{})
+    raise ValueError('Remote tag has invalid identity')
+
+
 def main():
-    directory = Path(os.environ['XO_NIXPKG_EVIDENCE']).resolve()
-    product = json.loads((directory / 'product.json').read_text())
-    scans = json.loads((directory / 'scans.json').read_text())
-    repository, revision = product['repository'], product['revision']
-    os.environ['GATED_SHA'] = revision
-    os.environ['XO_NIXPKG_PUBLICATION_PURPOSE'] = os.environ.get('XO_NIXPKG_PUBLICATION_PURPOSE', 'release')
+    directory=Path(os.environ['XO_NIXPKG_EVIDENCE']).resolve()
+    product=json.loads((directory/'product.json').read_text())
+    scans=json.loads((directory/'scans.json').read_text())
+    repository,revision=product['repository'],product['revision']
+    os.environ['GATED_SHA']=revision
+    os.environ['XO_NIXPKG_PUBLICATION_PURPOSE']=os.environ.get('XO_NIXPKG_PUBLICATION_PURPOSE','release')
     run('xo-nixpkg-publication-gate')
-    os.environ['BASE_SHA'] = subprocess.check_output(['git', 'rev-parse', revision + '^'], text=True).strip()
-    for name, expected in product['assets'].items():
-        path = directory / name
-        if path.is_symlink() or hashlib.sha256(path.read_bytes()).hexdigest() != expected:
-            raise ValueError('publication asset differs from approved immutable bytes')
-    journal = Journal(repository, product)
-    run('xo-nixpkg-publish')
-    journal.complete('cache', {'products': product['products'], 'roots': product.get('roots', {})})
-    # Store independent, attested downstream handoffs indefinitely. The registry
-    # module verifies content digests and refuses conflicting immutable tags.
-    # Candidate NARs remain in private decision packets until live admission.
-    # This packet provides the independently published downstream handoff.
-    packet = publish_handoff(directory, scans, repository, revision)
-    journal.complete('handoff', packet)
-    if os.environ['XO_NIXPKG_PUBLICATION_PURPOSE'] == 'release':
+    os.environ['BASE_SHA']=subprocess.check_output(['git','rev-parse',revision+'^'],text=True).strip()
+    source_path=directory.with_suffix('.source.json')
+    source=json.loads(source_path.read_text()) if source_path.exists() else None
+    descriptor=source_descriptor(source) if source else None
+    if descriptor:
+        for name in ('product.json','scans.json'):
+            path=directory/name; record=descriptor['files'].get(name,{})
+            if path.is_symlink() or not path.is_file() or path.stat().st_size!=record.get('size') or hashlib.sha256(path.read_bytes()).hexdigest()!=record.get('sha256'):
+                raise ValueError('Source packet differs from gated metadata bytes')
+        producer=dict(scans['producer'],repository=repository,
+                      revision=scans['producer'].get('revision',revision),sourceRevision=revision)
+        if canonical(descriptor['producer'])!=canonical(producer):
+            raise ValueError('Source packet differs from gated producer')
+    for name,expected in product['assets'].items():
+        if descriptor:
+            if descriptor['files'].get(name,{}).get('sha256')!=expected:
+                raise ValueError('Publication asset differs from approved immutable bytes')
+        else:
+            path=directory/name
+            if path.is_symlink() or hashlib.sha256(path.read_bytes()).hexdigest()!=expected:
+                raise ValueError('Publication asset differs from approved immutable bytes')
+    journal=Journal(repository,product,authorize=lambda: run('xo-nixpkg-publication-gate'))
+    state=destinations.cache(product,os.environ['XO_NIXPKG_CACHIX_CACHE_URL'])
+    if state['status'] in ('conflict','unavailable'):
+        raise ValueError('Public cache '+state['status'])
+    if state['status']!='verified':
+        if source:
+            import decision_packets as packets
+            with registry(), tempfile.TemporaryDirectory() as temp:
+                target=Path(temp)/'evidence'
+                packets.fetch(source['reference'],target,source['sha256'])
+                (target/'decision-packet.json').unlink()
+                for path in target.rglob('*'):
+                    if path.is_file():
+                        relative=path.relative_to(target); output=directory/relative
+                        packets.install_member(path, output, directory)
+        run('xo-nixpkg-publish')
+        state=destinations.cache(product,os.environ['XO_NIXPKG_CACHIX_CACHE_URL'])
+    proof=destinations.receipt(state,product)
+    journal.complete('cache', {'products':product['products'],'roots':product.get('roots',{})},proof)
+    packet=remote_handoff(source,descriptor) if source else publish_handoff(directory,scans,repository,revision)
+    if not source:
+        # Historical artifact recovery must also read the immutable public manifest.
+        import decision_packets as packets
+        old_registry,old_reference=packets.REGISTRY,packets.REFERENCE
+        try:
+            packets.REGISTRY=packet['reference'].split('@')[0]
+            packets.REFERENCE=re.compile(re.escape(packets.REGISTRY)+r'@sha256:[0-9a-f]{64}')
+            packets.metadata(packet['reference'],packet['sha256'],'product.json',producer=packet['producer'])
+        finally: packets.REGISTRY,packets.REFERENCE=old_registry,old_reference
+    journal.complete('handoff',packet,destinations.receipt(destinations.result('handoff',packet,packet),product))
+    if os.environ['XO_NIXPKG_PUBLICATION_PURPOSE']=='release':
         run('xo-nixpkg-tag-xo-release')
-        journal.complete('xo-tag', {'revision': revision})
-        version = subprocess.check_output(['git', 'show', revision + ':VERSION'], text=True).strip()
-        tag = 'v' + version
-        existing = subprocess.run(['git', 'rev-parse', '--verify', tag + '^{commit}'], capture_output=True, text=True)
-        # Project versions remain independent from package/cache refreshes.
-        if existing.returncode == 0 and existing.stdout.strip() != revision:
+        before=json.loads(subprocess.check_output(['git','show',os.environ['BASE_SHA']+':nix/sources/xen-orchestra.json']))['channels']['latest']
+        after=json.loads(subprocess.check_output(['git','show',revision+':nix/sources/xen-orchestra.json']))['channels']['latest']
+        xo_identity={'revision':revision,'required':(before['version'],before['rev'])!=(after['version'],after['rev'])}
+        if xo_identity['required']:
+            version=after['version']; tag='v'+version+('.0' if version.count('.')==1 else '')
+            if not verify_tag(repository,tag,revision):raise ValueError('XO tag readback missing')
+            xo_identity['tag']=tag
+        journal.complete('xo-tag',{'revision':revision},destinations.receipt(destinations.result('xo-tag',xo_identity,xo_identity),product))
+        version=subprocess.check_output(['git','show',revision+':VERSION'],text=True).strip();tag='v'+version
+        existing=subprocess.run(['git','rev-parse','--verify',tag+'^{commit}'],capture_output=True,text=True)
+        if existing.returncode==0 and existing.stdout.strip()!=revision:
+            # Preserve independent historical project version policy; no new checkpoint.
             print('Project version already released; package publication is complete.')
         else:
-            run('xo-nixpkg-tag-release')
-            journal.complete('project-tag', {'tag': tag, 'revision': revision})
+            if not verify_tag(repository,tag,revision):run('xo-nixpkg-tag-release')
+            if not verify_tag(repository,tag,revision):raise ValueError('Project tag readback missing')
+            identity={'tag':tag,'revision':revision}
+            journal.complete('project-tag',identity,destinations.receipt(destinations.result('project-tag',identity,identity),product))
             run('xo-nixpkg-publish-release')
-            journal.complete('github-release', {'tag': tag, 'revision': revision})
-    print(json.dumps({'schema': 1, 'productHash': journal.digest, 'journalRef': journal.branch}))
+            release=api(repository,'releases/tags/'+tag)
+            if release.get('tag_name')!=tag or release.get('draft') is not False or not verify_tag(repository,tag,revision):
+                raise ValueError('GitHub release readback differs')
+            journal.complete('github-release',identity,destinations.receipt(destinations.result('github-release',identity,identity),product))
+    print(json.dumps({'schema':1,'productHash':journal.digest,'journalRef':journal.branch}))
 
 
 if __name__ == '__main__':

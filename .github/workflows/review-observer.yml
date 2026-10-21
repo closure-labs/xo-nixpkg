@@ -11,7 +11,7 @@ permissions:
 jobs:
   observe:
     name: Signal an approved review
-    if: github.event.review.state == 'approved'
+    if: github.event.review.state == 'approved' && vars.XO_AUTHORITY_WAKEUPS_VALIDATED != 'true'
     runs-on: ubuntu-slim
     timeout-minutes: 5
     steps:
