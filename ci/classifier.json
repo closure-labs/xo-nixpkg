@@ -1,39 +1,171 @@
 {
   "schemaVersion": 2,
   "lifecycle": {
-    "publish": { "event": "push", "ref": "refs/heads/main" },
-    "release": { "event": "push", "ref": "refs/heads/main" }
+    "publish": {
+      "event": "push",
+      "ref": "refs/heads/main"
+    },
+    "release": {
+      "event": "push",
+      "ref": "refs/heads/main"
+    }
   },
-  "preflightTargets": ["native-runtime-cleanup", "yarn-cache-fixtures", "repository-policy", "ci-runtime-fixtures", "application-composition", "source-update-fixtures", "automation-fixtures", "plan-runner-fixtures", "classifier-fixtures"],
+  "preflightTargets": [
+    "native-runtime-cleanup",
+    "yarn-cache-fixtures",
+    "repository-policy",
+    "ci-runtime-fixtures",
+    "application-composition",
+    "source-update-fixtures",
+    "automation-fixtures",
+    "plan-runner-fixtures",
+    "classifier-fixtures"
+  ],
   "validationTargets": [
-    { "name": "native-runtime-cleanup", "attribute": "checks.x86_64-linux.native-runtime-cleanup", "requires": [] },
-    { "name": "yarn-cache-fixtures", "attribute": "checks.x86_64-linux.yarn-cache-fixtures", "requires": [] },
-    { "name": "xo-latest", "attribute": "checks.x86_64-linux.xo-latest", "requires": ["native-runtime-cleanup", "yarn-cache-fixtures"] },
-    { "name": "xo-stable", "attribute": "checks.x86_64-linux.xo-stable", "requires": ["native-runtime-cleanup", "yarn-cache-fixtures"] },
-    { "name": "xo-rolling", "attribute": "checks.x86_64-linux.xo-rolling", "requires": ["native-runtime-cleanup", "yarn-cache-fixtures"] },
-    { "name": "supply-protector-latest", "attribute": "checks.x86_64-linux.supply-protector-latest", "requires": ["xo-latest"] },
-    { "name": "supply-protector-stable", "attribute": "checks.x86_64-linux.supply-protector-stable", "requires": ["xo-stable"] },
-    { "name": "supply-protector-rolling", "attribute": "checks.x86_64-linux.supply-protector-rolling", "requires": ["xo-rolling"] },
-    { "name": "xo-fuse-linkage", "attribute": "checks.x86_64-linux.xo-fuse-linkage", "requires": ["xo-latest"] },
-    { "name": "xo-server-service", "attribute": "checks.x86_64-linux.xo-server-service", "requires": ["xo-latest"] },
-    { "name": "libvhdi", "attribute": "checks.x86_64-linux.libvhdi", "requires": [] },
-    { "name": "repository-policy", "attribute": "checks.x86_64-linux.repository-policy", "requires": [] },
-    { "name": "ci-runtime-fixtures", "attribute": "checks.x86_64-linux.ci-runtime-fixtures", "requires": [] },
-    { "name": "application-composition", "attribute": "checks.x86_64-linux.application-composition", "requires": [] },
-    { "name": "automation-runtime", "attribute": "checks.x86_64-linux.automation-runtime", "requires": [] },
-    { "name": "source-update-fixtures", "attribute": "checks.x86_64-linux.source-update-fixtures", "requires": [] },
-    { "name": "automation-fixtures", "attribute": "checks.x86_64-linux.automation-fixtures", "requires": [] },
-    { "name": "plan-runner-fixtures", "attribute": "checks.x86_64-linux.plan-runner-fixtures", "requires": [] },
-    { "name": "classifier-fixtures", "attribute": "checks.x86_64-linux.classifier-fixtures", "requires": [] }
+    {
+      "name": "native-runtime-cleanup",
+      "attribute": "checks.x86_64-linux.native-runtime-cleanup",
+      "requires": []
+    },
+    {
+      "name": "yarn-cache-fixtures",
+      "attribute": "checks.x86_64-linux.yarn-cache-fixtures",
+      "requires": []
+    },
+    {
+      "name": "xo-latest",
+      "attribute": "checks.x86_64-linux.xo-latest",
+      "requires": [
+        "native-runtime-cleanup",
+        "yarn-cache-fixtures"
+      ]
+    },
+    {
+      "name": "xo-stable",
+      "attribute": "checks.x86_64-linux.xo-stable",
+      "requires": [
+        "native-runtime-cleanup",
+        "yarn-cache-fixtures"
+      ]
+    },
+    {
+      "name": "xo-rolling",
+      "attribute": "checks.x86_64-linux.xo-rolling",
+      "requires": [
+        "native-runtime-cleanup",
+        "yarn-cache-fixtures"
+      ]
+    },
+    {
+      "name": "supply-protector-latest",
+      "attribute": "checks.x86_64-linux.supply-protector-latest",
+      "requires": [
+        "xo-latest"
+      ]
+    },
+    {
+      "name": "supply-protector-stable",
+      "attribute": "checks.x86_64-linux.supply-protector-stable",
+      "requires": [
+        "xo-stable"
+      ]
+    },
+    {
+      "name": "supply-protector-rolling",
+      "attribute": "checks.x86_64-linux.supply-protector-rolling",
+      "requires": [
+        "xo-rolling"
+      ]
+    },
+    {
+      "name": "xo-fuse-linkage",
+      "attribute": "checks.x86_64-linux.xo-fuse-linkage",
+      "requires": [
+        "xo-latest"
+      ]
+    },
+    {
+      "name": "xo-server-service",
+      "attribute": "checks.x86_64-linux.xo-server-service",
+      "requires": [
+        "xo-latest"
+      ]
+    },
+    {
+      "name": "libvhdi",
+      "attribute": "checks.x86_64-linux.libvhdi",
+      "requires": []
+    },
+    {
+      "name": "repository-policy",
+      "attribute": "checks.x86_64-linux.repository-policy",
+      "requires": []
+    },
+    {
+      "name": "ci-runtime-fixtures",
+      "attribute": "checks.x86_64-linux.ci-runtime-fixtures",
+      "requires": []
+    },
+    {
+      "name": "application-composition",
+      "attribute": "checks.x86_64-linux.application-composition",
+      "requires": []
+    },
+    {
+      "name": "automation-runtime",
+      "attribute": "checks.x86_64-linux.automation-runtime",
+      "requires": []
+    },
+    {
+      "name": "source-update-fixtures",
+      "attribute": "checks.x86_64-linux.source-update-fixtures",
+      "requires": []
+    },
+    {
+      "name": "automation-fixtures",
+      "attribute": "checks.x86_64-linux.automation-fixtures",
+      "requires": []
+    },
+    {
+      "name": "plan-runner-fixtures",
+      "attribute": "checks.x86_64-linux.plan-runner-fixtures",
+      "requires": []
+    },
+    {
+      "name": "classifier-fixtures",
+      "attribute": "checks.x86_64-linux.classifier-fixtures",
+      "requires": []
+    }
   ],
   "publicationTargets": [
-    { "name": "xo-latest", "attribute": "packages.x86_64-linux.latest" },
-    { "name": "xo-stable", "attribute": "packages.x86_64-linux.stable" },
-    { "name": "xo-rolling", "attribute": "packages.x86_64-linux.rolling" },
-    { "name": "supply-protector-latest", "attribute": "packages.x86_64-linux.supply-protector-latest" },
-    { "name": "supply-protector-stable", "attribute": "packages.x86_64-linux.supply-protector-stable" },
-    { "name": "supply-protector-rolling", "attribute": "packages.x86_64-linux.supply-protector-rolling" },
-    { "name": "automation-runtime", "attribute": "packages.x86_64-linux.automation-runtime" }
+    {
+      "name": "xo-latest",
+      "attribute": "packages.x86_64-linux.latest"
+    },
+    {
+      "name": "xo-stable",
+      "attribute": "packages.x86_64-linux.stable"
+    },
+    {
+      "name": "xo-rolling",
+      "attribute": "packages.x86_64-linux.rolling"
+    },
+    {
+      "name": "supply-protector-latest",
+      "attribute": "packages.x86_64-linux.supply-protector-latest"
+    },
+    {
+      "name": "supply-protector-stable",
+      "attribute": "packages.x86_64-linux.supply-protector-stable"
+    },
+    {
+      "name": "supply-protector-rolling",
+      "attribute": "packages.x86_64-linux.supply-protector-rolling"
+    },
+    {
+      "name": "automation-runtime",
+      "attribute": "packages.x86_64-linux.automation-runtime"
+    }
   ],
   "pathRules": [
     {
@@ -59,32 +191,70 @@
     },
     {
       "pattern": "^(\\.gitleaks\\.toml|gitleaks\\.toml|\\.gitleaksignore|tests/test_secret_inventory\\.py)$",
-      "validation": ["repository-policy", "automation-fixtures"],
+      "validation": [
+        "repository-policy",
+        "automation-fixtures"
+      ],
       "publication": []
     },
     {
       "pattern": "^tests/packet-manifest-reproducibility\\.py$",
-      "validation": ["repository-policy", "automation-fixtures"],
+      "validation": [
+        "repository-policy",
+        "automation-fixtures"
+      ],
       "publication": []
     },
     {
       "pattern": "^nix/repository-checks\\.nix$",
-      "validation": ["native-runtime-cleanup", "yarn-cache-fixtures", "repository-policy", "ci-runtime-fixtures", "application-composition", "source-update-fixtures", "automation-fixtures", "plan-runner-fixtures", "classifier-fixtures", "automation-runtime"],
+      "validation": [
+        "native-runtime-cleanup",
+        "yarn-cache-fixtures",
+        "repository-policy",
+        "ci-runtime-fixtures",
+        "application-composition",
+        "source-update-fixtures",
+        "automation-fixtures",
+        "plan-runner-fixtures",
+        "classifier-fixtures",
+        "automation-runtime"
+      ],
       "publication": []
     },
     {
       "pattern": "^nix/cleanup-native-build-metadata\\.py$",
-      "validation": ["native-runtime-cleanup", "xo-latest", "xo-stable", "xo-rolling", "xo-fuse-linkage", "xo-server-service", "repository-policy"],
-      "publication": ["xo-latest", "xo-stable", "xo-rolling", "supply-protector-latest", "supply-protector-stable", "supply-protector-rolling"]
+      "validation": [
+        "native-runtime-cleanup",
+        "xo-latest",
+        "xo-stable",
+        "xo-rolling",
+        "xo-fuse-linkage",
+        "xo-server-service",
+        "repository-policy"
+      ],
+      "publication": [
+        "xo-latest",
+        "xo-stable",
+        "xo-rolling",
+        "supply-protector-latest",
+        "supply-protector-stable",
+        "supply-protector-rolling"
+      ]
     },
     {
       "pattern": "^tests/native-runtime-cleanup\\.py$",
-      "validation": ["native-runtime-cleanup", "repository-policy"],
+      "validation": [
+        "native-runtime-cleanup",
+        "repository-policy"
+      ],
       "publication": []
     },
     {
       "pattern": "^tests/yarn-cache\\.sh$",
-      "validation": ["yarn-cache-fixtures", "repository-policy"],
+      "validation": [
+        "yarn-cache-fixtures",
+        "repository-policy"
+      ],
       "publication": []
     },
     {
@@ -94,142 +264,366 @@
     },
     {
       "pattern": "^CHANGELOG\\.md$",
-      "validation": ["automation-fixtures"],
+      "validation": [
+        "automation-fixtures"
+      ],
       "publication": []
     },
     {
       "pattern": "^VERSION$",
-      "validation": ["repository-policy", "automation-fixtures", "automation-runtime", "xo-latest", "xo-stable", "xo-rolling", "libvhdi"],
-      "publication": ["xo-latest", "xo-stable", "xo-rolling", "automation-runtime"]
+      "validation": [
+        "repository-policy",
+        "automation-fixtures",
+        "automation-runtime",
+        "xo-latest",
+        "xo-stable",
+        "xo-rolling",
+        "libvhdi"
+      ],
+      "publication": [
+        "xo-latest",
+        "xo-stable",
+        "xo-rolling",
+        "automation-runtime"
+      ]
     },
     {
       "pattern": "^\\.github/workflows/(ci|publish)\\.yml$",
-      "validation": ["repository-policy", "classifier-fixtures", "ci-runtime-fixtures"],
+      "validation": [
+        "repository-policy",
+        "classifier-fixtures",
+        "ci-runtime-fixtures"
+      ],
       "publication": []
     },
     {
       "pattern": "^\\.github/",
-      "validation": ["repository-policy"],
+      "validation": [
+        "repository-policy"
+      ],
       "publication": []
     },
     {
       "pattern": "^ci/classif",
-      "validation": ["repository-policy", "classifier-fixtures", "ci-runtime-fixtures", "automation-runtime"],
-      "publication": ["automation-runtime"]
+      "validation": [
+        "repository-policy",
+        "classifier-fixtures",
+        "ci-runtime-fixtures",
+        "automation-runtime"
+      ],
+      "publication": [
+        "automation-runtime"
+      ]
     },
     {
       "pattern": "^tests/classifier\\.sh$",
-      "validation": ["repository-policy", "classifier-fixtures"],
+      "validation": [
+        "repository-policy",
+        "classifier-fixtures"
+      ],
       "publication": []
     },
     {
       "pattern": "^(nix/ci-plan\\.nix|nix/flake-plan-runner\\.(nix|sh))$",
-      "validation": ["repository-policy", "plan-runner-fixtures", "ci-runtime-fixtures", "automation-runtime"],
-      "publication": ["automation-runtime"]
+      "validation": [
+        "repository-policy",
+        "plan-runner-fixtures",
+        "ci-runtime-fixtures",
+        "automation-runtime"
+      ],
+      "publication": [
+        "automation-runtime"
+      ]
     },
     {
       "pattern": "^tests/flake-plan-runner\\.sh$",
-      "validation": ["repository-policy", "plan-runner-fixtures"],
+      "validation": [
+        "repository-policy",
+        "plan-runner-fixtures"
+      ],
       "publication": []
     },
     {
       "pattern": "^tests/ci-runtime\\.sh$",
-      "validation": ["repository-policy", "ci-runtime-fixtures"],
+      "validation": [
+        "repository-policy",
+        "ci-runtime-fixtures"
+      ],
       "publication": []
     },
     {
       "pattern": "^(ci/(run|publish)\\.sh)$",
-      "validation": ["repository-policy", "ci-runtime-fixtures", "application-composition", "automation-runtime"],
-      "publication": ["automation-runtime"]
+      "validation": [
+        "repository-policy",
+        "ci-runtime-fixtures",
+        "application-composition",
+        "automation-runtime"
+      ],
+      "publication": [
+        "automation-runtime"
+      ]
     },
     {
       "pattern": "^nix/security-(applicability\\.(py|json)|applicability-rules\\.json|normalize\\.py)$",
-      "validation": ["repository-policy", "automation-fixtures", "application-composition", "automation-runtime"],
-      "publication": ["automation-runtime"]
+      "validation": [
+        "repository-policy",
+        "automation-fixtures",
+        "application-composition",
+        "automation-runtime"
+      ],
+      "publication": [
+        "automation-runtime"
+      ]
     },
     {
       "pattern": "^tests/security-(applicability|normalize|scan)\\.(py|sh)$",
-      "validation": ["repository-policy", "automation-fixtures"],
+      "validation": [
+        "repository-policy",
+        "automation-fixtures"
+      ],
       "publication": []
     },
     {
       "pattern": "^ci/(fix-nix-hashes|tag-release|tag-xo-release|publish-release|trusted-update|queue-automation|security-scan)\\.sh$",
-      "validation": ["repository-policy", "automation-fixtures", "application-composition", "automation-runtime"],
-      "publication": ["automation-runtime"]
+      "validation": [
+        "repository-policy",
+        "automation-fixtures",
+        "application-composition",
+        "automation-runtime"
+      ],
+      "publication": [
+        "automation-runtime"
+      ]
     },
     {
       "pattern": "^tests/(fix-nix-hashes|open-update-pr|publish-release|tag-release|tag-xo-release|trusted-update)\\.sh$",
-      "validation": ["repository-policy", "automation-fixtures"],
+      "validation": [
+        "repository-policy",
+        "automation-fixtures"
+      ],
       "publication": []
     },
     {
       "pattern": "^(ci/(update-xo|update-libvhdi|update-flake-lock|open-update-pr)\\.sh|scripts/)",
-      "validation": ["repository-policy", "source-update-fixtures", "application-composition", "automation-runtime"],
-      "publication": ["automation-runtime"]
+      "validation": [
+        "repository-policy",
+        "source-update-fixtures",
+        "application-composition",
+        "automation-runtime"
+      ],
+      "publication": [
+        "automation-runtime"
+      ]
     },
     {
       "pattern": "^tests/(update-xo|update-effects|update-libvhdi|update-noop)\\.sh$",
-      "validation": ["repository-policy", "source-update-fixtures"],
+      "validation": [
+        "repository-policy",
+        "source-update-fixtures"
+      ],
       "publication": []
     },
     {
       "pattern": "^ci/(prewarm-rolling|prewarm-candidate)\\.sh$",
-      "validation": ["repository-policy", "source-update-fixtures", "application-composition", "automation-runtime"],
-      "publication": ["automation-runtime"]
+      "validation": [
+        "repository-policy",
+        "source-update-fixtures",
+        "application-composition",
+        "automation-runtime"
+      ],
+      "publication": [
+        "automation-runtime"
+      ]
     },
     {
       "pattern": "^tests/(prewarm-rolling|prewarm-candidate)\\.sh$",
-      "validation": ["repository-policy", "source-update-fixtures"],
+      "validation": [
+        "repository-policy",
+        "source-update-fixtures"
+      ],
       "publication": []
     },
     {
       "pattern": "^nix/applications\\.nix$",
-      "validation": ["repository-policy", "ci-runtime-fixtures", "application-composition", "source-update-fixtures", "automation-fixtures", "automation-runtime"],
-      "publication": ["automation-runtime"]
+      "validation": [
+        "repository-policy",
+        "ci-runtime-fixtures",
+        "application-composition",
+        "source-update-fixtures",
+        "automation-fixtures",
+        "automation-runtime"
+      ],
+      "publication": [
+        "automation-runtime"
+      ]
     },
     {
       "pattern": "^tests/(policy|yarn-fetch)\\.sh$",
-      "validation": ["repository-policy"],
+      "validation": [
+        "repository-policy"
+      ],
       "publication": []
     },
     {
       "pattern": "^(default\\.nix|nix/(fetch-normalized-yarn-deps|prefetch-yarn-deps|yarn-platform-tools|runtime-node)\\.nix|nix/(retry-yarn-fetch|normalize-yarn-cache)\\.sh|nix/patches/)",
-      "validation": ["xo-latest", "xo-stable", "xo-rolling", "supply-protector-latest", "supply-protector-stable", "supply-protector-rolling", "xo-fuse-linkage", "xo-server-service"],
-      "publication": ["xo-latest", "xo-stable", "xo-rolling", "supply-protector-latest", "supply-protector-stable", "supply-protector-rolling"]
+      "validation": [
+        "xo-latest",
+        "xo-stable",
+        "xo-rolling",
+        "supply-protector-latest",
+        "supply-protector-stable",
+        "supply-protector-rolling",
+        "xo-fuse-linkage",
+        "xo-server-service"
+      ],
+      "publication": [
+        "xo-latest",
+        "xo-stable",
+        "xo-rolling",
+        "supply-protector-latest",
+        "supply-protector-stable",
+        "supply-protector-rolling"
+      ]
     },
     {
       "pattern": "^nix/sources/xen-orchestra\\.json$",
-      "validation": ["xo-latest", "xo-stable", "xo-rolling", "supply-protector-latest", "supply-protector-stable", "supply-protector-rolling", "xo-fuse-linkage", "xo-server-service", "source-update-fixtures"],
-      "publication": ["xo-latest", "xo-stable", "xo-rolling", "supply-protector-latest", "supply-protector-stable", "supply-protector-rolling"]
+      "validation": [
+        "xo-latest",
+        "xo-stable",
+        "xo-rolling",
+        "supply-protector-latest",
+        "supply-protector-stable",
+        "supply-protector-rolling",
+        "xo-fuse-linkage",
+        "xo-server-service",
+        "source-update-fixtures"
+      ],
+      "publication": [
+        "xo-latest",
+        "xo-stable",
+        "xo-rolling",
+        "supply-protector-latest",
+        "supply-protector-stable",
+        "supply-protector-rolling"
+      ]
     },
     {
       "pattern": "^(nix/libvhdi\\.nix|nix/sources/libvhdi\\.json)$",
-      "validation": ["libvhdi", "supply-protector-latest", "supply-protector-stable", "supply-protector-rolling", "source-update-fixtures"],
-      "publication": ["xo-latest", "xo-stable", "xo-rolling", "supply-protector-latest", "supply-protector-stable", "supply-protector-rolling"]
+      "validation": [
+        "libvhdi",
+        "supply-protector-latest",
+        "supply-protector-stable",
+        "supply-protector-rolling",
+        "source-update-fixtures"
+      ],
+      "publication": [
+        "xo-latest",
+        "xo-stable",
+        "xo-rolling",
+        "supply-protector-latest",
+        "supply-protector-stable",
+        "supply-protector-rolling"
+      ]
     },
     {
       "pattern": "^nix/source-pins\\.nix$",
-      "validation": ["xo-latest", "xo-stable", "xo-rolling", "supply-protector-latest", "supply-protector-stable", "supply-protector-rolling", "xo-fuse-linkage", "xo-server-service", "libvhdi", "source-update-fixtures"],
-      "publication": ["xo-latest", "xo-stable", "xo-rolling", "supply-protector-latest", "supply-protector-stable", "supply-protector-rolling"]
+      "validation": [
+        "xo-latest",
+        "xo-stable",
+        "xo-rolling",
+        "supply-protector-latest",
+        "supply-protector-stable",
+        "supply-protector-rolling",
+        "xo-fuse-linkage",
+        "xo-server-service",
+        "libvhdi",
+        "source-update-fixtures"
+      ],
+      "publication": [
+        "xo-latest",
+        "xo-stable",
+        "xo-rolling",
+        "supply-protector-latest",
+        "supply-protector-stable",
+        "supply-protector-rolling"
+      ]
     },
     {
       "pattern": "^nix/supply-(protector\\.(nix|sh)|inventory\\.py)$",
-      "validation": ["repository-policy", "supply-protector-latest", "supply-protector-stable", "supply-protector-rolling", "classifier-fixtures"],
-      "publication": ["supply-protector-latest", "supply-protector-stable", "supply-protector-rolling"]
+      "validation": [
+        "repository-policy",
+        "supply-protector-latest",
+        "supply-protector-stable",
+        "supply-protector-rolling",
+        "classifier-fixtures"
+      ],
+      "publication": [
+        "supply-protector-latest",
+        "supply-protector-stable",
+        "supply-protector-rolling"
+      ]
     },
     {
       "pattern": "^nix/tests/xo-server-service\\.nix$",
-      "validation": ["xo-server-service"],
+      "validation": [
+        "xo-server-service"
+      ],
+      "publication": []
+    },
+    {
+      "pattern": "^(?:ci/audit\\-policy\\.py|ci/audit\\-policy\\.sh|ci/bounded\\-gh\\.sh|ci/build\\-reuse\\.py|ci/build\\-reuse\\.sh|ci/ci\\-verdict\\.sh|ci/consumer\\-probe\\.py|ci/consumer\\-probe\\.sh|ci/decision\\-authority\\.sh|ci/decision\\-collect\\.sh|ci/decision\\-reconcile\\.sh|ci/distribution\\-cache\\.py|ci/fetch\\-evidence\\.sh|ci/fetch\\-retained\\.py|ci/inspect\\-qualification\\.py|ci/inspect\\-qualification\\.sh|ci/publication\\-controller\\.py|ci/publication\\-controller\\.sh|ci/publication\\-gate\\.sh|ci/qualify\\-products\\.py|ci/qualify\\-products\\.sh|ci/queue\\-preflight\\.sh|ci/reconcile\\-retained\\.sh|ci/refresh\\-products\\.py|ci/refresh\\-products\\.sh|ci/repository\\-audit\\.sh|ci/restore\\-products\\.py|ci/restore\\-products\\.sh|ci/rolling\\-failure\\.sh|ci/security\\-database\\.py|ci/security\\-inventory\\.py|ci/security\\-inventory\\.sh|ci/security\\-lint\\.sh|ci/security\\-native\\-scan\\.sh|ci/security\\-normalize\\.py|ci/verify\\-rescan\\-evidence\\.py|ci/security\\-review\\-all\\.sh|ci/advisory\\-inputs\\.py|ci/advisory\\-union\\.py)$",
+      "validation": [
+        "repository-policy",
+        "ci-runtime-fixtures",
+        "application-composition",
+        "automation-fixtures",
+        "automation-runtime"
+      ],
+      "publication": [
+        "automation-runtime"
+      ]
+    },
+    {
+      "pattern": "^(?:tests/distribution\\-cache\\.py|tests/publication\\-boundary\\.sh|tests/security\\-database\\.py|tests/supply\\-inventory\\.py|tests/test_build_reuse\\.py|tests/test_consumer_probe\\.py|tests/test_evidence_download\\.py|tests/test_native_advisories\\.py|tests/test_operations\\.py|tests/test_parallel_runner\\.py|tests/test_profile_database\\.py|tests/test_publish_readback\\.py|tests/test_reconcile_retained\\.py|tests/test_scheduling\\.py|tests/test_security\\.py)$",
+      "validation": [
+        "repository-policy",
+        "ci-runtime-fixtures",
+        "automation-fixtures"
+      ],
+      "publication": []
+    },
+    {
+      "pattern": "^tests/test_scan_efficiency\\.py$",
+      "validation": [
+        "repository-policy",
+        "automation-fixtures"
+      ],
+      "publication": []
+    },
+    {
+      "pattern": "^tests/test_advisory_inputs\\.py$",
+      "validation": [
+        "repository-policy",
+        "automation-fixtures"
+      ],
       "publication": []
     },
     {
       "pattern": "^(flake\\.nix|flake\\.lock|nix/repository-checks\\.nix|ci/classifier\\.json)$",
-      "validation": ["*"],
-      "publication": ["*"]
+      "validation": [
+        "*"
+      ],
+      "publication": [
+        "*"
+      ]
     }
   ],
   "fallback": {
-    "validation": ["*"],
-    "publication": ["*"]
+    "validation": [
+      "*"
+    ],
+    "publication": [
+      "*"
+    ]
   }
 }

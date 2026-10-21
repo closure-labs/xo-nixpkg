@@ -6,6 +6,8 @@ on:
     branches: [main]
   merge_group:
     types: [checks_requested]
+  schedule:
+    - cron: '11 4 * * 0'
   workflow_dispatch:
     inputs:
       build_jobs:
@@ -82,7 +84,7 @@ jobs:
       cache_eligible: ${{ steps.trusted.outputs.cache_eligible }}
     env:
       XO_NIXPKG_BUILD_JOBS: ${{ github.event_name == 'workflow_dispatch' && inputs.build_jobs || '2' }}
-      XO_NIXPKG_REUSE_BUILDS: ${{ (github.event_name != 'workflow_dispatch' || inputs.reuse_builds) && 'true' || 'false' }}
+      XO_NIXPKG_REUSE_BUILDS: ${{ (github.event_name != 'schedule' && (github.event_name != 'workflow_dispatch' || inputs.reuse_builds)) && 'true' || 'false' }}
       PREPARED_CI_WORKFLOW: ${{ needs.classify.outputs.workflow }}
     steps:
       - name: Audit runner traffic

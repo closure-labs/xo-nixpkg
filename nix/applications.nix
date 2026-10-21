@@ -80,11 +80,36 @@ rec {
         nix
         python3
       ])
-      ++ [ securityApplicability ];
+      ++ [
+        securityApplicability
+        securityDatabase
+      ];
     prelude = ''
+      export XO_OPERATIONS_SOURCE=${../ci/decisions/operations.py}
+      export XO_ADVISORY_UNION_SOURCE=${../ci/advisory-union.py}
       XO_SECURITY_NORMALIZE_SOURCE=${./security-normalize.py}
       XO_SECURITY_APPLICABILITY_RULES=${./security-applicability-rules.json}
       export XO_SECURITY_NORMALIZE_SOURCE XO_SECURITY_APPLICABILITY_RULES
+    '';
+  };
+
+  securityReviewAll = mkRepositoryApplication {
+    name = "xo-nixpkg-security-review-all";
+    script = ../ci/security-review-all.sh;
+    runtimeInputs = with pkgs; [
+      python3
+      gh
+      oras
+      git
+      coreutils
+      securityScan
+      securityDatabase
+    ];
+    prelude = ''
+      export PYTHONPATH=${decisions}/lib/decisions
+      export XO_OPERATIONS_SOURCE=${../ci/decisions/operations.py}
+      export XO_ADVISORY_INPUTS_SOURCE=${../ci/advisory-inputs.py}
+      export XO_NIXPKG_RETAINED_FETCH_SOURCE=${../ci/fetch-retained.py}
     '';
   };
 
@@ -272,7 +297,10 @@ rec {
       python3
       nix
     ];
-    prelude = "export XO_NIXPKG_SECURITY_INVENTORY=${../ci/security-inventory.py}";
+    prelude = ''
+      export XO_NIXPKG_SECURITY_INVENTORY=${../ci/security-inventory.py}
+      export XO_FINGERPRINTS_CORE=${../ci/decisions}
+    '';
   };
   securityDatabase = pkgs.writeShellApplication {
     name = "xo-nixpkg-security-database";
@@ -294,7 +322,10 @@ rec {
       python3
       securityDatabase
     ];
-    prelude = "export XO_NIXPKG_SECURITY_NORMALIZER=${../ci/security-normalize.py}";
+    prelude = ''
+      export XO_NIXPKG_SECURITY_NORMALIZER=${../ci/security-normalize.py}
+      export XO_FINGERPRINTS_CORE=${../ci/decisions}
+    '';
   };
   qualifyProducts = mkRepositoryApplication {
     name = "xo-nixpkg-qualify-products";

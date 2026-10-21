@@ -34,6 +34,7 @@ in
       nix run .#repository-audit
     '';
     "security:audit-policy".exec = "nix run .#audit-policy";
+    "security:review-all".exec = "nix run .#security-review-all";
     "security:review".exec = "nix run .#security-scan";
     "security:refresh".exec = "nix run .#refresh-products";
     "security:fetch-rescan".exec = "nix run .#fetch-evidence";

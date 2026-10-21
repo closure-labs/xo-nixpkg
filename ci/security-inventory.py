@@ -7,6 +7,7 @@ import json
 import os
 from pathlib import Path
 import subprocess
+import sys
 from urllib.parse import quote
 
 
@@ -152,11 +153,18 @@ def main():
         batch = json.loads(command('nix', 'derivation', 'show', *drvs[start:start + 64]))
         records.update(batch.get('derivations', batch))
     args.output.mkdir(parents=True, exist_ok=True)
-    sbom = inventory(args.root, closure, records, args.profile != 'libvhdi')
+    sys.path.insert(0,os.environ.get('XO_FINGERPRINTS_CORE',str(Path(__file__).with_name('decisions'))))
+    import fingerprints
+    raw_inputs={'root':str(args.root),'closure':fingerprints.digest(closure),'derivations':fingerprints.digest(records),
+                'kind':'native' if args.profile=='libvhdi' else 'xo', 'generator':fingerprints.file_identity(Path(__file__))}
+    raw=fingerprints.raw_inventory(raw_inputs,lambda: (json.dumps(inventory(args.root,closure,records,args.profile!='libvhdi'),sort_keys=True,indent=2)+'\n').encode())
+    sbom=json.loads(raw)
     for name, value in [('runtime.cdx.json', sbom), ('closure.json', closure), ('derivations.json', records)]:
         (args.output / name).write_text(json.dumps(value, sort_keys=True, indent=2) + '\n')
     manifest = {name: hashlib.sha256((args.output / name).read_bytes()).hexdigest()
                 for name in ('runtime.cdx.json', 'closure.json', 'derivations.json')}
+    (args.output / 'inventory-fingerprints.json').write_text(json.dumps(fingerprints.bindings(raw_inputs,
+        {'generator':fingerprints.file_identity(Path(__file__))},{'profile':args.profile},{},{}),sort_keys=True)+'\n')
     (args.output / 'inventory.json').write_text(json.dumps({'schemaVersion': 1, 'profile': args.profile,
         'root': str(args.root), 'coverage': 'complete', 'documents': manifest}, sort_keys=True) + '\n')
 

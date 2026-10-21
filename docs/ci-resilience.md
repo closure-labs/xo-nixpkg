@@ -143,3 +143,41 @@ protected-main rollout condition, and this refactor does not bypass it.
 Maestro's release-continuation path already rejects irrelevant authoritative
 callback metadata before journal/packet materialization. Its marker, request
 expiry, source, run/attempt and completed-producer checks remain intact.
+
+## Package 6: classification and scan inputs
+
+Five version1 dependency fingerprints separate raw inventory/generator inputs,
+normalization, runtime context, fresh observations and attestation inputs.
+They are additive diagnostics, never authorization. Existing authoritative
+inventory, subject, context and product digests remain intact. Observations and
+attestations are regenerated for each invocation; fingerprint equality does not
+reuse either. XO raw-inventory reuse requires the exact closure/NAR identities,
+derivation documents, generator bytes, verifier version, source tree and hosted
+job identity. Every hit revalidates regular files and hashes.
+
+XO maps current controller/test files explicitly and retains full validation
+for unknown paths. Weekly complete validation disables Actions imports.
+Maestro's existing fresh-media schedule and disabled audit/qualification
+overlap are unchanged. CodeQL, Gitleaks, Zizmor and scanner canaries remain.
+
+The XO advisory controller prepares one online, caller-anchored database for
+three sequential reports, revalidates all snapshot bytes before/after use, and
+keeps the stricter24-hour advisory age and4-hour preparation age. Admission
+retains48 hours. The historical one-channel command, all three artifact names,
+retention and applicability rationale remain available.
+
+When a successful qualification exactly matches current source and producer
+run/attempt, signed product/scans plus digest-bound inventory assets can extend
+the advisory inputs. Original supply components, graph and properties are
+retained; all distinct native instances and installed paths are included. Differential fixtures
+prove no original coverage disappears. No eligible exact-source packet means
+the original supply inventory path runs normally. Invalid provenance or hashes
+block. This introduces no cross-tree Actions artifact reuse.
+
+Protected-main qualification/refresh regenerates current sidecars, observations
+and independent attestations after rollout. Historical decisions, signed
+products and observations are never rewritten to manufacture fresh evidence.
+Comparable fixture results show zero duplicate packet payload fetches, zero
+closure transfers on a verified publication retry, one raw generation for two
+identical job inputs, and one database preparation for three advisory reports.
+These are operation counts, not production percentage savings claims.

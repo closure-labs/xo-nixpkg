@@ -8,6 +8,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## Unreleased
 
+- Separate scan dependency fingerprints and retain fresh observations while reducing repeated inventory and advisory database work.
+
 - Use a strictly tested signal-only decision relay and minimal native controller task profiles.
 
 - Reconcile publication destinations before transfer and verify remote identities with backward-compatible receipt journals.

@@ -7,7 +7,7 @@ import time
 
 
 def stage(name, started, *, cache=None, transferred_bytes=0, freshness=None, queue=None, remote=None, checkpoints=None):
-    allowed = {'packet-materialization', 'qualification-inspection', 'destination-verification', 'queue-reconciliation'}
+    allowed = {'inventory-generation', 'packet-materialization', 'qualification-inspection', 'destination-verification', 'queue-reconciliation'}
     if (name not in allowed or cache not in (None, 'hit', 'miss')
             or type(transferred_bytes) is not int or transferred_bytes < 0
             or freshness not in (None, 'current', 'expired', 'unknown')

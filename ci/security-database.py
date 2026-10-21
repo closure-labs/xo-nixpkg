@@ -52,15 +52,15 @@ def grype(root, *args):
                                    env=environment(root), text=True)
 
 
-def validate_status(status):
+def validate_status(status, maximum_age=48):
     if status.get('valid') is not True or not re.fullmatch(r'v[0-9]+\.[0-9]+\.[0-9]+', str(status.get('schemaVersion', ''))):
         raise ValueError('invalid database status/schema')
     age = now() - stamp(status['built'])
-    if not dt.timedelta(0) <= age <= dt.timedelta(hours=48):
+    if not dt.timedelta(0) <= age <= dt.timedelta(hours=maximum_age):
         raise ValueError('database is future-dated or stale')
 
 
-def verify(root, expected):
+def verify(root, expected, maximum_age=48):
     if root.is_symlink() or not root.is_dir():
         raise ValueError('snapshot must be a real directory')
     receipt = root / 'receipt.json'
@@ -85,7 +85,7 @@ def verify(root, expected):
     if json.loads(grype(root, 'version', '-o', 'json')) != value['scanner']:
         raise ValueError('database scanner version changed')
     status = json.loads(grype(root, 'db', 'status', '-o', 'json'))
-    validate_status(status)
+    validate_status(status, maximum_age)
     for key in ('built', 'schemaVersion'):
         if status[key] != value['database'][key]:
             raise ValueError('database identity changed')
@@ -94,7 +94,7 @@ def verify(root, expected):
     return value
 
 
-def prepare(root):
+def prepare(root, maximum_age=48):
     if root.is_symlink():
         raise ValueError('snapshot directory cannot be a symlink')
     root.mkdir(parents=True, exist_ok=True)
@@ -108,7 +108,7 @@ def prepare(root):
     subprocess.run(['grype', '--config', str(root / 'grype.yaml'), 'db', 'update'],
                    env=online_env, check=True, stdout=subprocess.DEVNULL)
     status = json.loads(grype(root, 'db', 'status', '-o', 'json'))
-    validate_status(status)
+    validate_status(status, maximum_age)
     value = {'schema': 1, 'onlineUpdate': True, 'preparedAt': now().isoformat(),
              'database': {k: status[k] for k in ('built', 'schemaVersion')},
              'scanner': json.loads(grype(root, 'version', '-o', 'json')),
@@ -123,15 +123,16 @@ def main():
     parser.add_argument('operation', choices=['prepare', 'verify'])
     parser.add_argument('directory', type=Path)
     parser.add_argument('receipt_sha256', nargs='?')
+    parser.add_argument('--max-age-hours',type=int,choices=[24,48],default=48)
     args = parser.parse_args()
     if args.operation == 'prepare':
         if args.receipt_sha256:
             parser.error('prepare does not accept an existing receipt')
-        print(prepare(args.directory.resolve() if not args.directory.is_symlink() else args.directory))
+        print(prepare(args.directory.resolve() if not args.directory.is_symlink() else args.directory, args.max_age_hours))
     else:
         if not args.receipt_sha256:
             parser.error('verify requires trusted caller receipt SHA256')
-        verify(args.directory, args.receipt_sha256)
+        verify(args.directory, args.receipt_sha256, args.max_age_hours)
 
 
 if __name__ == '__main__':

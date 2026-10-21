@@ -4,6 +4,7 @@
 import datetime
 import json
 import math
+import os
 from pathlib import Path
 import sys
 
@@ -93,6 +94,13 @@ def main():
     if result['database'].get('valid') is not True:
         raise ValueError('scanner database did not pass native health validation')
     (output / 'scan.json').write_text(json.dumps(result, sort_keys=True, indent=2) + '\n')
+    sys.path.insert(0,os.environ.get('XO_FINGERPRINTS_CORE',str(Path(__file__).with_name('decisions'))))
+    import fingerprints
+    keys=fingerprints.bindings({'inventory':fingerprints.file_identity(inventory/'runtime.cdx.json')},
+        {'normalizer':fingerprints.file_identity(Path(__file__))},{'inventory':fingerprints.digest(json.loads((inventory/'runtime.cdx.json').read_text()).get('properties',[]))},
+        {'report':fingerprints.file_identity(output/'runtime.grype.json'),'database':fingerprints.file_identity(output/'database.json')},
+        {'payload':fingerprints.file_identity(output/'scan.json'),'producer':{k:os.environ.get(k) for k in ('GITHUB_SHA','GITHUB_RUN_ID','GITHUB_RUN_ATTEMPT','GITHUB_WORKFLOW_REF')}})
+    (output/'observation-fingerprints.json').write_text(json.dumps(keys,sort_keys=True)+'\n')
 
 
 if __name__ == '__main__':

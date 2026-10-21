@@ -33,15 +33,30 @@ def digest(value):
     return hashlib.sha256(json.dumps(value, sort_keys=True, separators=(",", ":")).encode()).hexdigest()
 
 
+def shared_native(record):
+    values=record.get("properties",[])
+    if not isinstance(values,list):return False
+    marker=[p for p in values if isinstance(p,dict) and p.get("name")=="xo-nixpkg:sharedNative"]
+    return (isinstance(record.get("bom-ref"),str) and record["bom-ref"].startswith("shared-native:")
+            and marker==[{"name":"xo-nixpkg:sharedNative","value":"true"}])
+
+
 def properties(record):
     values = record.get("properties", [])
     require(isinstance(values, list), "invalid inventory properties")
     result = {}
+    multiple = {"xo-nixpkg:installedPath", "nix:derivation"} if shared_native(record) else set()
     for item in values:
         require(isinstance(item, dict) and isinstance(item.get("name"), str)
-                and isinstance(item.get("value"), str) and item["name"] not in result,
+                and isinstance(item.get("value"), str) and (item["name"] not in result or item["name"] in multiple),
                 "invalid or duplicate inventory property")
-        result[item["name"]] = item["value"]
+        if item["name"] in multiple:
+            entries=result.setdefault(item["name"],[])
+            require(item["value"] not in entries,"duplicate native exposure value")
+            entries.append(item["value"])
+        else:
+            result[item["name"]] = item["value"]
+    for name in multiple & result.keys():result[name]=sorted(result[name])
     return result
 
 
@@ -105,38 +120,58 @@ def normalize(report, sbom, scanner_version, context):
     for match in report["matches"]:
         artifact, vulnerability = match["artifact"], match["vulnerability"]
         component = components.get(artifact["id"])
-        if component is None:
-            candidates = [c for c in components.values() if artifact.get("purl") and
-                          c.get("purl") == artifact["purl"] and c["name"] == artifact["name"] and
-                          c.get("version") == artifact["version"]]
-            require(len(candidates) == 1, "scanner match has ambiguous or absent immutable component identity")
-            component = candidates[0]
-        require(component["name"] == artifact["name"] and component.get("version") == artifact["version"] and
-                (not artifact.get("purl") or component["purl"] == artifact["purl"]), "scanner artifact differs from inventory")
-        props = properties(component)
-        binding = {
-            "component_ref": component["bom-ref"], "purl": component["purl"],
-            "manifest_path": props.get("xo-nixpkg:manifestPath"),
-            "output_path": props.get("nix:storePath", props.get("nix:output_path")),
-            "derivation": props.get("maestro:derivation", props.get("xo-nixpkg:derivation")),
-            "derivation_digest": props.get("maestro:derivationDigest", props.get("xo-nixpkg:derivationDigest")),
-            "source": props.get("maestro:source", props.get("xo-nixpkg:source")),
-            "patches": props.get("maestro:patches", props.get("xo-nixpkg:patches")),
-            "hashes": component.get("hashes", []), "runtime_context": digest(context),
-            "scanner": scanner_version, "normalizer": "1",
-            "namespace": vulnerability["namespace"], "advisory_digest": digest(vulnerability),
-            "match_digest": digest(match["matchDetails"]),
-            "match_types": sorted({detail["type"] for detail in match["matchDetails"]}),
-        }
-        severity = vulnerability["severity"].lower()
-        require(severity in SEVERITIES, "unsupported scanner severity")
-        finding = {"advisory": vulnerability["id"], "component": component["name"],
-                   "version": component["version"], "severity": severity, "scanner": "grype",
-                   "identity": digest(binding), "binding": binding,
-                   "evidence": {"parents": sorted(d["ref"] for d in sbom.get("dependencies", [])
-                                                   if component["bom-ref"] in d.get("dependsOn", [])),
-                                "urls": vulnerability.get("urls", [])}}
-        findings[(finding["advisory"], finding["identity"], severity)] = finding
+        if component is not None:
+            require(component["name"] == artifact["name"] and component.get("version") == artifact["version"] and
+                    (not artifact.get("purl") or component["purl"] == artifact["purl"]), "scanner artifact differs from inventory")
+        candidates = [c for c in components.values() if artifact.get("purl") and
+                      c.get("purl") == artifact["purl"] and c["name"] == artifact["name"] and
+                      c.get("version") == artifact["version"]]
+        if any(shared_native(c) for c in candidates):
+            # Package-level matches conservatively apply to every authenticated
+            # immutable instance of this identity, even if Grype coalesces IDs.
+            selected=candidates
+        elif component is not None:selected=[component]
+        else:
+            require(len(candidates)==1,"scanner match has ambiguous or absent immutable component identity")
+            selected=candidates
+        for component in selected:
+            require(component["name"] == artifact["name"] and component.get("version") == artifact["version"] and
+                    (not artifact.get("purl") or component["purl"] == artifact["purl"]), "scanner artifact differs from inventory")
+            props = properties(component)
+            binding = {
+                "component_ref": component["bom-ref"], "purl": component["purl"],
+                "manifest_path": props.get("xo-nixpkg:manifestPath"),
+                "output_path": props.get("nix:storePath", props.get("nix:output_path")),
+                "derivation": props.get("maestro:derivation", props.get("xo-nixpkg:derivation")),
+                "derivation_digest": props.get("maestro:derivationDigest", props.get("xo-nixpkg:derivationDigest")),
+                "source": props.get("maestro:source", props.get("xo-nixpkg:source")),
+                "patches": props.get("maestro:patches", props.get("xo-nixpkg:patches")),
+                "hashes": component.get("hashes", []), "runtime_context": digest(context),
+                "scanner": scanner_version, "normalizer": "1",
+                "namespace": vulnerability["namespace"], "advisory_digest": digest(vulnerability),
+                "match_digest": digest(match["matchDetails"]),
+                "match_types": sorted({detail["type"] for detail in match["matchDetails"]}),
+            }
+            if shared_native(component):
+                installed=props.get("xo-nixpkg:installedPath",[])
+                output=props.get("nix:storePath")
+                require(isinstance(output,str) and STORE.fullmatch(output) and installed and
+                        all(isinstance(path,str) and (path==output or path.startswith(output+"/"))
+                            and str(Path(path))==path and ".." not in Path(path).parts for path in installed),
+                        "shared native component lacks complete immutable file exposure")
+                derivations=props.get("nix:derivation",[])
+                require(derivations and all(STORE.fullmatch(path) and path.endswith(".drv") for path in derivations),
+                        "shared native component lacks exact producer derivations")
+                binding.update(normalizer="shared-native-v1",installed_paths=installed,native_derivations=props.get("nix:derivation",[]))
+            severity = vulnerability["severity"].lower()
+            require(severity in SEVERITIES, "unsupported scanner severity")
+            finding = {"advisory": vulnerability["id"], "component": component["name"],
+                       "version": component["version"], "severity": severity, "scanner": "grype",
+                       "identity": digest(binding), "binding": binding,
+                       "evidence": {"parents": sorted(d["ref"] for d in sbom.get("dependencies", [])
+                                                       if component["bom-ref"] in d.get("dependsOn", [])),
+                                    "urls": vulnerability.get("urls", [])}}
+            findings[(finding["advisory"], finding["identity"], severity)] = finding
     return [findings[key] for key in sorted(findings)]
 
 

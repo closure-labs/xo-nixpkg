@@ -132,6 +132,7 @@ rec {
           automation-runtime = automationRuntime;
           security-applicability = applications.securityApplicability;
           security-scan = applications.securityScan;
+          security-review-all = applications.securityReviewAll;
           libvhdi = pkgs.callPackage ./nix/libvhdi.nix {
             inherit (sourcePins.libvhdi) version;
             source = pkgs.fetchzip {
@@ -216,6 +217,7 @@ rec {
           classify-ci = mkApp applications.classifyCi "Classify a CI event into exact validation and publication plans";
           ci = mkApp applications.ci "Run the complete repository validation pipeline";
           security-applicability = mkApp applications.securityApplicability "Revalidate exact source-bound security applicability evidence";
+          security-review-all = mkApp applications.securityReviewAll "Review all advisory channels with one verified fresh database";
           security-scan = mkApp applications.securityScan "Scan one XO channel and report unresolved critical findings";
           run-ci-plan =
             mkApp self.packages.${system}.flake-plan-runner

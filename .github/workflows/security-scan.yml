@@ -8,6 +8,9 @@ on:
 
 permissions:
   contents: read
+  actions: read
+  packages: read
+  attestations: read
 
 concurrency:
   group: security-inventory-review
@@ -16,13 +19,9 @@ concurrency:
 jobs:
   scan:
     if: github.ref == 'refs/heads/main'
-    name: Review ${{ matrix.channel }} critical findings
+    name: Review all channel critical findings
     runs-on: ubuntu-24.04
     timeout-minutes: 180
-    strategy:
-      fail-fast: false
-      matrix:
-        channel: [latest, stable, rolling]
     steps:
       - name: Checkout protected main source
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -36,16 +35,33 @@ jobs:
 
       - name: Scan the immutable channel inventory
         env:
-          CHANNEL: ${{ matrix.channel }}
+          GH_TOKEN: ${{ github.token }}
+          REGISTRY_TOKEN: ${{ github.token }}
           SECURITY_MODE: report
           SECURITY_OUTPUT: security-report
-        run: nix run .#devenv -- tasks run --mode single --option 'packages:pkgs!' '' security:review
+        run: nix run .#devenv -- tasks run --mode single --option 'packages:pkgs!' '' security:review-all
 
-      - name: Upload raw matches and applicability evidence
+      - name: Upload latest raw matches and applicability evidence
         if: always()
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
-          name: security-review-${{ matrix.channel }}
-          path: security-report
+          name: security-review-latest
+          path: security-report/latest
+          if-no-files-found: error
+          retention-days: 30
+      - name: Upload stable raw matches and applicability evidence
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: security-review-stable
+          path: security-report/stable
+          if-no-files-found: error
+          retention-days: 30
+      - name: Upload rolling raw matches and applicability evidence
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: security-review-rolling
+          path: security-report/rolling
           if-no-files-found: error
           retention-days: 30
