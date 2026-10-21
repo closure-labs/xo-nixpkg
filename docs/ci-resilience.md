@@ -178,6 +178,12 @@ prove no original coverage disappears. No eligible exact-source packet means
 the original supply inventory path runs normally. Invalid provenance or hashes
 block. This introduces no cross-tree Actions artifact reuse.
 
+Runtime inventories use a separate exact-name reader capped at 64 MiB per
+member and 180 seconds, within a 300-second discovery/materialization budget.
+Producer, packet descriptor, byte size and hash are checked before use. The
+ordinary metadata reader retains its 16 MiB limit; closure members cannot use
+the inventory reader.
+
 Protected-main qualification/refresh regenerates current sidecars, observations
 and independent attestations after rollout. Historical decisions, signed
 products and observations are never rewritten to manufacture fresh evidence.
