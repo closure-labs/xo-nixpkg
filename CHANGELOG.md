@@ -33,6 +33,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- Bound qualification artifact downloads to ten minutes, with a ten-second forced
+  termination grace, before cleaning partial files and trying authenticated
+  retained evidence. Preserve exact attempts, signatures and live admission.
 - Report bounded attestation-verifier failure categories without exposing raw
   verifier output, request URLs, local paths or credentials. Preserve all signer,
   source and hosted-runner verification requirements.

@@ -17,7 +17,8 @@ if [[ -n ${QUALIFICATION_ATTEMPT:-} ]]; then
   [[ $QUALIFICATION_ATTEMPT =~ ^[1-9][0-9]*$ && $QUALIFICATION_ATTEMPT == "$attempt" ]]
 fi
 [[ ! -e $XO_NIXPKG_EVIDENCE ]]
-if ! gh run download "$QUALIFICATION_RUN" --repo "$GITHUB_REPOSITORY" --name "qualified-products-$QUALIFICATION_RUN-$attempt" --dir "$XO_NIXPKG_EVIDENCE"; then
+# Artifact transport/extraction may stall; retained recovery repeats authentication.
+if ! timeout --signal=TERM --kill-after=10s 600s gh run download "$QUALIFICATION_RUN" --repo "$GITHUB_REPOSITORY" --name "qualified-products-$QUALIFICATION_RUN-$attempt" --dir "$XO_NIXPKG_EVIDENCE"; then
   rm -rf -- "$XO_NIXPKG_EVIDENCE"
   export QUALIFICATION_ATTEMPT="$attempt"
   printf '%s' "$REGISTRY_TOKEN" | oras login ghcr.io --username "$GITHUB_ACTOR" --password-stdin
