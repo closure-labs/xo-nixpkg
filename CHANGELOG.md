@@ -33,6 +33,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- Report bounded attestation-verifier failure categories without exposing raw
+  verifier output, request URLs, local paths or credentials. Preserve all signer,
+  source and hosted-runner verification requirements.
 - Confirm acknowledged journal checkpoints with bounded retries of only the
   known prior reference, preserving conflict detection and immutable recovery.
 - Treat absent historical pull-request associations as unavailable build-cache

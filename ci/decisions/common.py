@@ -2,11 +2,14 @@
 import argparse
 import datetime as dt
 import json
+import os
 from pathlib import Path
 import re
+import selectors
 import subprocess
 import sys
 import tempfile
+import time
 
 import decision_authority as authority
 import decision_packets as packets
@@ -259,11 +262,112 @@ def timestamp(value):
     return parsed
 
 
+ATTESTATION_STDOUT_LIMIT = 2 * 1024**2
+ATTESTATION_STDERR_LIMIT = 16 * 1024
+ATTESTATION_TIMEOUT = 180
+
+
+def attestation_diagnostic(code, stderr, stderr_bytes, **metadata):
+    # Never return arbitrary verifier output: it may contain credentials or URLs.
+    text = stderr.decode('utf-8', errors='replace').lower()
+    statuses = sorted({int(value) for value in re.findall(
+        r'\b(?:http(?:/[0-9.]+)?|status(?:\s+code)?)\s*[:=( ]\s*(401|403|404|408|429|500|502|503|504)\b', text)})
+    patterns = {
+        'authorization-denied': r'\bunauthorized\b|\bforbidden\b|resource not accessible by integration',
+        'rate-limited': r'rate limit|too many requests',
+        'network': r'connection reset|connection refused|no such host|temporary failure in name resolution|unexpected eof',
+        'tls': r'tls handshake|certificate signed by unknown authority|certificate verify failed|x509:',
+        'timeout': r'context deadline exceeded|i/o timeout|timed out',
+        'disk-full': r'no space left on device|disk quota exceeded',
+        'signature-invalid': r'invalid signature|signature verification failed|failed to verify signature',
+        'identity-mismatch': r'source digest.*(?:mismatch|does not match)|(?:signer|subject|identity).*(?:mismatch|does not match)',
+        'attestation-unavailable': r'no attestations found|no matching attestations',
+        'trust-root': r'failed to (?:initialize|update|refresh).*tuf|failed to.*trusted root|expired.*(?:metadata|root)',
+    }
+    categories = {name for name, pattern in patterns.items() if re.search(pattern, text)}
+    if any(status in (401, 403) for status in statuses):
+        categories.add('authorization-denied')
+    if 429 in statuses:
+        categories.add('rate-limited')
+    if any(status >= 500 for status in statuses):
+        categories.add('remote-server')
+    if metadata.get('timedOut'):
+        categories.add('timeout')
+    if metadata.get('outputLimitExceeded'):
+        categories.add('output-limit')
+    if metadata.get('errno') is not None:
+        categories.add('start-failed')
+    return 'Attestation verification failed: ' + json.dumps({
+        'exitCode': code, 'signal': -code if code is not None and code < 0 else None,
+        'categories': sorted(categories or {'unclassified'}), 'httpStatus': statuses,
+        'stderrBytes': stderr_bytes, 'stderrTruncated': stderr_bytes > ATTESTATION_STDERR_LIMIT,
+        'timeoutSeconds': ATTESTATION_TIMEOUT,
+        **metadata}, sort_keys=True)
+
+
+class AttestationCommandError(subprocess.CalledProcessError):
+    def __str__(self):
+        return self.cmd
+
+
+class AttestationTimeout(subprocess.TimeoutExpired):
+    def __str__(self):
+        return self.cmd
+
+
+def attestation_command(arguments):
+    output, tail, stderr_bytes = bytearray(), bytearray(), 0
+    try:
+        child = subprocess.Popen(arguments, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+    except OSError as error:
+        raise ValueError(attestation_diagnostic(None, tail, 0, errno=error.errno)) from None
+    with child:
+        deadline = time.monotonic() + ATTESTATION_TIMEOUT
+        try:
+            with selectors.DefaultSelector() as selector:
+                selector.register(child.stdout, selectors.EVENT_READ, 'stdout')
+                selector.register(child.stderr, selectors.EVENT_READ, 'stderr')
+                while selector.get_map():
+                    remaining = deadline - time.monotonic()
+                    if remaining <= 0:
+                        raise subprocess.TimeoutExpired('attestation', ATTESTATION_TIMEOUT)
+                    for key, _ in selector.select(min(remaining, 1)):
+                        block = os.read(key.fd, 64 * 1024)
+                        if not block:
+                            selector.unregister(key.fileobj)
+                        elif key.data == 'stderr':
+                            stderr_bytes += len(block)
+                            tail.extend(block)
+                            del tail[:-ATTESTATION_STDERR_LIMIT]
+                        else:
+                            if len(output) + len(block) > ATTESTATION_STDOUT_LIMIT:
+                                raise ValueError(attestation_diagnostic(
+                                    None, tail, stderr_bytes, outputLimitExceeded=True))
+                            output.extend(block)
+            child.wait(timeout=max(.001, deadline - time.monotonic()))
+        except subprocess.TimeoutExpired:
+            child.kill()
+            child.wait()
+            raise AttestationTimeout(attestation_diagnostic(
+                child.returncode, tail, stderr_bytes, timedOut=True), ATTESTATION_TIMEOUT) from None
+        except BaseException:
+            child.kill()
+            child.wait()
+            raise
+        if child.returncode:
+            raise AttestationCommandError(child.returncode,
+                                          attestation_diagnostic(child.returncode, tail, stderr_bytes))
+    try:
+        return json.loads(output.decode('utf-8'))
+    except (ValueError, UnicodeError):
+        raise ValueError('Invalid attestation verifier JSON output') from None
+
+
 def attest(path, cfg, revision, workflow):
-    return json.loads(command(['gh', 'attestation', 'verify', str(path), '--repo', cfg['repository'],
-                              '--signer-workflow', cfg['repository'] + '/' + workflow,
-                              '--source-digest', revision, '--source-ref', 'refs/heads/main',
-                              '--deny-self-hosted-runners', '--format', 'json']))
+    return attestation_command(['gh', 'attestation', 'verify', str(path), '--repo', cfg['repository'],
+                               '--signer-workflow', cfg['repository'] + '/' + workflow,
+                               '--source-digest', revision, '--source-ref', 'refs/heads/main',
+                               '--deny-self-hosted-runners', '--format', 'json'])
 
 
 def attest_product(path, cfg, revision):
