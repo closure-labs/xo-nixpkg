@@ -7,12 +7,16 @@ import json
 import os
 from pathlib import Path
 import subprocess
+import sys
 import tempfile
 import unittest
 from unittest.mock import patch
 from urllib.parse import unquote, urlparse
 
 ROOT = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(ROOT / 'ci/decisions'))
+import operations
+
 PROFILES = ('xo-latest', 'xo-stable', 'xo-rolling', 'libvhdi')
 CREDENTIALS = ('GH_TOKEN', 'GITHUB_TOKEN', 'CACHIX_AUTH_TOKEN', 'SECAUDIT_PEM',
                'REGISTRY_TOKEN', 'DECIDER_KEY', 'XO_AUTHORITY_TOKEN',
@@ -45,6 +49,7 @@ class ParentDatabaseTests(unittest.TestCase):
         patch.dict(os.environ, self.environment, clear=True).start()
         patch.object(subprocess, 'check_output', side_effect=self.check_output).start()
         patch.object(subprocess, 'run', side_effect=self.external_run).start()
+        patch.object(operations, 'run', side_effect=self.bounded_run).start()
         self.reset_observations()
 
     def reset_observations(self):
@@ -94,6 +99,11 @@ class ParentDatabaseTests(unittest.TestCase):
             self.no_credentials()
             result = json.dumps({path: {'path': path, 'narHash': self.nar(path)}
                                  for path in arguments[3:]})
+        elif arguments[:3] == ['nix', 'store', 'verify']:
+            self.no_credentials()
+            self.assertIn('--recursive', arguments)
+            self.assertIn('--no-trust', arguments)
+            result = ''
         elif arguments[:3] == ['nix', 'copy', '--to']:
             self.no_credentials()
             destination = Path(unquote(urlparse(arguments[3]).path))
@@ -111,6 +121,9 @@ class ParentDatabaseTests(unittest.TestCase):
         else:
             raise AssertionError('Unexpected external check_output: ' + repr(arguments))
         return result if text else result.encode()
+
+    def bounded_run(self, arguments, **kwargs):
+        return subprocess.CompletedProcess(arguments, 0, self.check_output(arguments, **kwargs))
 
     def external_run(self, arguments, **kwargs):
         arguments = list(arguments)

@@ -447,23 +447,23 @@ class Authority(unittest.TestCase):
 
     def test_github_api_bounds_output_before_json_parse(self):
         def bounded(arguments, **kwargs):
-            self.assertEqual(kwargs['timeout'], 60)
+            self.assertEqual(kwargs['timeout'], 30)
             self.assertEqual(kwargs['stderr'], subprocess.DEVNULL)
             self.assertTrue(callable(kwargs['preexec_fn']))
             self.assertIn('--include', arguments)
             kwargs['stdout'].write(b'HTTP/2.0 200 OK\r\nContent-Type: application/json\r\n\r\n{"safe":true}')
             return subprocess.CompletedProcess(arguments, 0)
-        with patch.object(mod.subprocess, 'run', side_effect=bounded):
+        with patch.object(mod.operations, 'run', side_effect=bounded):
             self.assertEqual(mod.github_api('repos/example/repository'), {'safe': True})
         def oversized(arguments, **kwargs):
             kwargs['stdout'].truncate(mod.MAX_API_BYTES + 1)
             kwargs['stdout'].seek(0, 2)
             return subprocess.CompletedProcess(arguments, 0)
-        with patch.object(mod.subprocess, 'run', side_effect=oversized), \
+        with patch.object(mod.operations, 'run', side_effect=oversized), \
              patch.object(mod.json, 'load') as parse, self.assertRaises(mod.AuthorityError):
             mod.github_api('repos/example/repository')
         parse.assert_not_called()
-        with patch.object(mod.subprocess, 'run', side_effect=subprocess.TimeoutExpired('gh', 60)) as run, \
+        with patch.object(mod.operations, 'run', side_effect=subprocess.TimeoutExpired('gh', 60)) as run, \
              patch.object(mod.time, 'sleep') as sleep, \
              self.assertRaises(mod.AuthorityError):
             mod.github_api('repos/example/repository')
@@ -483,7 +483,7 @@ class Authority(unittest.TestCase):
                 kwargs['stdout'].write(f'HTTP/2.0 {status}\r\n\r\n{{"fresh":true}}'.encode())
                 return subprocess.CompletedProcess(arguments, 0 if status == 200 else 1)
             with self.subTest(transient=transient), \
-                 patch.object(mod.subprocess, 'run', side_effect=request) as run, \
+                 patch.object(mod.operations, 'run', side_effect=request) as run, \
                  patch.object(mod.time, 'sleep') as sleep:
                 self.assertEqual(mod.github_api('repos/example/repository'), {'fresh': True})
                 self.assertEqual(run.call_count, 2)
@@ -494,7 +494,7 @@ class Authority(unittest.TestCase):
             def request(arguments, **kwargs):
                 kwargs['stdout'].write(f'HTTP/2.0 {status}\r\nSecret: private-header\r\n\r\nprivate-body'.encode())
                 return subprocess.CompletedProcess(arguments, 1)
-            with self.subTest(status=status), patch.object(mod.subprocess, 'run', side_effect=request) as run, \
+            with self.subTest(status=status), patch.object(mod.operations, 'run', side_effect=request) as run, \
                  patch.object(mod.time, 'sleep') as sleep, \
                  self.assertRaisesRegex(mod.AuthorityError,
                                         rf'^GitHub authority API failed: repos/example/repository \(HTTP {status}; attempt 1\)$'):
@@ -506,7 +506,7 @@ class Authority(unittest.TestCase):
         def request(arguments, **kwargs):
             kwargs['stdout'].write(b'HTTP/2.0 503 Service Unavailable\nSecret: private\n\nprivate-body')
             return subprocess.CompletedProcess(arguments, 1)
-        with patch.object(mod.subprocess, 'run', side_effect=request) as run, \
+        with patch.object(mod.operations, 'run', side_effect=request) as run, \
              patch.object(mod.time, 'sleep') as sleep, self.assertRaisesRegex(
                  mod.AuthorityError, r'^GitHub authority API failed: repos/example/repository \(HTTP 503; 3 attempts\)$'):
             mod.github_api('repos/example/repository?private-query')
@@ -521,7 +521,7 @@ class Authority(unittest.TestCase):
             def request(arguments, **kwargs):
                 kwargs['stdout'].write(response)
                 return subprocess.CompletedProcess(arguments, 0)
-            with self.subTest(response=response[:30]), patch.object(mod.subprocess, 'run', side_effect=request) as run, \
+            with self.subTest(response=response[:30]), patch.object(mod.operations, 'run', side_effect=request) as run, \
                  patch.object(mod.time, 'sleep') as sleep, self.assertRaises(mod.AuthorityError):
                 mod.github_api('repos/example/repository')
             self.assertEqual(run.call_count, 1)
@@ -530,7 +530,7 @@ class Authority(unittest.TestCase):
     def test_github_api_launch_and_signal_failures_never_retry(self):
         for failure in (OSError('private error'), subprocess.CompletedProcess('gh', -25)):
             with self.subTest(failure=type(failure).__name__), \
-                 patch.object(mod.subprocess, 'run', **({'side_effect': failure} if isinstance(failure, OSError)
+                 patch.object(mod.operations, 'run', **({'side_effect': failure} if isinstance(failure, OSError)
                                                        else {'return_value': failure})) as run, \
                  patch.object(mod.time, 'sleep') as sleep, self.assertRaises(mod.AuthorityError):
                 mod.github_api('repos/example/repository')
@@ -546,7 +546,7 @@ class Authority(unittest.TestCase):
         def request(arguments, **kwargs):
             kwargs['stdout'].write(response)
             return subprocess.CompletedProcess(arguments, 1)
-        with patch.object(mod.subprocess, 'run', side_effect=request) as run, \
+        with patch.object(mod.operations, 'run', side_effect=request) as run, \
              patch.object(mod.time, 'sleep') as sleep, self.assertRaises(mod.AuthorityError) as error:
             mod.github_api('repos/example/repository?private-query')
         self.assertEqual(str(error.exception), 'GitHub authority API failed: repos/example/repository '
@@ -568,7 +568,7 @@ class Authority(unittest.TestCase):
             def request(arguments, **kwargs):
                 kwargs['stdout'].write(b'HTTP/2.0 403 Forbidden\r\n' + headers + b'\r\n' + body)
                 return subprocess.CompletedProcess(arguments, 1)
-            with self.subTest(expected=expected), patch.object(mod.subprocess, 'run', side_effect=request) as run, \
+            with self.subTest(expected=expected), patch.object(mod.operations, 'run', side_effect=request) as run, \
                  patch.object(mod.time, 'sleep') as sleep, self.assertRaises(mod.AuthorityError) as error:
                 mod.github_api('repos/example/repository?private-query')
             self.assertEqual(str(error.exception), 'GitHub authority API failed: repos/example/repository '
@@ -589,7 +589,7 @@ class Authority(unittest.TestCase):
             def request(arguments, **kwargs):
                 kwargs['stdout'].write(b'HTTP/2.0 403 Forbidden\r\n' + headers + b'\r\n' + body)
                 return subprocess.CompletedProcess(arguments, 1)
-            with self.subTest(body=body[:20]), patch.object(mod.subprocess, 'run', side_effect=request) as run, \
+            with self.subTest(body=body[:20]), patch.object(mod.operations, 'run', side_effect=request) as run, \
                  patch.object(mod.time, 'sleep') as sleep, self.assertRaises(mod.AuthorityError) as error:
                 mod.github_api('repos/example/repository?private-query')
             self.assertEqual(str(error.exception), 'GitHub authority API failed: repos/example/repository '
@@ -602,7 +602,7 @@ class Authority(unittest.TestCase):
             kwargs['stdout'].write(b'HTTP/2.0 200 OK\r\nX-RateLimit-Remaining: 0\r\n'
                                    b'Retry-After: 60\r\n\r\n{"safe":true}')
             return subprocess.CompletedProcess(arguments, 0)
-        with patch.object(mod.subprocess, 'run', side_effect=request) as run, \
+        with patch.object(mod.operations, 'run', side_effect=request) as run, \
              patch.object(mod.time, 'sleep') as sleep:
             self.assertEqual(mod.github_api('repos/example/repository'), {'safe': True})
         self.assertEqual(run.call_count, 1)
@@ -613,7 +613,7 @@ class Authority(unittest.TestCase):
             kwargs['stdout'].write(b'HTTP/2.0 503 Unavailable\r\nRetry-After: 7\r\n'
                                    b'Secret: private-header\r\n\r\n{"message":"private-body"}')
             return subprocess.CompletedProcess(arguments, 1)
-        with patch.object(mod.subprocess, 'run', side_effect=request) as run, \
+        with patch.object(mod.operations, 'run', side_effect=request) as run, \
              patch.object(mod.time, 'sleep') as sleep, self.assertRaises(mod.AuthorityError) as error:
             mod.github_api('repos/example/repository?private-query')
         self.assertEqual(str(error.exception), 'GitHub authority API failed: repos/example/repository '
@@ -626,7 +626,7 @@ class Authority(unittest.TestCase):
             kwargs['stdout'].write(b'HTTP/2.0 401 Unauthorized\r\n\r\n'
                                    b'{"message":"Bad credentials","token":"private-token"}')
             return subprocess.CompletedProcess(arguments, 1)
-        with patch.object(mod.subprocess, 'run', side_effect=request) as run, \
+        with patch.object(mod.operations, 'run', side_effect=request) as run, \
              patch.object(mod.time, 'sleep') as sleep, self.assertRaises(mod.AuthorityError) as error:
             mod.github_api('repos/example/repository?private-query')
         self.assertEqual(str(error.exception), 'GitHub authority API failed: repos/example/repository '
@@ -640,7 +640,7 @@ class Authority(unittest.TestCase):
         def request(arguments, **kwargs):
             kwargs['stdout'].write(next(responses))
             return subprocess.CompletedProcess(arguments, 1)
-        with patch.object(mod.subprocess, 'run', side_effect=request) as run, \
+        with patch.object(mod.operations, 'run', side_effect=request) as run, \
              patch.object(mod.time, 'sleep') as sleep, self.assertRaises(mod.AuthorityError) as error:
             mod.github_api('repos/example/repository?private-query')
         self.assertEqual(str(error.exception), 'GitHub authority API failed: repos/example/repository '

@@ -8,6 +8,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## Unreleased
 
+- Bound optional CI transport and required evidence recovery, clean up nested processes, and reconcile exact-head merge queue state idempotently.
+
 - Verify public cache identities before publication completes and exercise public bytes and signatures weekly in a disposable consumer store.
 
 ### Changed

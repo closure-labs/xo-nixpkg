@@ -12,6 +12,8 @@ import tempfile
 import time
 from urllib.parse import quote
 
+import operations
+
 from security_decisions import canonical_hash, load_json
 
 REGISTRY = 'ghcr.io/closure-labs/maestro-decisions'
@@ -90,6 +92,11 @@ def command_failure(args, code, tail, stderr_bytes, limit, timed_out=False, laun
 
 
 def command(args, max_file_bytes=None, **kwargs):
+    with operations.termination_guard():
+        return bounded_command(args, max_file_bytes=max_file_bytes, **kwargs)
+
+
+def bounded_command(args, max_file_bytes=None, **kwargs):
     # Preserve existing output/blob file limits. Drain stderr separately, so a
     # large authenticated blob allowance cannot enlarge diagnostic storage.
     limit = max(MAX_COMMAND_OUTPUT, max_file_bytes or 0)
@@ -97,13 +104,13 @@ def command(args, max_file_bytes=None, **kwargs):
         resource.setrlimit(resource.RLIMIT_FSIZE, (limit, limit))
     with tempfile.TemporaryFile() as capture:
         tail, stderr_bytes = bytearray(), 0
+        deadline = time.monotonic() + operations.remaining(min(COMMAND_TIMEOUT, 30 if args[1:3] == ['manifest', 'fetch'] else 1800))
         try:
             child = subprocess.Popen(args, stdout=capture, stderr=subprocess.PIPE,
-                                     preexec_fn=restrict_files, **kwargs)
+                                     preexec_fn=restrict_files, start_new_session=True, **kwargs)
         except OSError as error:
             raise command_failure(args, None, tail, 0, limit, launch_errno=error.errno) from None
         with child:
-            deadline = time.monotonic() + COMMAND_TIMEOUT
             try:
                 with selectors.DefaultSelector() as selector:
                     selector.register(child.stderr, selectors.EVENT_READ)
@@ -121,12 +128,10 @@ def command(args, max_file_bytes=None, **kwargs):
                                 del tail[:-MAX_COMMAND_STDERR]
                 child.wait(timeout=max(.001, deadline - time.monotonic()))
             except subprocess.TimeoutExpired:
-                child.kill()
-                child.wait()
+                operations.terminate(child)
                 raise command_failure(args, child.returncode, tail, stderr_bytes, limit, timed_out=True) from None
             except BaseException:
-                child.kill()
-                child.wait()
+                operations.terminate(child)
                 raise
             if child.returncode:
                 raise command_failure(args, child.returncode, tail, stderr_bytes, limit) from None
@@ -191,9 +196,9 @@ def private_review_registry(allow_missing=False):
         raise ValueError('Scoped REGISTRY_TOKEN is required to authenticate review package privacy')
     owner, package = match.groups()
     environment = dict(os.environ, GH_TOKEN=token)
-    result = subprocess.run(['gh', 'api', '--method', 'GET', '--include',
+    result = operations.run(['gh', 'api', '--method', 'GET', '--include',
                              f'orgs/{owner}/packages/container/{quote(package, safe="")}'],
-                            env=environment, capture_output=True, text=True, timeout=60, check=False)
+                            env=environment, capture_output=True, text=True, timeout=30, check=False)
     if len(result.stdout) > 2 * 1024**2:
         raise ValueError('Package privacy API response exceeds bound')
     headers, separator, body = result.stdout.replace('\r\n', '\n').partition('\n\n')
@@ -240,6 +245,11 @@ def push(directory, producer):
 
 
 def fetch(reference, output, expected=None):
+    with operations.budget(900):
+        return fetch_available(reference, output, expected)
+
+
+def fetch_available(reference, output, expected=None):
     """Inspect the manifest before fetching fixed regular members, never oras pull."""
     if not isinstance(reference, str) or not REFERENCE.fullmatch(reference):
         raise ValueError('Packet requires a digest in the dedicated evidence repository')

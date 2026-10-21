@@ -590,6 +590,19 @@ class RestoreTests(ReuseFixture):
         self.transport.restore.assert_not_called()
         self.native.assert_not_called()
 
+    def test_optional_timeout_before_import_is_a_miss(self):
+        self.download.side_effect = subprocess.TimeoutExpired(['gh', 'run', 'download'], 180)
+        result = self.restore()
+        self.assertEqual(result['status'], 'miss')
+        self.assertEqual(result['reason'], 'optional-transport-timeout')
+        self.transport.restore.assert_not_called()
+
+    def test_timeout_after_import_begins_blocks_without_build_fallback(self):
+        self.transport.restore.side_effect = subprocess.TimeoutExpired(['nix', 'copy'], 600)
+        with self.assertRaises(subprocess.TimeoutExpired):
+            self.restore()
+        self.assertFalse((self.directory / 'result.json').exists())
+
     def test_same_store_path_and_derivation_with_forged_nar_is_hard_failure(self):
         # The authenticated transport must detect bytes that do not match its anchored NAR hash.
         self.transport.restore.side_effect = ValueError('Physical NAR does not match authenticated hash')

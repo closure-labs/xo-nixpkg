@@ -25,7 +25,10 @@ in
     "ci:verdict".exec = "nix run .#ci-verdict";
     "ci:security-lint".exec = "nix run .#security-lint";
     "ci:consumer-probe".exec = "nix run .#consumer-probe";
-    "ci:repository-audit".exec = "nix run .#repository-audit";
+    "ci:repository-audit".exec = ''
+      export XO_NIXPKG_AUDIT_NIX_BIN="$(command -v nix)"
+      nix run .#repository-audit
+    '';
     "security:audit-policy".exec = "nix run .#audit-policy";
     "security:review".exec = "nix run .#security-scan";
     "security:refresh".exec = "nix run .#refresh-products";

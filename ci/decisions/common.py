@@ -11,6 +11,7 @@ import sys
 import tempfile
 import time
 
+import operations
 import decision_authority as authority
 import decision_packets as packets
 from security_decisions import (canonical_hash, load_json, evaluate, validate_normalized,
@@ -25,8 +26,9 @@ def require(value, message):
         raise ValueError(message)
 
 
-def command(args, **kwargs):
-    return subprocess.run(args, check=True, capture_output=True, text=True, timeout=180,
+def command(args, timeout=None, **kwargs):
+    return operations.run(args, check=True, capture_output=True, text=True,
+                          timeout=timeout if timeout is not None else (30 if args[:2] == ['gh', 'api'] else 180),
                           **kwargs).stdout
 
 
