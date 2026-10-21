@@ -1,6 +1,17 @@
 #!/usr/bin/env bash
 # SPDX-License-Identifier: Apache-2.0
 set -euo pipefail
+if [[ ${XO_NIXPKG_FETCH_BOUNDED:-false} != true ]]; then
+  export XO_NIXPKG_FETCH_BOUNDED=true
+  exec python3 "${XO_NIXPKG_OPERATIONS_SOURCE:-$(dirname -- "${BASH_SOURCE[0]}")/decisions/operations.py}" --timeout 900 -- bash "$0" "$@"
+fi
+gh() {
+  if [[ ${1:-} == api ]]; then
+    python3 "${XO_NIXPKG_OPERATIONS_SOURCE:-$(dirname -- "${BASH_SOURCE[0]}")/decisions/operations.py}" --timeout 30 -- gh "$@"
+  else
+    command gh "$@"
+  fi
+}
 if [[ ${XO_NIXPKG_FETCH_FOR_RESCAN:-false} == true && -z ${QUALIFICATION_RUN:-} ]]; then
   QUALIFICATION_RUN=$(gh api "repos/$GITHUB_REPOSITORY/actions/workflows/qualification.yml/runs?branch=main&status=success&per_page=1" --jq '.workflow_runs[0].id')
 fi

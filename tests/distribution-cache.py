@@ -37,6 +37,9 @@ class Nix:
         self.calls.append(args)
         if args[:3] == ['nix', 'path-info', '--json']:
             return json.dumps({ROOT: {'narHash': self.nar_hash}}).encode()
+        if args[:3] == ['nix', 'store', 'verify']:
+            assert '--recursive' in args and '--no-trust' in args
+            return b''
         assert args[:2] == ['nix', 'copy']
         if args[2] == '--to':
             assert parse_qs(urlparse(args[3]).query) == {'compression': ['zstd'], 'compression-level': ['3']}

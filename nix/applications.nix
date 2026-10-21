@@ -6,6 +6,16 @@
 }:
 
 let
+  boundedGh = pkgs.writeShellApplication {
+    name = "gh";
+    runtimeInputs = [ pkgs.python3 ];
+    text =
+      builtins.replaceStrings
+        [ "@GH@" "@PYTHON@" "@OPERATIONS@" ]
+        [ "${pkgs.gh}/bin/gh" "${pkgs.python3}/bin/python3" "${../ci/decisions/operations.py}" ]
+        (builtins.readFile ../ci/bounded-gh.sh);
+  };
+
   mkRepositoryApplication =
     {
       name,
@@ -15,7 +25,10 @@ let
     }:
     pkgs.writeShellApplication {
       inherit name;
-      runtimeInputs = [ pkgs.bash ] ++ runtimeInputs;
+      runtimeInputs = [
+        pkgs.bash
+      ]
+      ++ map (package: if package == pkgs.gh then boundedGh else package) runtimeInputs;
       text = ''
         repo_root="''${XO_NIXPKG_SOURCE_ROOT:-$PWD}"
         if [[ ! -f "$repo_root/flake.nix" ]]; then
@@ -97,6 +110,7 @@ rec {
     ];
     prelude = ''
       export XO_NIXPKG_RESTORER=${../ci/restore-products.py}
+      export PYTHONPATH=${decisions}/lib/decisions
       export XO_NIXPKG_DISTRIBUTION_CACHE_SOURCE=${../ci/distribution-cache.py}
     '';
   };
@@ -149,6 +163,7 @@ rec {
     ];
     prelude = ''
       export XO_NIXPKG_REFRESHER=${../ci/refresh-products.py}
+      export PYTHONPATH=${decisions}/lib/decisions
       export XO_NIXPKG_DISTRIBUTION_CACHE_SOURCE=${../ci/distribution-cache.py}
     '';
   };
@@ -177,6 +192,7 @@ rec {
       decisions
     ];
     prelude = ''
+      export XO_NIXPKG_OPERATIONS_SOURCE=${../ci/decisions/operations.py}
       export XO_NIXPKG_RETAINED_FETCH_SOURCE=${../ci/fetch-retained.py}
       export XO_NIXPKG_RESCAN_VERIFIER_SOURCE=${../ci/verify-rescan-evidence.py}
       export PYTHONPATH=${decisions}/lib/decisions
@@ -204,6 +220,7 @@ rec {
       publicationGate
     ];
     prelude = ''
+      export XO_NIXPKG_OPERATIONS_SOURCE=${../ci/decisions/operations.py}
       export XO_NIXPKG_RETAINED_FETCH_SOURCE=${../ci/fetch-retained.py}
       export XO_NIXPKG_RESCAN_VERIFIER_SOURCE=${../ci/verify-rescan-evidence.py}
       export PYTHONPATH=${decisions}/lib/decisions
@@ -278,6 +295,7 @@ rec {
     ];
     prelude = ''
       export XO_NIXPKG_QUALIFIER=${../ci/qualify-products.py}
+      export PYTHONPATH=${decisions}/lib/decisions
       export XO_NIXPKG_DISTRIBUTION_CACHE_SOURCE=${../ci/distribution-cache.py}
     '';
   };
@@ -373,6 +391,7 @@ rec {
           }
         )
       }
+      export PYTHONPATH=${decisions}/lib/decisions
       export XO_NIXPKG_DISTRIBUTION_CACHE_SOURCE=${../ci/distribution-cache.py}
       export XO_NIXPKG_CI_EVIDENCE="''${RUNNER_TEMP:-''${TMPDIR:-/tmp}}/xo-nixpkg-ci-evidence"
     '';

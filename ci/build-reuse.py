@@ -13,6 +13,9 @@ import re
 import subprocess
 import tempfile
 import time
+import sys
+sys.path.insert(0, str(Path(__file__).with_name('decisions')))
+import operations
 
 REPOSITORY = 'closure-labs/xo-nixpkg'
 WORKFLOW = '.github/workflows/ci.yml'
@@ -49,7 +52,14 @@ def read_json(path):
 
 
 def command(args, **kwargs):
-    return subprocess.check_output(args, text=True, timeout=7200, **kwargs).strip()
+    if args[0] == 'gh':
+        limit = 30 if args[1:2] == ['api'] else 90
+        if args[1:3] == ['run', 'download'] and '--name' in args and 'payload' in args[args.index('--name') + 1]:
+            limit = 180
+        return operations.run(args, capture_output=True, text=True, check=True, timeout=limit, **kwargs).stdout.strip()
+    if args[1:3] == ['store', 'verify'] or 'eval' in args:
+        return operations.run(args, capture_output=True, text=True, check=True, timeout=600, **kwargs).stdout.strip()
+    return subprocess.check_output(args, text=True, **kwargs).strip()
 
 
 def api(path):
@@ -242,18 +252,23 @@ def verify_attestation(path, receipt):
 
 
 def restore(candidate, controller, output, names):
+    state = {'importStarted': False}
+    started = time.monotonic()
     try:
-        return restore_available(candidate, controller, output, names)
-    except subprocess.CalledProcessError as error:
-        if error.cmd[0] != 'gh':
+        with operations.budget(300):
+            return restore_available(candidate, controller, output, names, state)
+    except (subprocess.CalledProcessError, subprocess.TimeoutExpired) as error:
+        if state['importStarted'] or (isinstance(error, subprocess.CalledProcessError) and error.cmd[0] != 'gh'):
             raise
-        result = {'schema': 1, 'status': 'miss', 'reason': 'artifact discovery/transport unavailable',
-                  'authorityClaim': False}
+        result = {'schema': 1, 'status': 'miss',
+                  'reason': 'optional-transport-timeout' if isinstance(error, subprocess.TimeoutExpired) else 'artifact discovery/transport unavailable',
+                  'elapsedSeconds': round(time.monotonic() - started, 3), 'authorityClaim': False}
         write_json(output, result)
         return result
 
 
-def restore_available(candidate, controller, output, names):
+def restore_available(candidate, controller, output, names, state=None):
+    state = state if state is not None else {'importStarted': False}
     """An authentic cache hit imports bytes, never a validation/admission verdict."""
     started = time.monotonic()
     reuse_builds = os.environ.get('XO_NIXPKG_REUSE_BUILDS', 'true')
@@ -272,8 +287,13 @@ def restore_available(candidate, controller, output, names):
         temporary = Path(temporary)
         environment = child_environment(temporary / 'native')
         expected = {name: identity(candidate, environment, name) for name in names}
+        preimport_deadline = operations.DEADLINE.get()
+        operations.DEADLINE.set(min(preimport_deadline, time.monotonic() + 90))
+        discovery_deadline = time.monotonic() + 90
         runs = api(f'repos/{REPOSITORY}/actions/workflows/ci.yml/runs?status=success&per_page=30')['workflow_runs']
         for run in runs:
+            if time.monotonic() >= discovery_deadline:
+                raise subprocess.TimeoutExpired(['optional-discovery'], 90)
             if run.get('event') not in ('pull_request', 'merge_group', 'workflow_dispatch'):
                 continue
             run_id, attempt = run['id'], run['run_attempt']
@@ -311,13 +331,16 @@ def restore_available(candidate, controller, output, names):
                 continue
             if not matched:
                 continue
+            operations.DEADLINE.set(preimport_deadline)
             payload = directory / 'payload'
             command(['gh', 'run', 'download', str(run_id), '--repo', REPOSITORY,
                      '--name', f'xo-ci-reuse-payload-{run_id}-{attempt}', '--dir', str(payload)])
             roots = [{'storePath': item['storePath'], 'narHash': item['narHash']} for item in outputs.values()]
-            transport().restore(payload, receipt['transport'], roots)
-            # Database metadata alone does not prove the bytes currently on disk.
-            nix(environment, 'store', 'verify', '--no-trust', '--recursive', *sorted({root['storePath'] for root in roots}))
+            # Optional availability fallback ends before any store import.
+            state['importStarted'] = True
+            with operations.budget(600, inherit=False):
+                transport().restore(payload, receipt['transport'], roots, recursive_verify=False)
+                nix(environment, 'store', 'verify', '--no-trust', '--recursive', *sorted({root['storePath'] for root in roots}))
             result = {'schema': 1, 'status': 'hit', 'runId': run_id, 'runAttempt': attempt,
                       'source': receipt['source'], 'matchedOutputs': sorted(matched),
                       'elapsedSeconds': round(time.monotonic() - started, 3), 'authorityClaim': False}

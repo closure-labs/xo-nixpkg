@@ -10,6 +10,7 @@ from pathlib import Path
 import re
 import resource
 import subprocess
+import operations
 import sys
 import tempfile
 import time
@@ -95,9 +96,9 @@ def github_api(endpoint):
         details = ''
         with tempfile.TemporaryFile() as output:
             try:
-                result = subprocess.run(['gh', 'api', '--method', 'GET', '--include', endpoint],
+                result = operations.run(['gh', 'api', '--method', 'GET', '--include', endpoint],
                                         stdout=output, stderr=subprocess.DEVNULL,
-                                        timeout=60, check=False, preexec_fn=bound_output)
+                                        timeout=30, check=False, preexec_fn=bound_output)
             except OSError as error:
                 raise AuthorityError('GitHub authority API unavailable') from error
             except subprocess.TimeoutExpired:

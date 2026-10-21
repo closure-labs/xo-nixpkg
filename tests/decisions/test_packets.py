@@ -68,7 +68,7 @@ class Packets(unittest.TestCase):
             with self.subTest(visibility=visibility), tempfile.TemporaryDirectory() as temporary, \
                  mock.patch.object(mod, 'REGISTRY', 'ghcr.io/closure-labs/maestro-decisions'), \
                  mock.patch.dict(os.environ, {'REGISTRY_TOKEN': 'registry-secret', 'GH_TOKEN': 'app-secret'}), \
-                 mock.patch.object(mod.subprocess, 'run', return_value=self.visibility(visibility=visibility)), \
+                 mock.patch.object(mod.operations, 'run', return_value=self.visibility(visibility=visibility)), \
                  mock.patch.object(mod, 'command') as upload:
                 (Path(temporary) / 'native.json').write_text('{}')
                 with self.assertRaisesRegex(ValueError, 'verified private'):
@@ -80,7 +80,7 @@ class Packets(unittest.TestCase):
         with tempfile.TemporaryDirectory() as temporary, \
              mock.patch.object(mod, 'REGISTRY', 'ghcr.io/closure-labs/maestro-decisions'), \
              mock.patch.dict(os.environ, {'REGISTRY_TOKEN': 'registry-secret', 'GH_TOKEN': 'app-secret'}), \
-             mock.patch.object(mod.subprocess, 'run', side_effect=[self.visibility(404), self.visibility()]) as api, \
+             mock.patch.object(mod.operations, 'run', side_effect=[self.visibility(404), self.visibility()]) as api, \
              mock.patch.object(mod, 'command', side_effect=self.push_command) as upload:
             directory = Path(temporary)
             (directory / 'native.json').write_text('{}')
@@ -99,7 +99,7 @@ class Packets(unittest.TestCase):
             with self.subTest(response=response.stdout[:20]), tempfile.TemporaryDirectory() as temporary, \
                  mock.patch.object(mod, 'REGISTRY', 'ghcr.io/closure-labs/maestro-decisions'), \
                  mock.patch.dict(os.environ, {'REGISTRY_TOKEN': 'registry-secret'}), \
-                 mock.patch.object(mod.subprocess, 'run', side_effect=[self.visibility(), response]), \
+                 mock.patch.object(mod.operations, 'run', side_effect=[self.visibility(), response]), \
                  mock.patch.object(mod, 'command', side_effect=self.push_command):
                 (Path(temporary) / 'native.json').write_text('{}')
                 with self.assertRaises(ValueError):
@@ -111,7 +111,7 @@ class Packets(unittest.TestCase):
             for response in (self.visibility(401), self.visibility(403), self.visibility(429), self.visibility(500),
                              self.visibility(name='different-decisions')):
                 with mock.patch.dict(os.environ, {'REGISTRY_TOKEN': 'registry-secret'}), \
-                     mock.patch.object(mod.subprocess, 'run', return_value=response), self.assertRaises(ValueError):
+                     mock.patch.object(mod.operations, 'run', return_value=response), self.assertRaises(ValueError):
                     mod.private_review_registry(allow_missing=True)
             with mock.patch.dict(os.environ, {}, clear=True), self.assertRaisesRegex(ValueError, 'REGISTRY_TOKEN'):
                 mod.private_review_registry(allow_missing=True)
@@ -119,7 +119,7 @@ class Packets(unittest.TestCase):
     def test_separate_admitted_product_packet_remains_publication_path(self):
         with tempfile.TemporaryDirectory() as temporary, \
              mock.patch.object(mod, 'REGISTRY', 'ghcr.io/closure-labs/xo-nixpkg-products'), \
-             mock.patch.object(mod.subprocess, 'run', side_effect=AssertionError('No review-package API for admitted products')), \
+             mock.patch.object(mod.operations, 'run', side_effect=AssertionError('No review-package API for admitted products')), \
              mock.patch.object(mod, 'command', side_effect=self.push_command):
             (Path(temporary) / 'handoff.json').write_text('{}')
             result = mod.push(temporary, {'runId': 7})

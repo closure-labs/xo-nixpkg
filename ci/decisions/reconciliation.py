@@ -2,6 +2,7 @@
 import json
 from pathlib import Path
 import shutil
+import subprocess
 import tempfile
 
 import decision_authority as authority
@@ -73,30 +74,77 @@ def api_write(endpoint, body, method='POST'):
     return json.loads(command(['gh', 'api', '--method', method, endpoint, '--input', '-'], input=json.dumps(body)))
 
 
+def queue_state(cfg, number, head, node_id):
+    """Read exact-head native state; this observation grants no authorization."""
+    result = json.loads(command(['gh', 'api', 'graphql', '-f',
+        'query=query($id:ID!){node(id:$id){... on PullRequest{id headRefOid state merged mergeStateStatus autoMergeRequest{enabledAt} mergeQueueEntry{id}}}}',
+        '-f', 'id=' + node_id]))
+    require(not result.get('errors'), 'Queue state API unavailable')
+    value = result.get('data', {}).get('node')
+    require(isinstance(value, dict) and value.get('id') == node_id
+            and value.get('state') in ('OPEN', 'CLOSED', 'MERGED'), 'Invalid queue state identity')
+    if value.get('headRefOid') != head:
+        return 'changed-head', value
+    if value.get('merged') or value['state'] == 'MERGED':
+        return 'merged', value
+    if value['state'] == 'CLOSED':
+        return 'closed', value
+    if value.get('mergeQueueEntry'):
+        return 'queued', value
+    return 'waiting', value
+
+
 def queue_proposal(cfg, number):
-    """Enable auto-merge, then enqueue only an independently approved current head."""
+    """Reconcile native queue state and read back ambiguous mutations once."""
     required_check(cfg)
     pull = authority.github_api(f'repos/{cfg["repository"]}/pulls/{number}')
     if pull.get('merged'):
         return 'merged'
-    require(pull.get('state') == 'open', 'Proposal PR is no longer open')
-    command(['gh', 'pr', 'merge', str(number), '--auto', '--merge', '--repo', cfg['repository']])
+    if pull.get('state') == 'closed':
+        return 'closed'
+    require(pull.get('state') == 'open', 'Invalid proposal state')
+    head, node_id = pull['head']['sha'], pull['node_id']
+    state, value = queue_state(cfg, number, head, node_id)
+    if state != 'waiting':
+        return state
     try:
-        authority.approval(authority.github_api, cfg['repository'], number, pull['head']['sha'])
+        authority.approval(authority.github_api, cfg['repository'], number, head)
     except authority.HumanDecisionRequired:
         return 'awaiting-review'
-    latest = authority.github_api(f'repos/{cfg["repository"]}/pulls/{number}')
-    require(latest.get('head', {}).get('sha') == pull['head']['sha'], 'Proposal head changed before enqueue')
-    if latest.get('merged'):
-        return 'merged'
-    require(latest.get('state') == 'open', 'Proposal closed before enqueue')
-    result = json.loads(command(['gh', 'api', 'graphql', '-f',
-        'query=mutation($id:ID!){enqueuePullRequest(input:{pullRequestId:$id}){mergeQueueEntry{id}}}',
-        '-f', 'id=' + latest['node_id']]))
-    require(not result.get('errors') and result.get('data', {}).get('enqueuePullRequest', {}).get('mergeQueueEntry'),
-            'Could not enqueue approved exact proposal head')
-    return 'queued'
-
+    if not value.get('autoMergeRequest'):
+        try:
+            command(['gh', 'pr', 'merge', str(number), '--auto', '--merge',
+                     '--match-head-commit', head, '--repo', cfg['repository']])
+        except (subprocess.CalledProcessError, subprocess.TimeoutExpired):
+            state, value = queue_state(cfg, number, head, node_id)
+            if state != 'waiting':
+                return state
+            require(value.get('autoMergeRequest'), 'Auto-merge acknowledgement unavailable')
+    state, value = queue_state(cfg, number, head, node_id)
+    if state != 'waiting':
+        return state
+    if value.get('mergeStateStatus') in ('BLOCKED', 'BEHIND', 'DRAFT', 'UNKNOWN', 'UNSTABLE'):
+        return 'awaiting-checks'
+    if value.get('mergeStateStatus') == 'DIRTY':
+        return 'conflict'
+    require(value.get('mergeStateStatus') in ('CLEAN', 'HAS_HOOKS'), 'Unknown merge readiness')
+    # App-authored events sometimes need explicit enqueue. Recheck membership
+    # and exact-head approval immediately before this write, even after planning.
+    authority.approval(authority.github_api, cfg['repository'], number, head)
+    try:
+        result = json.loads(command(['gh', 'api', 'graphql', '-f',
+            'query=mutation($id:ID!,$head:GitObjectID!){enqueuePullRequest(input:{pullRequestId:$id,expectedHeadOid:$head}){mergeQueueEntry{id}}}',
+            '-f', 'id=' + node_id, '-f', 'head=' + head]))
+        acknowledged = not result.get('errors') and result.get('data', {}).get('enqueuePullRequest', {}).get('mergeQueueEntry')
+    except (subprocess.CalledProcessError, subprocess.TimeoutExpired):
+        acknowledged = False
+    state, value = queue_state(cfg, number, head, node_id)
+    if state != 'waiting':
+        return state
+    if value.get('mergeStateStatus') in ('BLOCKED', 'BEHIND', 'UNKNOWN', 'UNSTABLE'):
+        return 'awaiting-checks'
+    require(acknowledged, 'Enqueue acknowledgement unavailable; native state remains waiting')
+    return 'enqueue-pending'
 
 def propose(cfg, proposal):
     """Create one immutable bot branch/PR without checking out or executing candidate code."""

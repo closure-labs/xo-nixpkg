@@ -2,6 +2,9 @@
 # SPDX-License-Identifier: Apache-2.0
 """Transport authenticated exact Nix closures between jobs without a public cache."""
 import argparse
+import os
+import sys
+import time
 import hashlib
 import json
 from pathlib import Path, PurePosixPath
@@ -9,6 +12,9 @@ import re
 import subprocess
 import tarfile
 import tempfile
+
+sys.path.insert(0, os.environ.get('MAESTRO_DECISION_CORE', str(Path(__file__).with_name('decisions'))))
+import operations
 
 PART_BYTES = 1_800_000_000
 MAX_BYTES = 32 * 1024**3
@@ -41,7 +47,7 @@ def identities(roots):
 
 
 def command(args):
-    return subprocess.check_output(args, timeout=1800)
+    return operations.run(args, capture_output=True, check=True, timeout=1800).stdout
 
 
 def verify_roots(roots):
@@ -174,7 +180,7 @@ def unpack(archive, cache):
     require((cache / 'nix-cache-info').is_file(), 'Transport lacks binary cache metadata')
 
 
-def restore(directory, manifest, roots):
+def restore(directory, manifest, roots, recursive_verify=True):
     """Caller MUST authenticate scans/product/manifest before calling this function."""
     directory = Path(directory)
     expected = identities(roots)
@@ -191,8 +197,11 @@ def restore(directory, manifest, roots):
                         hasher.update(block)
         require(archive.stat().st_size == manifest['archiveSize'] and hasher.hexdigest() == manifest['archiveSha256'], 'Reassembled distribution archive integrity mismatch')
         unpack(archive, cache)
-        command(['nix', 'copy', '--from', cache.as_uri(), '--no-check-sigs', *sorted(expected)])
-        verify_roots(roots)
+        with operations.budget(600):
+            command(['nix', 'copy', '--from', cache.as_uri(), '--no-check-sigs', *sorted(expected)])
+            verify_roots(roots)
+            if recursive_verify:
+                command(['nix', 'store', 'verify', '--no-trust', '--recursive', *sorted(expected)])
 
 
 def main():
