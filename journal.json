@@ -52,14 +52,14 @@
       "identity": {
         "producer": {
           "repository": "closure-labs/xo-nixpkg",
-          "revision": "861997c7f74cb8ce1e2a96441c6e73ddeb6d88fa",
+          "revision": "3693491fe2e2893fe17bbe3a207d8a514ec6daa7",
           "runAttempt": 1,
-          "runId": 39559043251,
+          "runId": 39583073860,
           "sourceRevision": "861997c7f74cb8ce1e2a96441c6e73ddeb6d88fa",
           "workflow": ".github/workflows/qualification.yml"
         },
-        "reference": "ghcr.io/closure-labs/xo-nixpkg-products@sha256:ce6d09e735271c8568ad3550cf57618f6cfca185e6799aeb5b1ccbcbf0a13199",
-        "sha256": "3d2024e59858f806a5bb19215a2b5ba99376cf11c73c1e650432ae9fd7e4668a"
+        "reference": "ghcr.io/closure-labs/xo-nixpkg-products@sha256:8cc7071c9fa6bd43b6b54b9b9be5cb171716bca9998ea158bb0d2c57562c81a4",
+        "sha256": "2a9f2af4db01b5a3a9f8ac2728eace66b01b5087c0a7f09c34514681ec85efe3"
       },
       "name": "handoff",
       "state": "complete"
