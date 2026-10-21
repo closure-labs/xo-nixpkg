@@ -136,6 +136,7 @@ rec {
     name = "xo-nixpkg-publication-controller";
     script = ../ci/publication-controller.sh;
     runtimeInputs = with pkgs; [
+      curl
       python3
       gh
       git
@@ -146,7 +147,7 @@ rec {
       tagRelease
       publishRelease
     ];
-    prelude = ''
+    prelude = cachePrelude + ''
       export XO_NIXPKG_PUBLICATION_CONTROLLER=${../ci/publication-controller.py}
       export PYTHONPATH=${decisions}/lib/decisions
     '';
@@ -418,6 +419,8 @@ rec {
     runtimeInputs =
       with pkgs;
       [
+        python3
+        curl
         cachix
         coreutils
         jq
@@ -428,7 +431,9 @@ rec {
         publicationGate
         restoreProducts
       ];
-    prelude = cachePrelude;
+    prelude = cachePrelude + ''
+      export PUBLICATION_DESTINATIONS_SOURCE=${../ci/decisions/destinations.py}
+    '';
   };
 
   publishRelease = mkRepositoryApplication {

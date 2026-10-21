@@ -26,6 +26,18 @@ class RegistryCommand(unittest.TestCase):
         self.assertTrue(raised.exception.__suppress_context__)
         return json.loads(message.removeprefix('Registry command failed: '))
 
+    def test_missing_manifest_does_not_hide_auth_or_service_failures(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            path=Path(temporary)/'oras'
+            def probe(message):
+                path.write_text('#!'+sys.executable+'\nimport sys\nsys.stderr.write('+repr(message)+')\nsys.exit(1)\n')
+                path.chmod(0o700)
+                return mod.command([str(path),'manifest','fetch','fixture'],allow_missing=True)
+            self.assertIsNone(probe('HTTP/1.1 404 MANIFEST_UNKNOWN'))
+            for message in ('HTTP/1.1 403 MANIFEST_UNKNOWN','HTTP/1.1 503 MANIFEST_UNKNOWN',
+                            'MANIFEST_UNKNOWN unauthorized','MANIFEST_UNKNOWN context deadline exceeded'):
+                with self.subTest(message=message),self.assertRaises(ValueError):probe(message)
+
     def test_success_retains_exact_stdout_and_suppresses_stderr(self):
         self.assertEqual(self.run_child('import sys;sys.stderr.write("stderr-secret");sys.stdout.buffer.write(b"{\\\"ok\\\":true}")'), b'{"ok":true}')
 

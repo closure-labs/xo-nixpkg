@@ -76,6 +76,7 @@ jobs:
         env:
           GH_TOKEN: ${{ steps.publisher.outputs.token }}
           REGISTRY_TOKEN: ${{ github.token }}
+          XO_NIXPKG_PUBLICATION_METADATA_ONLY: 'true'
         run: nix run .#devenv -- tasks run release:fetch
       - name: Recheck admission and publish exact closures
         env:

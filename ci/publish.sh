@@ -5,6 +5,15 @@ set -euo pipefail
 : "${XO_NIXPKG_CACHIX_CACHE_NAME:?XO_NIXPKG_CACHIX_CACHE_NAME must be set}"
 xo-nixpkg-publication-gate
 : "${XO_NIXPKG_CACHIX_CACHE_URL:?XO_NIXPKG_CACHIX_CACHE_URL must be set}"
+# Inspect public identities before importing or transferring any closure.
+destination_state=$(mktemp "${RUNNER_TEMP:-${TMPDIR:-/tmp}}/publication-cache.XXXXXX")
+trap 'rm -f -- "$destination_state"' EXIT
+python3 "${PUBLICATION_DESTINATIONS_SOURCE:-$(dirname -- "${BASH_SOURCE[0]}")/decisions/destinations.py}" cache --product "$XO_NIXPKG_EVIDENCE/product.json" --cache-url "$XO_NIXPKG_CACHIX_CACHE_URL" ${PUBLICATION_CACHE_RECEIPT:+--receipt "$PUBLICATION_CACHE_RECEIPT"} >"$destination_state"
+if [[ $(jq -er .status "$destination_state") == verified ]]; then
+  xo-nixpkg-publication-gate
+  echo 'Public cache verified; no closure import or upload required.'
+  exit 0
+fi
 xo-nixpkg-restore-products
 mapfile -t package_paths < <(jq -er '.products[].storePath, .roots[].storePath' "$XO_NIXPKG_EVIDENCE/product.json")
 (( ${#package_paths[@]} == 8 ))
@@ -17,7 +26,8 @@ for package_path in "${package_paths[@]}"; do
   [[ $actual == "$expected" ]]
 done
 xo-nixpkg-publication-gate
-cachix push "$XO_NIXPKG_CACHIX_CACHE_NAME" "${package_paths[@]}"
+mapfile -t missing_paths < <(jq -er '.missing[]' "$destination_state")
+cachix push "$XO_NIXPKG_CACHIX_CACHE_NAME" "${missing_paths[@]}"
 # A successful upload can leave an existing same-path object untouched. Confirm
 # the public cache serves the approved bytes before the controller checkpoints
 # publication or publishes a downstream handoff. Query the remote store directly
@@ -41,3 +51,6 @@ if ! jq -se --slurpfile product "$XO_NIXPKG_EVIDENCE/product.json" '
   echo 'Public cache paths or NAR hashes differ from the approved product' >&2
   exit 1
 fi
+
+# Persist only fresh remote proof; an older completion is never sufficient.
+python3 "${PUBLICATION_DESTINATIONS_SOURCE:-$(dirname -- "${BASH_SOURCE[0]}")/decisions/destinations.py}" cache --product "$XO_NIXPKG_EVIDENCE/product.json" --cache-url "$XO_NIXPKG_CACHIX_CACHE_URL" --require-verified ${PUBLICATION_CACHE_RECEIPT:+--receipt "$PUBLICATION_CACHE_RECEIPT"}

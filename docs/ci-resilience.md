@@ -94,3 +94,27 @@ journal2 verified destination receipts. It does not emit journal2. Receipt
 writers are a later rollout step, so rollback must retain these readers once
 new receipts exist. A legacy completion record alone remains insufficient
 proof of present remote state.
+
+## Package 4: independent destination recovery
+
+A versioned destination result distinguishes authenticated absence, partial
+inventory, verified identity, conflict and service unavailability. Cache
+inspection precedes store import and uploads only missing roots; conflicting
+NAR identities never overwrite existing public objects. Completion requires
+fresh readback. XO's admitted retained packets use original signed metadata
+bytes before any payload materialization, and OCI retries verify immutable
+manifest/descriptor identities before copying absent content.
+
+Maestro reconciles immutable hosted bytes and independently inspects FlakeHub
+through the exact-version immutable source/revision HEAD chain. A current
+destination skips its upload. Upstream handoff verification reads signed
+metadata without downloading NARs. Native actual-XO identity still comes from
+local or fresh public Nix metadata and is checked against the scanned runtime
+context and independent upstream authority. Explicit Actions run recovery
+keeps the historical full-artifact transport interface.
+
+Official Maestro and XO destination checkpoints carry version1 verified
+receipts in version2 CAS journals. Package3 readers must be deployed first.
+An old completed step preserves history but never suppresses current remote
+inspection. A matching proof repeats live authority without duplicate journal
+writes. Rollback requires a reader that understands journal version2.

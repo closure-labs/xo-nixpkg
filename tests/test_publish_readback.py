@@ -19,7 +19,17 @@ name, args = pathlib.Path(sys.argv[0]).name, sys.argv[1:]
 fixture = json.loads(pathlib.Path(os.environ['PUBLISH_FIXTURE']).read_text())
 with open(os.environ['PUBLISH_CALLS'], 'a') as stream:
     stream.write(json.dumps([name, *args]) + '\\n')
-if name == 'timeout':
+if name == 'curl':
+    previous = [json.loads(line) for line in pathlib.Path(os.environ['PUBLISH_CALLS']).read_text().splitlines()]
+    uploaded = any(call[0] == 'cachix' for call in previous)
+    data = b''
+    if uploaded:
+        key = pathlib.Path(args[-1]).name.removesuffix('.narinfo')
+        path = next(path for path in fixture['local'] if pathlib.Path(path).name.startswith(key))
+        data = ('StorePath: '+path+'\\nNarHash: '+fixture['local'][path]+'\\nNarSize: 1\\n').encode()
+    pathlib.Path(args[args.index('--output')+1]).write_bytes(data)
+    print('200' if uploaded else '404', end='')
+elif name == 'timeout':
     if args[:3] != ['--signal=TERM', '--kill-after=10s', '120s']:
         sys.exit(90)
     real = os.environ['PUBLISH_REAL_TIMEOUT']
@@ -48,7 +58,7 @@ class PublishReadback(unittest.TestCase):
         self.work = Path(self.temporary.name)
         self.native = self.work / 'bin'
         self.native.mkdir()
-        for name in ('timeout', 'nix', 'nix-store', 'cachix', 'xo-nixpkg-publication-gate',
+        for name in ('curl', 'timeout', 'nix', 'nix-store', 'cachix', 'xo-nixpkg-publication-gate',
                      'xo-nixpkg-restore-products'):
             executable = self.native / name
             executable.write_text('#!' + sys.executable + '\n' + FAKE)

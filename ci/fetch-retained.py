@@ -42,8 +42,22 @@ def main():
     run_id, attempt = int(os.environ['QUALIFICATION_RUN']), int(os.environ['QUALIFICATION_ATTEMPT'])
     found = find_packets(cfg, run_id, attempt)
     if not found:
+        if os.environ.get('XO_NIXPKG_PUBLICATION_METADATA_ONLY') == 'true':
+            raise SystemExit(4)
         raise ValueError('candidate artifact expired without a retained immutable decision packet')
     output = Path(os.environ['XO_NIXPKG_EVIDENCE'])
+    if os.environ.get('XO_NIXPKG_PUBLICATION_METADATA_ONLY') == 'true':
+        if len(found) != 1:
+            raise ValueError('Ambiguous exact-run publication packets')
+        packet = found[0]
+        values = {name: packets.metadata_bytes(packet['reference'], packet['sha256'], name, producer=packet['producer'])
+                  for name in ('product.json', 'scans.json')}
+        output.mkdir()
+        import json
+        for name, value in values.items():
+            (output/name).write_bytes(value)
+        output.with_suffix('.source.json').write_text(json.dumps(packet))
+        return
     # Caller owns short-lived registry login; this helper reads data only.
     packet = found[0]
     manifest = packets.fetch(packet['reference'], output, packet['sha256'])

@@ -52,6 +52,8 @@ COMMAND_TIMEOUT = 1800
 def command_operation(args):
     # No arbitrary argv, path, registry reference or URL reaches diagnostics.
     if Path(args[0]).name == 'oras':
+        if args[1:2] in (['copy'], ['cp']):
+            return 'oras-copy'
         if args[1:2] == ['push']:
             return 'oras-push'
         if args[1:3] in (['manifest', 'fetch'], ['blob', 'fetch']):
@@ -103,7 +105,7 @@ def command(args, max_file_bytes=None, **kwargs):
         return bounded_command(args, max_file_bytes=max_file_bytes, **kwargs)
 
 
-def bounded_command(args, max_file_bytes=None, **kwargs):
+def bounded_command(args, max_file_bytes=None, allow_missing=False, **kwargs):
     # Preserve existing output/blob file limits. Drain stderr separately, so a
     # large authenticated blob allowance cannot enlarge diagnostic storage.
     limit = max(MAX_COMMAND_OUTPUT, max_file_bytes or 0)
@@ -140,6 +142,12 @@ def bounded_command(args, max_file_bytes=None, **kwargs):
             except BaseException:
                 operations.terminate(child)
                 raise
+            if child.returncode == 1 and allow_missing and args[1:3] == ['manifest', 'fetch'] and stderr_bytes <= MAX_COMMAND_STDERR:
+                diagnostic = json.loads(str(command_failure(args,child.returncode,tail,stderr_bytes,limit)).split(': ',1)[1])
+                if (set(diagnostic['categories']) <= {'registry-manifest','unclassified'}
+                        and {int(code) for code in re.findall(rb'(?i)\b(?:status(?:\s+code)?|http/[0-9.]+)\s*[:=]?\s*([0-9]{3})\b',tail)} <= {404}
+                        and re.search(rb'(?i)\b(?:MANIFEST_UNKNOWN|NAME_UNKNOWN)\b|manifest unknown|name unknown',tail)):
+                    return None
             if child.returncode:
                 raise command_failure(args, child.returncode, tail, stderr_bytes, limit) from None
         if capture.tell() > MAX_COMMAND_OUTPUT:
@@ -313,7 +321,7 @@ def packet_descriptor(path, members, expected):
     return packet
 
 
-def metadata(reference, expected, name, producer=None):
+def metadata_bytes(reference, expected, name, producer=None):
     """Read one bounded authenticated metadata member, never closure payloads."""
     with operations.budget(90), tempfile.TemporaryDirectory() as temporary:
         directory = Path(temporary)
@@ -323,7 +331,12 @@ def metadata(reference, expected, name, producer=None):
         descriptor = packet_descriptor(fetch_member('decision-packet.json', directory, members), members, expected)
         if producer is not None and descriptor['producer'] != producer:
             raise ValueError('Packet metadata producer differs from reviewed descriptor')
-        return decode_json(fetch_member(name, directory, members).read_bytes())
+        path = directory / 'decision-packet.json' if name == 'decision-packet.json' else fetch_member(name, directory, members)
+        return path.read_bytes()
+
+
+def metadata(reference, expected, name, producer=None):
+    return decode_json(metadata_bytes(reference, expected, name, producer))
 
 
 def verifier_version():
@@ -429,3 +442,30 @@ def fetch_available(reference, output, expected=None, inspection=None):
     for name in sorted(set(members) - {'decision-packet.json'}):
         fetch_member(name, output, members)
     return packet
+
+
+def install_member(source, destination, directory):
+    """Atomically install verified bytes without following prior destination links."""
+    source, destination, directory = Path(source), Path(destination), Path(directory)
+    relative = destination.relative_to(directory)
+    parent = directory
+    for part in relative.parts[:-1]:
+        if parent.is_symlink() or (parent.exists() and not parent.is_dir()):
+            raise ValueError('Unsafe materialization destination parent')
+        parent = parent / part
+    if parent.is_symlink() or (parent.exists() and not parent.is_dir()) or directory.is_symlink():
+        raise ValueError('Unsafe materialization destination parent')
+    if destination.is_symlink() or (destination.exists() and not destination.is_file()):
+        raise ValueError('Unsafe materialization destination member')
+    destination.parent.mkdir(parents=True, exist_ok=True)
+    with tempfile.NamedTemporaryFile(dir=destination.parent, delete=False) as temporary:
+        pending = Path(temporary.name)
+        try:
+            with source.open('rb') as stream:
+                for block in iter(lambda: stream.read(1024*1024), b''):
+                    operations.remaining(900)
+                    temporary.write(block)
+            temporary.flush()
+            os.replace(pending,destination)
+        finally:
+            pending.unlink(missing_ok=True)

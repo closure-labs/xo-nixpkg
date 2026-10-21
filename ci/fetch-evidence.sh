@@ -28,8 +28,23 @@ if [[ -n ${QUALIFICATION_ATTEMPT:-} ]]; then
   [[ $QUALIFICATION_ATTEMPT =~ ^[1-9][0-9]*$ && $QUALIFICATION_ATTEMPT == "$attempt" ]]
 fi
 [[ ! -e $XO_NIXPKG_EVIDENCE ]]
+# An admitted retained packet permits metadata-only inspection before bulk transfer.
+metadata_ready=false
+if [[ ${XO_NIXPKG_PUBLICATION_METADATA_ONLY:-false} == true ]]; then
+  export QUALIFICATION_ATTEMPT="$attempt"
+  registry_config=$(mktemp -d)
+  export DOCKER_CONFIG="$registry_config"
+  trap 'rm -rf -- "$registry_config"' EXIT
+  printf '%s' "$REGISTRY_TOKEN" | oras login ghcr.io --username "$GITHUB_ACTOR" --password-stdin
+  metadata_status=0
+  python3 "$XO_NIXPKG_RETAINED_FETCH_SOURCE" || metadata_status=$?
+  oras logout ghcr.io >/dev/null
+  if [[ $metadata_status == 0 ]]; then metadata_ready=true
+  elif [[ $metadata_status != 4 ]]; then exit "$metadata_status"
+  fi
+fi
 # Artifact transport/extraction may stall; retained recovery repeats authentication.
-if ! timeout --signal=TERM --kill-after=10s 600s gh run download "$QUALIFICATION_RUN" --repo "$GITHUB_REPOSITORY" --name "qualified-products-$QUALIFICATION_RUN-$attempt" --dir "$XO_NIXPKG_EVIDENCE"; then
+if [[ $metadata_ready != true ]] && ! timeout --signal=TERM --kill-after=10s 600s gh run download "$QUALIFICATION_RUN" --repo "$GITHUB_REPOSITORY" --name "qualified-products-$QUALIFICATION_RUN-$attempt" --dir "$XO_NIXPKG_EVIDENCE"; then
   rm -rf -- "$XO_NIXPKG_EVIDENCE"
   export QUALIFICATION_ATTEMPT="$attempt"
   printf '%s' "$REGISTRY_TOKEN" | oras login ghcr.io --username "$GITHUB_ACTOR" --password-stdin
