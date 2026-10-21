@@ -199,6 +199,7 @@ rec {
           refresh-products = mkApp applications.refreshProducts "Rescan exact retained products without changing approval identity";
           decision-collect = mkApp applications.decisionCollect "Collect decision event metadata";
           decision-authority = mkApp applications.decisionAuthority "Publish the App-origin human authority check";
+          inspect-qualification = mkApp applications.inspectQualification "Inspect exact producer observations without downloading closure payloads";
           reconcile-retained = mkApp applications.reconcileRetained "Reconcile retained security and release approvals";
           queue-preflight = mkApp applications.queuePreflight "Check merge queue runtime credential";
           rolling-failure = mkApp applications.rollingFailure "Report a preserved failed rolling candidate";

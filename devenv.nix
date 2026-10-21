@@ -35,6 +35,7 @@ in
     "security:fetch-rescan".exec = "nix run .#fetch-evidence";
     "security:collect".exec = "nix run .#decision-collect";
     "security:authority".exec = "nix run .#decision-authority";
+    "security:inspect".exec = "nix run .#inspect-qualification";
     "security:resume".exec = "nix run .#reconcile-retained";
     "security:qualify".exec = "nix run .#qualify-products";
     "security:readiness".exec = "nix run .#decision-readiness";

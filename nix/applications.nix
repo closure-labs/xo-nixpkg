@@ -180,6 +180,20 @@ rec {
       decisions
     ];
   };
+  inspectQualification = mkRepositoryApplication {
+    name = "xo-nixpkg-inspect-qualification";
+    script = ../ci/inspect-qualification.sh;
+    runtimeInputs = with pkgs; [
+      python3
+      gh
+      oras
+    ];
+    prelude = ''
+      export PYTHONPATH=${decisions}/lib/decisions
+      export XO_NIXPKG_RETAINED_FETCH_SOURCE=${../ci/fetch-retained.py}
+      export XO_NIXPKG_QUALIFICATION_INSPECTOR=${../ci/inspect-qualification.py}
+    '';
+  };
   reconcileRetained = mkRepositoryApplication {
     name = "xo-nixpkg-reconcile-retained";
     script = ../ci/reconcile-retained.sh;
@@ -190,6 +204,7 @@ rec {
       oras
       python3
       decisions
+      inspectQualification
     ];
     prelude = ''
       export XO_NIXPKG_OPERATIONS_SOURCE=${../ci/decisions/operations.py}

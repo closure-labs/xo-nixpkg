@@ -1,0 +1,141 @@
+{
+  "schema": 1,
+  "runId": 39564586343,
+  "runAttempt": 1,
+  "revision": "3693491fe2e2893fe17bbe3a207d8a514ec6daa7",
+  "targetCount": 19,
+  "failureCount": 0,
+  "reuse": {
+    "authorityClaim": false,
+    "reason": "Actions artifact imports disabled",
+    "schema": 1,
+    "status": "miss"
+  },
+  "preflightTimings": {
+    "schemaVersion": 1,
+    "plan": "xo-nixpkg-validation-selected-preflight",
+    "results": [
+      {
+        "name": "native-runtime-cleanup",
+        "attribute": "checks.x86_64-linux.native-runtime-cleanup",
+        "status": "success",
+        "elapsedSeconds": 2
+      },
+      {
+        "name": "yarn-cache-fixtures",
+        "attribute": "checks.x86_64-linux.yarn-cache-fixtures",
+        "status": "success",
+        "elapsedSeconds": 52
+      },
+      {
+        "name": "repository-policy",
+        "attribute": "checks.x86_64-linux.repository-policy",
+        "status": "success",
+        "elapsedSeconds": 49
+      },
+      {
+        "name": "ci-runtime-fixtures",
+        "attribute": "checks.x86_64-linux.ci-runtime-fixtures",
+        "status": "success",
+        "elapsedSeconds": 1
+      },
+      {
+        "name": "application-composition",
+        "attribute": "checks.x86_64-linux.application-composition",
+        "status": "success",
+        "elapsedSeconds": 5
+      },
+      {
+        "name": "source-update-fixtures",
+        "attribute": "checks.x86_64-linux.source-update-fixtures",
+        "status": "success",
+        "elapsedSeconds": 7
+      },
+      {
+        "name": "automation-fixtures",
+        "attribute": "checks.x86_64-linux.automation-fixtures",
+        "status": "success",
+        "elapsedSeconds": 11
+      },
+      {
+        "name": "plan-runner-fixtures",
+        "attribute": "checks.x86_64-linux.plan-runner-fixtures",
+        "status": "success",
+        "elapsedSeconds": 1
+      },
+      {
+        "name": "classifier-fixtures",
+        "attribute": "checks.x86_64-linux.classifier-fixtures",
+        "status": "success",
+        "elapsedSeconds": 3
+      }
+    ]
+  },
+  "runtimeTimings": {
+    "schemaVersion": 1,
+    "plan": "xo-nixpkg-validation-selected-runtime",
+    "results": [
+      {
+        "name": "xo-latest",
+        "attribute": "checks.x86_64-linux.xo-latest",
+        "status": "success",
+        "elapsedSeconds": 32
+      },
+      {
+        "name": "xo-stable",
+        "attribute": "checks.x86_64-linux.xo-stable",
+        "status": "success",
+        "elapsedSeconds": 21
+      },
+      {
+        "name": "xo-rolling",
+        "attribute": "checks.x86_64-linux.xo-rolling",
+        "status": "success",
+        "elapsedSeconds": 30
+      },
+      {
+        "name": "supply-protector-latest",
+        "attribute": "checks.x86_64-linux.supply-protector-latest",
+        "status": "success",
+        "elapsedSeconds": 2
+      },
+      {
+        "name": "supply-protector-stable",
+        "attribute": "checks.x86_64-linux.supply-protector-stable",
+        "status": "success",
+        "elapsedSeconds": 3
+      },
+      {
+        "name": "supply-protector-rolling",
+        "attribute": "checks.x86_64-linux.supply-protector-rolling",
+        "status": "success",
+        "elapsedSeconds": 15
+      },
+      {
+        "name": "xo-fuse-linkage",
+        "attribute": "checks.x86_64-linux.xo-fuse-linkage",
+        "status": "success",
+        "elapsedSeconds": 2
+      },
+      {
+        "name": "xo-server-service",
+        "attribute": "checks.x86_64-linux.xo-server-service",
+        "status": "success",
+        "elapsedSeconds": 55
+      },
+      {
+        "name": "libvhdi",
+        "attribute": "checks.x86_64-linux.libvhdi",
+        "status": "success",
+        "elapsedSeconds": 2
+      },
+      {
+        "name": "automation-runtime",
+        "attribute": "checks.x86_64-linux.automation-runtime",
+        "status": "success",
+        "elapsedSeconds": 6
+      }
+    ]
+  },
+  "authorityClaim": false
+}

@@ -66,3 +66,31 @@ helper. This preserves the installed Determinate client when its daemon is newer
 than the helper's Nixpkgs client; the earlier client failed to decode the daemon's
 BuildResult status16. It does not change the protected candidate builder or the
 flake contract being evaluated.
+
+## Package 3: metadata and immutable bytes
+
+Packet inspection, bounded metadata reads and full materialization are separate
+APIs. An exact-run active publication/refresh is inspected before downloading
+closure payloads. A prior successful publication suppresses bulk work only after
+retained immutable observation expiry is checked. Missing retained metadata uses
+the normal authenticated materialization path; API or integrity failure blocks.
+
+Within one hosted job, materialization is keyed by OCI manifest digest, packet
+digest, producer and verifier version. Every reuse revalidates the complete file
+inventory, sizes, hashes and regular-file constraints, then provides regular
+hard links to those job-local bytes. Callers repeat producer attestations and
+live authority; no authorization result is cached. Changed jobs/attempts or
+verifier inputs require new materialization. Corruption blocks rather than
+silently redownloading evidence to hide it.
+
+Scheduling records include exact source/controller revisions, run/attempt,
+product/packet identities when known, fixed action/reason codes and an explicit
+false authority claim. Version1 stage summaries record measured durations,
+cache outcomes, transferred body bytes, freshness and destination/checkpoint
+fields. Summaries exclude argv, credentials and raw API responses.
+
+This package also deploys backward-compatible readers for legacy journal1 and
+journal2 verified destination receipts. It does not emit journal2. Receipt
+writers are a later rollout step, so rollback must retain these readers once
+new receipts exist. A legacy completion record alone remains insufficient
+proof of present remote state.
