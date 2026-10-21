@@ -60,8 +60,37 @@ def git(root, *args):
     return command(['git', '-c', 'core.hooksPath=/dev/null', '-C', str(root), *args])
 
 
+def trusted_cache_policy():
+    """Read only the cache policy embedded in the protected packaged launcher."""
+    source = os.environ.get('XO_NIXPKG_TRUSTED_CACHE_POLICY', '')
+    require(isinstance(source, str) and STORE.fullmatch(source), 'Pinned trusted cache policy required')
+    path = Path(source)
+    require(not path.is_symlink() and path.is_file() and path.stat().st_size <= 4096,
+            'Missing, nonregular or oversized trusted cache policy')
+    return validate_trusted_cache_policy(json.loads(path.read_text()))
+
+
+def validate_trusted_cache_policy(policy):
+    require(isinstance(policy, dict) and set(policy) == {'schema', 'name', 'url', 'publicKey'}
+            and type(policy['schema']) is int and policy['schema'] == 1,
+            'Invalid trusted cache policy schema')
+    name, url, key = (policy[field] for field in ('name', 'url', 'publicKey'))
+    require(isinstance(name, str) and re.fullmatch(r'[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?', name),
+            'Invalid trusted cache name')
+    host = name + '.cachix.org'
+    require(isinstance(url, str) and url in ('https://' + host, 'https://' + host + '/'),
+            'Invalid trusted cache HTTPS URL')
+    match = re.fullmatch(re.escape(host) + r'-1:([A-Za-z0-9+/]{43}=)', key) if isinstance(key, str) else None
+    require(match is not None, 'Trusted cache key does not match its host')
+    decoded = base64.b64decode(match[1], validate=True)
+    require(len(decoded) == 32 and base64.b64encode(decoded).decode() == match[1],
+            'Invalid trusted cache public key')
+    return policy
+
+
 def child_environment(directory):
     """Candidate evaluation cannot read inherited tokens, HOME or Nix settings."""
+    cache = trusted_cache_policy()
     directory = Path(directory)
     directory.mkdir(parents=True, exist_ok=True)
     (directory / 'nix').mkdir(exist_ok=True)
@@ -73,7 +102,10 @@ def child_environment(directory):
                        XDG_CACHE_HOME=str(directory / 'cache'),
                        NIX_CONF_DIR=str(directory / 'nix'), NIX_USER_CONF_FILES='/dev/null',
                        NIX_CONFIG='experimental-features = nix-command flakes\n'
-                                  'accept-flake-config = false\nsandbox = true\nbuilders =\n',
+                                  'accept-flake-config = false\nsandbox = true\nbuilders =\n'
+                                  'require-sigs = true\n'
+                                  f'extra-substituters = {cache["url"]}\n'
+                                  f'extra-trusted-public-keys = {cache["publicKey"]}\n',
                        GIT_CONFIG_NOSYSTEM='1', GIT_CONFIG_GLOBAL='/dev/null',
                        GIT_TERMINAL_PROMPT='0')
     return environment

@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: Apache-2.0
 """Exercise cache provenance and isolation without network or Nix credentials."""
 import copy
+import base64
 import importlib.util
 import json
 import os
@@ -20,6 +21,8 @@ SOURCE, CONTROLLER, TREE, MAIN = ('a' * 40, 'b' * 40, 'c' * 40, 'd' * 40)
 OUTPUT = '/nix/store/' + '1' * 32 + '-xen-orchestra-6.9.1'
 DERIVATION = '/nix/store/' + '2' * 32 + '-xen-orchestra-6.9.1.drv'
 NAR_HASH = 'sha256-' + 'A' * 43 + '='
+CACHE_POLICY = {'schema': 1, 'name': 'fixture', 'url': 'https://fixture.cachix.org',
+                'publicKey': 'fixture.cachix.org-1:' + base64.b64encode(b'P' * 32).decode()}
 
 
 class ReuseFixture(unittest.TestCase):
@@ -63,6 +66,7 @@ class ReuseFixture(unittest.TestCase):
                            'size_in_bytes': 2000}]
         self.runs = [self.run]
         self.addCleanup(patch.stopall)
+        patch.object(reuse, 'trusted_cache_policy', return_value=copy.deepcopy(CACHE_POLICY)).start()
 
     def api(self, path):
         prefix = 'repos/' + reuse.REPOSITORY
@@ -202,6 +206,57 @@ class ProducerTests(ReuseFixture):
                 with self.assertRaises(ValueError): reuse.producer(receipt, self.controller, TREE)
 
 
+class TrustedCachePolicyTests(unittest.TestCase):
+    def test_policy_requires_exact_versioned_schema(self):
+        self.assertEqual(reuse.validate_trusted_cache_policy(CACHE_POLICY), CACHE_POLICY)
+        variants = [None, [], {}, dict(CACHE_POLICY, schema=True), dict(CACHE_POLICY, schema=2),
+                    dict(CACHE_POLICY, pluginFiles='/tmp/evil.so')]
+        variants += [{key: value for key, value in CACHE_POLICY.items() if key != field}
+                     for field in CACHE_POLICY]
+        for value in variants:
+            with self.subTest(value=value), self.assertRaises(ValueError):
+                reuse.validate_trusted_cache_policy(value)
+
+    def test_policy_rejects_cache_config_injection_and_mismatched_https_hosts(self):
+        values = {'name': ['', '-fixture', 'fixture-', 'fixture\nrequire-sigs = false', None],
+                  'url': ['http://fixture.cachix.org', 'https://attacker.invalid',
+                          'https://fixture.cachix.org/path', 'https://fixture.cachix.org?x=1',
+                          'https://fixture.cachix.org#fragment', 'https://fixture.cachix.org:443',
+                          'https://fixture.cachix.org@attacker.invalid',
+                          'https://fixture.cachix.org\nplugin-files = /tmp/evil.so', None],
+                  'publicKey': ['attacker.invalid-1:' + base64.b64encode(b'P' * 32).decode(),
+                                CACHE_POLICY['publicKey'] + '\nrequire-sigs = false',
+                                'fixture.cachix.org-1:' + base64.b64encode(b'P' * 31).decode(),
+                                'fixture.cachix.org-1:' + base64.b64encode(b'P' * 33).decode(),
+                                CACHE_POLICY['publicKey'][:-2] + 'B=', None]}
+        for field, variants in values.items():
+            for value in variants:
+                with self.subTest(field=field, value=value), self.assertRaises(ValueError):
+                    reuse.validate_trusted_cache_policy(dict(CACHE_POLICY, **{field: value}))
+
+    def test_policy_requires_bounded_regular_pinned_store_file(self):
+        for path in ('', '/tmp/candidate/cache.json', '/nix/store/../cache.json',
+                     '/nix/store/' + '1' * 32 + '-cache.json/extra'):
+            with self.subTest(path=path), patch.dict(os.environ, {'XO_NIXPKG_TRUSTED_CACHE_POLICY': path}), \
+                 self.assertRaisesRegex(ValueError, 'Pinned trusted cache policy required'):
+                reuse.trusted_cache_policy()
+        source = '/nix/store/' + '1' * 32 + '-cache.json'
+        with patch.dict(os.environ, {'XO_NIXPKG_TRUSTED_CACHE_POLICY': source}), \
+             patch.object(reuse, 'Path') as path:
+            file = path.return_value
+            file.is_symlink.return_value = False
+            file.is_file.return_value = True
+            file.stat.return_value.st_size = 200
+            file.read_text.return_value = json.dumps(CACHE_POLICY)
+            self.assertEqual(reuse.trusted_cache_policy(), CACHE_POLICY)
+            for changes in ({'is_symlink': True}, {'is_file': False}, {'size': 4097}):
+                file.is_symlink.return_value = changes.get('is_symlink', False)
+                file.is_file.return_value = changes.get('is_file', True)
+                file.stat.return_value.st_size = changes.get('size', 200)
+                with self.subTest(changes=changes), self.assertRaises(ValueError):
+                    reuse.trusted_cache_policy()
+
+
 class IsolationAndPlanTests(ReuseFixture):
     def test_disabled_artifact_reuse_still_builds_every_selected_phase(self):
         candidate = self.directory / 'candidate'
@@ -236,19 +291,29 @@ class IsolationAndPlanTests(ReuseFixture):
     def test_native_child_has_no_inherited_credentials_or_user_nix_configuration(self):
         poison = {'GH_TOKEN': 'secret', 'GITHUB_TOKEN': 'secret', 'AWS_SECRET_ACCESS_KEY': 'secret',
                   'CACHIX_AUTH_TOKEN': 'secret', 'ACTIONS_ID_TOKEN_REQUEST_TOKEN': 'secret',
-                  'NIX_REMOTE': 'ssh://attacker', 'NIX_CONFIG': 'plugin-files = /tmp/evil.so',
+                  'NIX_REMOTE': 'ssh://attacker',
+                  'NIX_CONFIG': 'plugin-files = /tmp/evil.so\nrequire-sigs = false\n'
+                                'extra-substituters = https://attacker.invalid\naccept-flake-config = true',
+                  'NIX_CONF_DIR': '/tmp/candidate-config',
                   'NIX_USER_CONF_FILES': '/tmp/evil.conf', 'GIT_CONFIG_GLOBAL': '/tmp/evil',
                   'HOME': '/tmp/credential-home', 'BASH_ENV': '/tmp/evil.sh',
                   'LD_PRELOAD': '/tmp/evil.so', 'PYTHONPATH': '/tmp/evil', 'PATH': '/trusted/bin'}
         with patch.dict(os.environ, poison, clear=True):
             environment = reuse.child_environment(self.directory / 'native')
-        for key in poison.keys() - {'PATH', 'HOME', 'NIX_CONFIG', 'NIX_USER_CONF_FILES', 'GIT_CONFIG_GLOBAL'}:
+        for key in poison.keys() - {'PATH', 'HOME', 'NIX_CONFIG', 'NIX_CONF_DIR',
+                                    'NIX_USER_CONF_FILES', 'GIT_CONFIG_GLOBAL'}:
             self.assertNotIn(key, environment)
         self.assertEqual(environment['PATH'], '/trusted/bin')
         self.assertEqual(environment['NIX_USER_CONF_FILES'], '/dev/null')
         self.assertEqual(environment['GIT_CONFIG_GLOBAL'], '/dev/null')
         self.assertIn('sandbox = true', environment['NIX_CONFIG'])
         self.assertIn('accept-flake-config = false', environment['NIX_CONFIG'])
+        self.assertIn('require-sigs = true', environment['NIX_CONFIG'])
+        self.assertIn('extra-substituters = ' + CACHE_POLICY['url'], environment['NIX_CONFIG'])
+        self.assertIn('extra-trusted-public-keys = ' + CACHE_POLICY['publicKey'], environment['NIX_CONFIG'])
+        self.assertNotIn('attacker', environment['NIX_CONFIG'])
+        self.assertNotIn('plugin-files', environment['NIX_CONFIG'])
+        self.assertNotIn('XO_NIXPKG_TRUSTED_CACHE_POLICY', environment)
         self.assertEqual((Path(environment['NIX_CONF_DIR']) / 'nix.conf').read_text(), '')
 
     def test_pinned_nix_cannot_use_candidate_nixconfig_or_remote_builders(self):
@@ -304,6 +369,7 @@ class IsolationAndPlanTests(ReuseFixture):
             self.assertIn('git+file://' + str(candidate), call.args[0])
             self.assertNotIn('GH_TOKEN', call.kwargs['env'])
             self.assertNotIn('BASH_ENV', call.kwargs['env'])
+            self.assertIn('extra-substituters = ' + CACHE_POLICY['url'], call.kwargs['env']['NIX_CONFIG'])
             self.assertEqual(call.kwargs['env']['FLAKE_PLAN_RUNNER_NIX'],
                              environment['XO_NIXPKG_TRUSTED_PLAN_NIX'])
             self.assertTrue(call.kwargs['check'])

@@ -33,6 +33,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- Restore the protected XO public cache and signing key to isolated CI clients,
+  without accepting inherited or candidate Nix configuration. Retain signature
+  verification, sandboxed pure evaluation and disabled remote builders.
 - Bound qualification artifact downloads to ten minutes, with a ten-second forced
   termination grace, before cleaning partial files and trying authenticated
   retained evidence. Preserve exact attempts, signatures and live admission.

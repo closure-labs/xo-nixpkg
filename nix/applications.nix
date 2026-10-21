@@ -351,6 +351,14 @@ rec {
       export XO_NIXPKG_TRUSTED_NIX=${pkgs.lib.getExe pkgs.nix}
       export XO_NIXPKG_PLAN_RUNNER=${pkgs.lib.getExe planRunner}
       export XO_NIXPKG_TRUSTED_PLAN_NIX=${pkgs.lib.getExe trustedCandidateNix}
+      export XO_NIXPKG_TRUSTED_CACHE_POLICY=${
+        pkgs.writeText "xo-nixpkg-trusted-cache.json" (
+          builtins.toJSON {
+            schema = 1;
+            inherit (binaryCache) name url publicKey;
+          }
+        )
+      }
       export XO_NIXPKG_DISTRIBUTION_CACHE_SOURCE=${../ci/distribution-cache.py}
       export XO_NIXPKG_CI_EVIDENCE="''${RUNNER_TEMP:-''${TMPDIR:-/tmp}}/xo-nixpkg-ci-evidence"
     '';
