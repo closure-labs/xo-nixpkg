@@ -50,6 +50,10 @@ if name == 'gh' and args[0] == 'api':
         page = int(parse_qs(urlsplit(endpoint).query).get('page', ['1'])[0])
         records = pages[page - 1] if pages and page <= len(pages) else fixture[key]
         print(json.dumps({'workflow_runs': records}))
+elif name == 'xo-nixpkg-inspect-qualification':
+    if fixture.get('inspection_failure'):
+        sys.exit(2)
+    print(json.dumps({'schema': 1, 'status': fixture.get('observation_state', 'expired' if fixture['expiresAt'] < '2026' else 'current')}))
 elif name == 'gh' and args[:2] == ['run', 'download']:
     if fixture.get('expired_artifact'):
         sys.exit(1)
@@ -64,7 +68,7 @@ elif name == 'xo-nixpkg-decision-publication' and not fixture['admitted']:
     sys.exit(2)
 '''
         for name in ('gh', 'oras', 'xo-nixpkg-decision-reconcile', 'xo-nixpkg-decision-publication',
-                     'xo-nixpkg-publication-gate'):
+                     'xo-nixpkg-publication-gate', 'xo-nixpkg-inspect-qualification'):
             executable = self.bin / name
             executable.write_text(fake)
             executable.chmod(0o755)

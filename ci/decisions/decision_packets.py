@@ -13,6 +13,8 @@ import time
 from urllib.parse import quote
 
 import operations
+import observability
+import security_decisions
 
 from security_decisions import canonical_hash, load_json
 
@@ -34,7 +36,12 @@ def safe_name(name):
 
 def file_hash(path):
     with Path(path).open('rb') as stream:
-        return hashlib.file_digest(stream, 'sha256').hexdigest()
+        digest = hashlib.sha256()
+        operations.remaining(1800)
+        for block in iter(lambda: stream.read(1024 * 1024), b''):
+            operations.remaining(1800)
+            digest.update(block)
+        return digest.hexdigest()
 
 
 MAX_COMMAND_OUTPUT = 2 * 1024**2
@@ -244,16 +251,9 @@ def push(directory, producer):
         path.unlink(missing_ok=True)
 
 
-def fetch(reference, output, expected=None):
-    with operations.budget(900):
-        return fetch_available(reference, output, expected)
-
-
-def fetch_available(reference, output, expected=None):
-    """Inspect the manifest before fetching fixed regular members, never oras pull."""
+def manifest_members(reference, raw):
     if not isinstance(reference, str) or not REFERENCE.fullmatch(reference):
         raise ValueError('Packet requires a digest in the dedicated evidence repository')
-    raw = command(['oras', 'manifest', 'fetch', reference])
     if len(raw) > 2 * 1024**2 or hashlib.sha256(raw).hexdigest() != reference.split(':')[-1]:
         raise ValueError('Packet OCI manifest digest mismatch')
     manifest = decode_json(raw)
@@ -262,8 +262,7 @@ def fetch_available(reference, output, expected=None):
     layers = manifest.get('layers')
     if manifest.get('artifactType') != TYPE or not isinstance(layers, list) or not 1 < len(layers) <= MAX_FILES + 1:
         raise ValueError('Invalid packet OCI manifest')
-    members = {}
-    total = 0
+    members, total = {}, 0
     for layer in layers:
         if not isinstance(layer, dict) or not isinstance(layer.get('annotations'), dict):
             raise ValueError('Invalid OCI layer descriptor')
@@ -276,20 +275,157 @@ def fetch_available(reference, output, expected=None):
         members[name] = {'sha256': digest[7:], 'size': size}
     if total > MAX_BYTES or 'decision-packet.json' not in members or members['decision-packet.json']['size'] > 2 * 1024**2:
         raise ValueError('Packet exceeds bounds or lacks manifest')
+    return members
+
+
+def inspect(reference):
+    if not isinstance(reference, str) or not REFERENCE.fullmatch(reference):
+        raise ValueError('Packet requires a digest in the dedicated evidence repository')
+    raw = command(['oras', 'manifest', 'fetch', reference])
+    return raw, manifest_members(reference, raw)
+
+
+def verify_member(path, record):
+    if path.is_symlink() or not path.is_file() or path.stat().st_size != record['size'] or file_hash(path) != record['sha256']:
+        raise ValueError('Packet member integrity failure')
+
+
+def fetch_member(name, directory, members):
+    name = safe_name(name)
+    if name not in members:
+        raise ValueError('Requested packet member is absent')
+    path = directory / name
+    path.parent.mkdir(parents=True, exist_ok=True)
+    command(['oras', 'blob', 'fetch', REGISTRY + '@sha256:' + members[name]['sha256'], '--output', str(path)],
+            max_file_bytes=members[name]['size'])
+    verify_member(path, members[name])
+    return path
+
+
+def packet_descriptor(path, members, expected):
+    packet = decode_json(path.read_bytes())
+    if (not isinstance(packet, dict) or set(packet) != {'schema', 'producer', 'files'}
+            or type(packet['schema']) is not int or packet['schema'] != 1
+            or not isinstance(packet['producer'], dict)
+            or packet['files'] != {k: v for k, v in members.items() if k != 'decision-packet.json'}
+            or (expected is not None and canonical_hash(packet) != expected)):
+        raise ValueError('Packet contents differ from approved manifest')
+    return packet
+
+
+def metadata(reference, expected, name, producer=None):
+    """Read one bounded authenticated metadata member, never closure payloads."""
+    with operations.budget(90), tempfile.TemporaryDirectory() as temporary:
+        directory = Path(temporary)
+        _, members = inspect(reference)
+        if name not in members or members[name]['size'] > 16 * 1024**2:
+            raise ValueError('Packet metadata member is absent or oversized')
+        descriptor = packet_descriptor(fetch_member('decision-packet.json', directory, members), members, expected)
+        if producer is not None and descriptor['producer'] != producer:
+            raise ValueError('Packet metadata producer differs from reviewed descriptor')
+        return decode_json(fetch_member(name, directory, members).read_bytes())
+
+
+def verifier_version():
+    return canonical_hash({'packetVerifier': file_hash(Path(__file__)),
+                           'canonicalization': file_hash(Path(security_decisions.__file__))})
+
+
+def job_cache(reference, expected):
+    values = [os.environ.get(key, '') for key in ('GITHUB_RUN_ID', 'GITHUB_RUN_ATTEMPT', 'GITHUB_JOB')]
+    temporary = os.environ.get('RUNNER_TEMP')
+    if not temporary or not all(values):
+        return None  # Local callers preserve the historical explicit materialization interface.
+    scope = canonical_hash({'job': values, 'verifier': verifier_version()})
+    identity = canonical_hash({'reference': reference, 'packetDigest': expected})
+    return Path(temporary) / 'decision-packet-cache' / scope / identity
+
+
+def verify_cached(directory, reference, expected):
+    if directory.is_symlink() or (directory / 'data').is_symlink():
+        raise ValueError('Packet cache directory must be regular')
+    raw_path = directory / 'oci-manifest.json'
+    receipt_path = directory / 'receipt.json'
+    for path in (raw_path, receipt_path):
+        if path.is_symlink() or not path.is_file() or path.stat().st_size > 2 * 1024**2:
+            raise ValueError('Invalid packet cache metadata')
+    members = manifest_members(reference, raw_path.read_bytes())
+    data = directory / 'data'
+    names = set()
+    for path in data.rglob('*'):
+        operations.remaining(900)
+        if path.is_symlink() or not (path.is_file() or path.is_dir()):
+            raise ValueError('Packet cache contains a nonregular member')
+        if path.is_file():
+            names.add(safe_name(path.relative_to(data).as_posix()))
+    if data.is_symlink() or names != set(members):
+        raise ValueError('Packet cache inventory differs')
+    for name, record in members.items():
+        verify_member(data / name, record)
+    packet = packet_descriptor(data / 'decision-packet.json', members, expected)
+    binding = {'schema': 1, 'reference': reference, 'packetDigest': canonical_hash(packet),
+               'producer': packet['producer'], 'verifier': verifier_version()}
+    if decode_json(receipt_path.read_bytes()) != binding:
+        raise ValueError('Packet cache binding differs')
+    return packet
+
+
+def link_or_copy(source, destination):
+    import errno
+    import shutil
+    try:
+        os.link(source, destination)
+    except OSError as error:
+        if error.errno != errno.EXDEV:
+            raise
+        with open(source, 'rb') as reader, open(destination, 'xb') as writer:
+            for block in iter(lambda: reader.read(1024 * 1024), b''):
+                operations.remaining(900)
+                writer.write(block)
+    operations.remaining(900)
+    return destination
+
+
+def fetch(reference, output, expected=None):
+    """Reuse immutable bytes within this job; callers always revalidate attestations and authority."""
+    import shutil
+    started = time.monotonic()
+    with operations.budget(900):
+        cache = job_cache(reference, expected)
+        reused = cache is not None and cache.exists()
+        transferred = 0
+        if cache is None:
+            return fetch_available(reference, output, expected)
+        if not cache.exists():
+            cache.parent.mkdir(parents=True, exist_ok=True)
+            with tempfile.TemporaryDirectory(dir=cache.parent) as temporary:
+                staging = Path(temporary) / 'verified'
+                staging.mkdir()
+                raw, members = inspect(reference)
+                transferred = len(raw) + sum(item['size'] for item in members.values())
+                packet = fetch_available(reference, staging / 'data', expected, inspection=(raw, members))
+                (staging / 'oci-manifest.json').write_bytes(raw)
+                (staging / 'receipt.json').write_text(json.dumps({
+                    'schema': 1, 'reference': reference, 'packetDigest': canonical_hash(packet),
+                    'producer': packet['producer'], 'verifier': verifier_version()}))
+                verify_cached(staging, reference, expected)
+                staging.rename(cache)
+        packet = verify_cached(cache, reference, expected)
+        # Hard links share regular immutable job-local bytes without another
+        # multi-GiB materialization. Any changed bytes fail the next revalidation.
+        shutil.copytree(cache / 'data', output, copy_function=link_or_copy)
+        operations.remaining(900)
+        observability.stage('packet-materialization', started, cache='hit' if reused else 'miss',
+                            transferred_bytes=transferred)
+        return packet
+
+
+def fetch_available(reference, output, expected=None, inspection=None):
+    """Inspect the manifest before fetching fixed regular members, never oras pull."""
+    _, members = inspection if inspection is not None else inspect(reference)
     output = Path(output)
     output.mkdir(parents=True, exist_ok=False)
-    for name in ['decision-packet.json', *sorted(set(members) - {'decision-packet.json'})]:
-        path = output / name
-        path.parent.mkdir(parents=True, exist_ok=True)
-        command(['oras', 'blob', 'fetch', REGISTRY + '@sha256:' + members[name]['sha256'], '--output', str(path)], max_file_bytes=members[name]['size'])
-        if path.is_symlink() or not path.is_file() or path.stat().st_size != members[name]['size'] or file_hash(path) != members[name]['sha256']:
-            raise ValueError('Packet member integrity failure')
-        if name == 'decision-packet.json':
-            packet = load_json(path)
-            if (not isinstance(packet, dict) or set(packet) != {'schema', 'producer', 'files'}
-                    or type(packet['schema']) is not int or packet['schema'] != 1
-                    or not isinstance(packet['producer'], dict)
-                    or packet['files'] != {k: v for k, v in members.items() if k != name}
-                    or (expected is not None and canonical_hash(packet) != expected)):
-                raise ValueError('Packet contents differ from approved manifest')
+    packet = packet_descriptor(fetch_member('decision-packet.json', output, members), members, expected)
+    for name in sorted(set(members) - {'decision-packet.json'}):
+        fetch_member(name, output, members)
     return packet

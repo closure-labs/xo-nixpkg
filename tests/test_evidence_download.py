@@ -47,6 +47,8 @@ elif name == 'gh' and args[0] == 'api':
         print(json.dumps(fixture['producer']))
     else:
         print(json.dumps({'workflow_runs': []}))
+elif name == 'xo-nixpkg-inspect-qualification':
+    print(json.dumps({'schema': 1, 'status': 'unretained'}))
 elif name == 'gh' and args[:2] == ['run', 'download']:
     directory = pathlib.Path(args[args.index('--dir') + 1])
     if fixture.get('real_deadline'):
@@ -89,7 +91,7 @@ class EvidenceDownload(unittest.TestCase):
         native = work / 'bin'
         native.mkdir(parents=True)
         for name in ('timeout', 'gh', 'oras', 'retained.py', 'xo-nixpkg-publication-gate',
-                     'xo-nixpkg-decision-reconcile', 'xo-nixpkg-decision-publication'):
+                     'xo-nixpkg-decision-reconcile', 'xo-nixpkg-decision-publication', 'xo-nixpkg-inspect-qualification'):
             executable = native / name
             executable.write_text('#!' + sys.executable + '\n' + FAKE)
             executable.chmod(0o755)

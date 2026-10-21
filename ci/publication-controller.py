@@ -9,6 +9,9 @@ import re
 import subprocess
 import tempfile
 import time
+import sys
+sys.path.insert(0, str(Path(__file__).with_name('decisions')))
+import publication_receipts
 
 
 def canonical(value):
@@ -67,8 +70,10 @@ class Journal:
             blob = api(repository, 'git/blobs/' + tree['tree'][0]['sha'])
             import base64
             self.value = json.loads(base64.b64decode(blob['content']))
-            if self.value.get('schema') != 1 or self.value.get('productHash') != self.digest:
-                raise ValueError('publication journal has conflicting immutable identity')
+            receipts = publication_receipts.read(self.value, self.digest)
+            complete = {step['name'] for step in self.value.get('steps', []) if step.get('state') == 'complete'}
+            if not set(receipts) <= complete:
+                raise ValueError('Receipt without completed destination')
         else:
             self.value = {'schema': 1, 'productHash': self.digest, 'steps': []}
             self.save()
