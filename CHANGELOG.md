@@ -10,6 +10,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- Add a default-enabled manual CI `reuse_builds` option. Disabling it omits only
+  authenticated Actions artifact imports while retaining all selected validation,
+  runtime builds, ordinary Nix caches and current admission checks.
 - Reconcile only the latest successful qualification by default, with an explicit
   historical run input for recovery. Avoid duplicate active refreshes and active
   or completed publications for the same qualification run, attempt and purpose.

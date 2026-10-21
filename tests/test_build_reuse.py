@@ -203,6 +203,36 @@ class ProducerTests(ReuseFixture):
 
 
 class IsolationAndPlanTests(ReuseFixture):
+    def test_disabled_artifact_reuse_still_builds_every_selected_phase(self):
+        candidate = self.directory / 'candidate'
+        candidate.mkdir()
+        (self.controller / 'ci').mkdir(exist_ok=True)
+        (self.controller / 'ci/classifier.json').write_text(json.dumps({'preflightTargets': ['policy']}))
+        targets = [{'name': 'policy', 'attribute': 'checks.x86_64-linux.policy'},
+                   {'name': 'xo-latest', 'attribute': 'checks.x86_64-linux.xo-latest'}]
+        plan = {'schemaVersion': 2, 'name': 'selected', 'targets': targets}
+        environment = {'PATH': '/trusted/bin', 'GH_TOKEN': 'read-only-fixture',
+                       'XO_NIXPKG_REUSE_BUILDS': 'false',
+                       'PREPARED_CI_WORKFLOW': json.dumps({'jobs': {'validate': {'plan': plan}}}),
+                       'XO_NIXPKG_TRUSTED_PLAN_NIX': '/nix/store/' + '4' * 32 + '-candidate-nix/bin/xo-nixpkg-candidate-nix',
+                       'XO_NIXPKG_PLAN_RUNNER': '/nix/store/trusted-plan-runner/bin/runner'}
+        built = []
+        def build(args, **kwargs):
+            built.extend(json.loads(Path(args[args.index('--plan-file') + 1]).read_text())['targets'])
+            self.assertNotIn('GH_TOKEN', kwargs['env'])
+        with patch.dict(os.environ, environment, clear=True), \
+             patch.object(reuse, 'nix', return_value='') as native, \
+             patch.object(reuse, 'api') as discovery, \
+             patch.object(reuse.subprocess, 'run', side_effect=build):
+            reuse.validate(candidate, self.controller, self.directory / 'evidence')
+        self.assertEqual(built, targets)
+        discovery.assert_not_called()
+        self.assertEqual(native.call_count, 1)
+        self.assertEqual(native.call_args.args[1:4], ('flake', 'check', '--no-build'))
+        receipt = json.loads((self.directory / 'evidence/reuse-restore.json').read_text())
+        self.assertEqual(receipt['status'], 'miss')
+        self.assertFalse(receipt['authorityClaim'])
+
     def test_native_child_has_no_inherited_credentials_or_user_nix_configuration(self):
         poison = {'GH_TOKEN': 'secret', 'GITHUB_TOKEN': 'secret', 'AWS_SECRET_ACCESS_KEY': 'secret',
                   'CACHIX_AUTH_TOKEN': 'secret', 'ACTIONS_ID_TOKEN_REQUEST_TOKEN': 'secret',
@@ -349,6 +379,32 @@ class RestoreTests(ReuseFixture):
     def restore(self):
         return reuse.restore(self.directory / 'candidate', self.controller,
                              self.directory / 'result.json', ['xo-latest'])
+
+    def test_explicitly_disabled_imports_do_not_discover_or_evaluate_artifacts(self):
+        with patch.dict(os.environ, {'XO_NIXPKG_REUSE_BUILDS': 'false'}), \
+             patch.object(reuse, 'api') as discovery, \
+             patch.object(reuse, 'identity') as evaluate:
+            result = self.restore()
+        self.assertEqual(result['status'], 'miss')
+        self.assertEqual(result['reason'], 'Actions artifact imports disabled')
+        self.assertFalse(result['authorityClaim'])
+        self.assertEqual(json.loads((self.directory / 'result.json').read_text()), result)
+        discovery.assert_not_called()
+        evaluate.assert_not_called()
+        self.download.assert_not_called()
+        self.attestation.assert_not_called()
+        self.transport.restore.assert_not_called()
+        self.native.assert_not_called()
+
+    def test_import_option_rejects_invalid_values_before_discovery(self):
+        for value in ('', 'False', '0', 'yes', 'true\n'):
+            with self.subTest(value=value), \
+                 patch.dict(os.environ, {'XO_NIXPKG_REUSE_BUILDS': value}), \
+                 patch.object(reuse, 'api') as discovery:
+                with self.assertRaisesRegex(ValueError, 'must be true or false'):
+                    self.restore()
+                discovery.assert_not_called()
+        self.transport.restore.assert_not_called()
 
     def test_authenticated_hit_imports_expected_nar_and_physically_verifies_without_build(self):
         result = self.restore()

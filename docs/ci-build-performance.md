@@ -49,6 +49,21 @@ for 30 days. Qualified release evidence retains its existing durable policy.
 Actions artifact transport in this public repository is separate from the private
 GHCR decision registry and from admitted public Cachix/release publication.
 
+For cache-service incidents or controller upgrades, manual CI dispatch accepts
+`reuse_builds=false` to build without importing Actions artifacts:
+
+```bash
+gh workflow run ci.yml --repo closure-labs/xo-nixpkg --ref main -f reuse_builds=false
+```
+
+The packaged restore leaf also accepts `XO_NIXPKG_REUSE_BUILDS=false`; other than
+the default `true`, only literal `false` is valid. This selects an explicit cache
+miss before artifact discovery or imports. All selected validation and runtime
+builds still run, and normal Nix substituters remain available. Fully validated
+matching-controller builds can still export newly authenticated output receipts.
+A proposed workflow update uses the existing bootstrap path described above;
+its ordinary complete validation grants no reusable build certification.
+
 ## Fresh scanner database
 
 Qualification and retained-product refresh each prepare one new online Grype DB

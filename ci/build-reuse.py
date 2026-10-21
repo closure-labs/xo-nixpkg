@@ -224,6 +224,13 @@ def restore(candidate, controller, output, names):
 def restore_available(candidate, controller, output, names):
     """An authentic cache hit imports bytes, never a validation/admission verdict."""
     started = time.monotonic()
+    reuse_builds = os.environ.get('XO_NIXPKG_REUSE_BUILDS', 'true')
+    require(reuse_builds in ('true', 'false'), 'XO_NIXPKG_REUSE_BUILDS must be true or false')
+    if reuse_builds == 'false':
+        result = {'schema': 1, 'status': 'miss', 'reason': 'Actions artifact imports disabled',
+                  'authorityClaim': False}
+        write_json(output, result)
+        return result
     if not os.environ.get('GH_TOKEN'):
         result = {'schema': 1, 'status': 'miss', 'reason': 'no read-only artifact credential', 'authorityClaim': False}
         write_json(output, result)
