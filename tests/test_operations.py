@@ -44,14 +44,21 @@ time.sleep(30)
                 with self.assertRaises(subprocess.TimeoutExpired):
                     operations.run([sys.executable, '-c', script, str(pidfile)], timeout=.2,
                                    capture_output=True)
-            self.assertLess(time.monotonic() - started, 2)
             pid = int(pidfile.read_text())
             state = Path(f'/proc/{pid}/stat')
-            try:
-                observed = state.read_text().split()[2]
-            except OSError:
-                observed = None
+            # SIGKILL delivery is asynchronous even after the parent is reaped.
+            # Bound the observation wait; an actually surviving child still fails.
+            observation_deadline = time.monotonic() + .5
+            while True:
+                try:
+                    observed = state.read_text().rpartition(')')[2].split()[0]
+                except OSError:
+                    observed = None
+                if observed in (None, 'Z') or time.monotonic() >= observation_deadline:
+                    break
+                time.sleep(.01)
             self.assertIn(observed, (None, 'Z'), 'descendant survived timeout')
+            self.assertLess(time.monotonic() - started, 2)
 
     def test_nested_supervisor_cleans_detached_term_ignoring_transport(self):
         with tempfile.TemporaryDirectory() as temporary:
