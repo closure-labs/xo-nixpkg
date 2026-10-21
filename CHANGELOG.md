@@ -8,6 +8,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## Unreleased
 
+- Verify public cache identities before publication completes and exercise public bytes and signatures weekly in a disposable consumer store.
+
 ### Changed
 
 - Add a default-enabled manual CI `reuse_builds` option. Disabling it omits only

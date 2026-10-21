@@ -193,6 +193,7 @@ rec {
         in
         {
           audit-policy = mkApp applications.auditPolicy "Audit effective protection with read-only administration credentials";
+          consumer-probe = mkApp applications.consumerProbe "Verify downloaded public product bytes and signatures in a clean store";
           repository-audit = mkApp applications.repositoryAudit "Run the complete repository contract";
           publication-controller = mkApp applications.publicationController "Publish exact admitted products with durable recovery checkpoints";
           refresh-products = mkApp applications.refreshProducts "Rescan exact retained products without changing approval identity";

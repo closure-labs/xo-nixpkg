@@ -1,0 +1,30 @@
+# SPDX-License-Identifier: Apache-2.0
+name: Public consumer verification
+on:
+  schedule:
+    - cron: "23 10 * * 0"
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: public-consumer-verification
+  cancel-in-progress: false
+jobs:
+  consumer:
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 35
+    steps:
+      - name: Checkout protected consumer code
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: main
+          persist-credentials: false
+      - name: Set up Nix
+        uses: ./.github/actions/setup-nix # zizmor: ignore[self-repository] -- protected-main consumer code only.
+        with:
+          github-token: ${{ github.token }}
+      - name: Verify public downloads and signatures in a disposable store
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: nix run .#devenv -- tasks run ci:consumer-probe

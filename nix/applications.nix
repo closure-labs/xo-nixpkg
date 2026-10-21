@@ -100,6 +100,19 @@ rec {
       export XO_NIXPKG_DISTRIBUTION_CACHE_SOURCE=${../ci/distribution-cache.py}
     '';
   };
+  consumerProbe = mkRepositoryApplication {
+    name = "xo-nixpkg-consumer-probe";
+    script = ../ci/consumer-probe.sh;
+    runtimeInputs = with pkgs; [
+      python3
+      nix
+      gh
+    ];
+    prelude = ''
+      export PYTHONPATH=${decisions}/lib/decisions
+      export XO_NIXPKG_CONSUMER_PROBE_SOURCE=${../ci/consumer-probe.py}
+    '';
+  };
   repositoryAudit = mkRepositoryApplication {
     name = "xo-nixpkg-repository-audit";
     script = ../ci/repository-audit.sh;
