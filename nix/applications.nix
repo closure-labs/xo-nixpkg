@@ -40,6 +40,7 @@ let
   ];
   cachePrelude = ''
     export XO_NIXPKG_CACHIX_CACHE_NAME=${pkgs.lib.escapeShellArg binaryCache.name}
+    export XO_NIXPKG_CACHIX_CACHE_URL=${pkgs.lib.escapeShellArg binaryCache.url}
   '';
 in
 rec {

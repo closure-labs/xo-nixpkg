@@ -33,6 +33,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- Read back all eight approved paths and NAR hashes from the protected public
+  cache after upload, bypassing local metadata caches. Stop before publication
+  checkpoints and downstream handoffs if remote bytes differ or are unavailable.
 - Restore the protected XO public cache and signing key to isolated CI clients,
   without accepting inherited or candidate Nix configuration. Retain signature
   verification, sandboxed pure evaluation and disabled remote builders.
