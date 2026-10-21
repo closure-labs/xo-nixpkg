@@ -123,6 +123,13 @@ fresh readback. XO's admitted retained packets use original signed metadata
 bytes before any payload materialization, and OCI retries verify immutable
 manifest/descriptor identities before copying absent content.
 
+The pinned ORAS CLI renders an HTTP404 as a typed `not found` diagnostic.
+Only its exact complete message, repeated exact public XO-products digest or
+packet-tag reference, empty stdout and bounded stderr permit an absent result.
+Other registries, malformed references, mixed messages, authorization failures
+and transport errors remain blocking. Copying still requires live admission
+and successful immutable destination readback before the handoff checkpoint.
+
 Maestro reconciles immutable hosted bytes and independently inspects FlakeHub
 through the exact-version immutable source/revision HEAD chain. A current
 destination skips its upload. Upstream handoff verification reads signed

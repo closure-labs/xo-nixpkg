@@ -38,6 +38,39 @@ class RegistryCommand(unittest.TestCase):
                             'MANIFEST_UNKNOWN unauthorized','MANIFEST_UNKNOWN context deadline exceeded'):
                 with self.subTest(message=message),self.assertRaises(ValueError):probe(message)
 
+    def test_native_oras_not_found_is_exact_reference_bound_and_fail_closed(self):
+        registry='ghcr.io/closure-labs/xo-nixpkg-products'
+        digest=registry+'@sha256:'+'a'*64
+        tag=registry+':packet-'+'a'*64
+        def diagnostic(reference):
+            return f'Error response from registry: failed to fetch the content of "{reference}": {reference}: not found\n'
+        self.assertEqual(len(diagnostic(digest).encode()),299)
+        with tempfile.TemporaryDirectory() as temporary:
+            path=Path(temporary)/'oras'
+            def probe(reference=digest,message=None,stdout='',code=1,allow_missing=True,operation='manifest',flags=()):
+                message=diagnostic(reference) if message is None else message
+                path.write_text('#!'+sys.executable+'\nimport sys\nsys.stdout.write('+repr(stdout)+');sys.stderr.write('+repr(message)+');sys.exit('+str(code)+')\n')
+                path.chmod(0o700)
+                return mod.command([str(path),operation,'fetch',reference,*flags],allow_missing=allow_missing)
+            self.assertIsNone(probe())
+            self.assertIsNone(probe(reference=tag))
+            cases=[{'allow_missing':False},{'code':2},{'stdout':'partial manifest'},
+                   {'message':diagnostic(tag)},{'message':'not found\n'},
+                   {'message':'prefix '+diagnostic(digest)},{'message':diagnostic(digest)+'suffix'},
+                   {'message':diagnostic(digest).rstrip('\n')},
+                   {'reference':digest.replace('-products','-decisions')},
+                   {'reference':digest.replace('xo-nixpkg','another-repository')},
+                   {'reference':digest.replace('a'*64,'A'*64)},
+                   {'operation':'blob'},{'flags':('--insecure',)}]
+            for suffix in ('HTTP/1.1 401','HTTP/1.1 403','HTTP/1.1 409','HTTP/1.1 429',
+                           'HTTP/1.1 500','HTTP/1.1 503','unauthorized','connection reset',
+                           'certificate verify failed','context deadline exceeded'):
+                cases.append({'message':diagnostic(digest)+suffix})
+            cases.append({'message':'x'*(mod.MAX_COMMAND_STDERR+1)+diagnostic(digest)})
+            cases.append({'message':'HTTP/1.1 404 MANIFEST_UNKNOWN','stdout':'partial manifest'})
+            for case in cases:
+                with self.subTest(case=case),self.assertRaises(ValueError):probe(**case)
+
     def test_success_retains_exact_stdout_and_suppresses_stderr(self):
         self.assertEqual(self.run_child('import sys;sys.stderr.write("stderr-secret");sys.stdout.buffer.write(b"{\\\"ok\\\":true}")'), b'{"ok":true}')
 
