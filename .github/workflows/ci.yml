@@ -59,12 +59,12 @@ jobs:
         working-directory: controller
         env:
           XO_NIXPKG_SOURCE_ROOT: ${{ github.workspace }}/candidate
-        run: nix run .#devenv -- tasks run ci:classify
+        run: nix run .#devenv -- tasks run --mode single --option 'packages:pkgs!' '' ci:classify
       - name: Validate proposed workflow bootstrap without cache authority
         id: bootstrap_classify
         if: hashFiles('controller/.github/workflows/ci.yml') != hashFiles('candidate/.github/workflows/ci.yml')
         working-directory: candidate
-        run: nix run .#devenv -- tasks run ci:classify
+        run: nix run .#devenv -- tasks run --mode single --option 'packages:pkgs!' '' ci:classify
 
   validate:
     name: Flake-defined validation
@@ -112,11 +112,11 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           CI_CONTROLLER_ROOT: ${{ github.workspace }}/controller
           CI_CANDIDATE_ROOT: ${{ github.workspace }}/candidate
-        run: nix run .#devenv -- tasks run ci:trusted-validate
+        run: nix run .#devenv -- tasks run --mode single --option 'packages:pkgs!' '' ci:trusted-validate
       - name: Validate proposed workflow bootstrap without reuse certification
         if: hashFiles('controller/.github/workflows/ci.yml') != hashFiles('candidate/.github/workflows/ci.yml')
         working-directory: candidate
-        run: nix run .#devenv -- tasks run ci:validate
+        run: nix run .#devenv -- tasks run --mode single --option 'packages:pkgs!' '' ci:validate
       - name: Retain selected-target manifests and timings
         if: always()
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
@@ -204,7 +204,7 @@ jobs:
           PR_HEAD_REF: ${{ github.event.pull_request.head.ref }}
           PR_HEAD_REPOSITORY: ${{ github.event.pull_request.head.repo.full_name }}
           PR_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
-        run: nix run .#devenv -- tasks run update:fix-hashes
+        run: nix run .#devenv -- tasks run --mode single --option 'packages:pkgs!' '' update:fix-hashes
 
   gate:
     name: CI gate
@@ -233,4 +233,4 @@ jobs:
           github-token: ${{ github.token }}
       - name: Enforce the classified lifecycle
         working-directory: controller
-        run: nix run .#devenv -- tasks run ci:verdict
+        run: nix run .#devenv -- tasks run --mode single --option 'packages:pkgs!' '' ci:verdict

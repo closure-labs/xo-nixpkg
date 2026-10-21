@@ -55,17 +55,17 @@ jobs:
           REGISTRY_TOKEN: ${{ github.token }}
           XO_NIXPKG_FETCH_FOR_RESCAN: 'true'
           XO_NIXPKG_EVIDENCE: retained-product
-        run: nix run .#devenv -- tasks run security:fetch-rescan
+        run: nix run .#devenv -- tasks run --mode single --option 'packages:pkgs!' '' security:fetch-rescan
       - name: Refresh exact retained product with current trusted scanner
         if: github.event_name == 'schedule' || inputs.qualification_run != ''
         env:
           XO_NIXPKG_RESCAN_SOURCE: retained-product
-        run: nix run .#devenv -- tasks run security:refresh
+        run: nix run .#devenv -- tasks run --mode single --option 'packages:pkgs!' '' security:refresh
       - name: Build complete runtime inventories and scan fresh databases
         if: github.event_name != 'schedule' && inputs.qualification_run == ''
         env:
           GH_TOKEN: ${{ github.token }}
-        run: nix run .#devenv -- tasks run security:qualify
+        run: nix run .#devenv -- tasks run --mode single --option 'packages:pkgs!' '' security:qualify
       - name: Attest candidate, observations and independent handoffs
         uses: actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6 # v4
         with:

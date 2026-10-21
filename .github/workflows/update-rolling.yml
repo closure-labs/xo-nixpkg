@@ -38,13 +38,13 @@ jobs:
         id: rolling
         env:
           GITHUB_TOKEN: ${{ github.token }}
-        run: nix run .#devenv -- tasks run update:xo-rolling
+        run: nix run .#devenv -- tasks run --mode single --option 'packages:pkgs!' '' update:xo-rolling
 
       - name: Realize the exact rolling candidate locally
         if: steps.rolling.outputs.changed == 'true'
         id: prewarm
         continue-on-error: true
-        run: nix run .#devenv -- tasks run update:rolling-realize
+        run: nix run .#devenv -- tasks run --mode single --option 'packages:pkgs!' '' update:rolling-realize
 
       - name: Open or update the rolling candidate pull request
         if: always() && steps.rolling.outputs.changed == 'true'
@@ -64,8 +64,8 @@ jobs:
             eligible for the trusted merge queue; a broken candidate remains draft
             and is replaced only when upstream advances.
           XO_NIXPKG_UPDATE_PATHS: flake.nix flake.lock nix/sources/xen-orchestra.json
-        run: nix run .#devenv -- tasks run update:open-pr
+        run: nix run .#devenv -- tasks run --mode single --option 'packages:pkgs!' '' update:open-pr
 
       - name: Fail after preserving a broken rolling candidate
         if: always() && steps.rolling.outputs.changed == 'true' && steps.prewarm.outcome != 'success'
-        run: nix run .#devenv -- tasks run update:rolling-failure
+        run: nix run .#devenv -- tasks run --mode single --option 'packages:pkgs!' '' update:rolling-failure

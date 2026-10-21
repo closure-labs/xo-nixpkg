@@ -8,6 +8,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## Unreleased
 
+- Use a strictly tested signal-only decision relay and minimal native controller task profiles.
+
 - Reconcile publication destinations before transfer and verify remote identities with backward-compatible receipt journals.
 
 - Inspect scheduling and observation metadata before payload transfer, and reuse verified immutable packet bytes within a job while repeating authority checks.

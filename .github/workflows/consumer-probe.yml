@@ -27,4 +27,4 @@ jobs:
       - name: Verify public downloads and signatures in a disposable store
         env:
           GH_TOKEN: ${{ github.token }}
-        run: nix run .#devenv -- tasks run ci:consumer-probe
+        run: nix run .#devenv -- tasks run --mode single --option 'packages:pkgs!' '' ci:consumer-probe

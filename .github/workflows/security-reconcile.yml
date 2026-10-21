@@ -59,4 +59,4 @@ jobs:
           GH_TOKEN: ${{ steps.proposer.outputs.token }}
           REGISTRY_TOKEN: ${{ github.token }}
           QUALIFICATION_RUN: ${{ inputs.qualification_run }}
-        run: nix run .#devenv -- tasks run security:resume
+        run: nix run .#devenv -- tasks run --mode single --option 'packages:pkgs!' '' security:resume

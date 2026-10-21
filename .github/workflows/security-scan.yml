@@ -39,7 +39,7 @@ jobs:
           CHANNEL: ${{ matrix.channel }}
           SECURITY_MODE: report
           SECURITY_OUTPUT: security-report
-        run: nix run .#devenv -- tasks run security:review
+        run: nix run .#devenv -- tasks run --mode single --option 'packages:pkgs!' '' security:review
 
       - name: Upload raw matches and applicability evidence
         if: always()

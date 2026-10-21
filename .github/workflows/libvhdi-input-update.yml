@@ -38,7 +38,7 @@ jobs:
         id: release
         env:
           GITHUB_TOKEN: ${{ github.token }}
-        run: nix run .#devenv -- tasks run update:libvhdi
+        run: nix run .#devenv -- tasks run --mode single --option 'packages:pkgs!' '' update:libvhdi
 
       - name: Open the update pull request
         if: steps.release.outputs.changed == 'true'
@@ -51,4 +51,4 @@ jobs:
 
             Validation: `nix run .#update-libvhdi`
           XO_NIXPKG_UPDATE_PATHS: nix/sources/libvhdi.json
-        run: nix run .#devenv -- tasks run update:open-pr
+        run: nix run .#devenv -- tasks run --mode single --option 'packages:pkgs!' '' update:open-pr
