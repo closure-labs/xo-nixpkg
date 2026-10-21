@@ -24,6 +24,7 @@ in
     "ci:restore-builds".exec = "nix run .#build-reuse -- restore";
     "ci:verdict".exec = "nix run .#ci-verdict";
     "ci:security-lint".exec = "nix run .#security-lint";
+    "ci:consumer-probe".exec = "nix run .#consumer-probe";
     "ci:repository-audit".exec = "nix run .#repository-audit";
     "security:audit-policy".exec = "nix run .#audit-policy";
     "security:review".exec = "nix run .#security-scan";

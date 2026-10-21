@@ -1,0 +1,60 @@
+{
+  "productHash": "87028972f25ca7de03da5217afb8c7e8f3410bb392f6b5e10277d94e12c7e5b8",
+  "cache": [
+    {
+      "storePath": "/nix/store/7rgckrz7zf9l3rvidb4987gcxgi07a8i-xen-orchestra-ce-6.9.1",
+      "expectedNarHash": "sha256-xc1ppaaqEWgTOuKmIg/0+3mj8cd4BEmuncuJYx/+GfI=",
+      "observedNarHash": "sha256:1whrzqgn72fbknp4j13qqzqs6ygvyh7j59p2789nh4dalsjnkkf5",
+      "verified": true
+    },
+    {
+      "storePath": "/nix/store/8nzizs27j3kyidj2rlffwa1hxx2palvi-libvhdi-20260901",
+      "expectedNarHash": "sha256-ip8mHBq2UMgRL5Uu91EZt+3QnmMRibyOuZ/tV9xub88=",
+      "observedNarHash": "sha256:1kvgdvf5gvczp67br28icfgd1vdp358zfblm5w8whl5n38f2d7wa",
+      "verified": true
+    },
+    {
+      "storePath": "/nix/store/hhmj1icrdhfnjz6l0qqjzlpqhfjwbbnh-xen-orchestra-ce-unstable-2026-10-20",
+      "expectedNarHash": "sha256-QLipbxRX+SLwFfsqSAu94nsqMU8+4b05At7D0Gl0B5E=",
+      "observedNarHash": "sha256:1487filx1hyy08wvvq9y9wqjlyz2pl5lhapv2pq25yap2ipskf20",
+      "verified": true
+    },
+    {
+      "storePath": "/nix/store/isdd9f6z1yd81aiimhzdcdcckdffl4lk-xen-orchestra-ce-6.9.0",
+      "expectedNarHash": "sha256-NdXp4BuPIGaWPXgg2zlA7s7ht6D+uOxsd+8G4y38LAA=",
+      "observedNarHash": "sha256:001czhny61pgfxnfrf7yl2vy3kpf80wxn83q7nb6c84g3ghfkm9m",
+      "verified": true
+    },
+    {
+      "storePath": "/nix/store/lc58hivx4gcc5qnlhpfkc7b9c2xnly8i-xo-rolling-supply-protector-unstable-2026-10-20",
+      "expectedNarHash": "sha256-GSlZETyZWv9es43jci3iqa+pefgbbH6bifC56XV1zH8=",
+      "observedNarHash": "sha256:0zycfmsykfghi6dpwv0vz1wskbx9w8np5qwdndggynlr7h8mja8r",
+      "verified": true
+    },
+    {
+      "storePath": "/nix/store/ma21c8myvvn7pkcv3zc8mb5k400giq58-xo-latest-supply-protector-6.9.1",
+      "expectedNarHash": "sha256-omRgakYRDzmBvOT/OhngTCxzewClgaWjrRADOsbIJr0=",
+      "observedNarHash": "sha256:1g96r333l0qhmnisb0d501xp6b2cw0ckmzz4pj0kj3qi8rm60r52",
+      "verified": true
+    },
+    {
+      "storePath": "/nix/store/v0nhj3yb6vnk2akl1zrn40w8gvwk355s-xo-stable-supply-protector-6.9.0",
+      "expectedNarHash": "sha256-YzuEpvuhofsxvVw4/rE/V+wC2ANgCyePnE/p3Bntos8=",
+      "observedNarHash": "sha256:1kx2xlcxrsagkj7jf2v00gc05v2p7yqzwf2wplqzp8d1zfk88fv3",
+      "verified": true
+    },
+    {
+      "storePath": "/nix/store/wskij73bm6gcyclqnh2xv7ggjb0payjc-xo-nixpkg-automation-runtime-0.10.1",
+      "expectedNarHash": "sha256-uYXAb4PAnfK2+3i68juFpMramBqsVWnRP+1bjXcEqKE=",
+      "observedNarHash": "sha256:18d80ivqsnzd7z8njmdc3acdmjm4hlxz5fkqzfvg57f0hdpw11dr",
+      "verified": true
+    }
+  ],
+  "journalSteps": [
+    "cache",
+    "handoff",
+    "xo-tag"
+  ],
+  "ociManifestVerified": true,
+  "ociReference": "ghcr.io/closure-labs/xo-nixpkg-products@sha256:17905e86cad224e585a01509a12517d017a0e9dcdb318bef7b0292bde257f4fa"
+}
