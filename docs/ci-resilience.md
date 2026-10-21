@@ -107,6 +107,12 @@ writers are a later rollout step, so rollback must retain these readers once
 new receipts exist. A legacy completion record alone remains insufficient
 proof of present remote state.
 
+Native `scans.json` observations aggregate every profile and use a dedicated
+128 MiB metadata allowance (a retained XO report measures 61 MiB). Every other
+metadata member retains its 16 MiB limit. The 90-second metadata deadline, exact
+manifest/packet/file digests and typed producer binding remain enforced; this
+allowance never applies to closure payloads or nested filenames.
+
 ## Package 4: independent destination recovery
 
 A versioned destination result distinguishes authenticated absence, partial
