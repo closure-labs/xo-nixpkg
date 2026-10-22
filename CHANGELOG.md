@@ -8,6 +8,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## Unreleased
 
+- Reject obsolete proposal parents before downloading review evidence, and refresh parent selection when protected main advances during verification.
+
 - Use the Nixpkgs-provided CLI without a separate upstream build graph, and refresh native modules and shared Nixpkgs through the existing weekly workflow, including both lockfiles in update PRs.
 
 - Use the Nixpkgs-provided native Devenv CLI for non-flake local and hosted tasks, add an optional private SecretSpec Cachix prompt, and check named cache token permissions without uploading.
