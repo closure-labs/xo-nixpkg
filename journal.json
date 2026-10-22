@@ -1,6 +1,36 @@
 {
   "productHash": "f1f7ff33d59464f8e10b9ce2bd54f6858bd03ad8ca3694f41e2abd8787da6827",
-  "schema": 1,
+  "receipts": {
+    "cache": {
+      "destination": "cache",
+      "expected": {
+        "/nix/store/7rgckrz7zf9l3rvidb4987gcxgi07a8i-xen-orchestra-ce-6.9.1": "sha256-xc1ppaaqEWgTOuKmIg/0+3mj8cd4BEmuncuJYx/+GfI=",
+        "/nix/store/8nzizs27j3kyidj2rlffwa1hxx2palvi-libvhdi-20260901": "sha256-ip8mHBq2UMgRL5Uu91EZt+3QnmMRibyOuZ/tV9xub88=",
+        "/nix/store/f5m0vl536gyw54sqcl11bxkkk1n7kxvb-xo-nixpkg-automation-runtime-0.10.1": "sha256-1TTQ9/R52efgi43+GPXde74Si9w8mlKqZTPbyVb0NOI=",
+        "/nix/store/isdd9f6z1yd81aiimhzdcdcckdffl4lk-xen-orchestra-ce-6.9.0": "sha256-NdXp4BuPIGaWPXgg2zlA7s7ht6D+uOxsd+8G4y38LAA=",
+        "/nix/store/ma21c8myvvn7pkcv3zc8mb5k400giq58-xo-latest-supply-protector-6.9.1": "sha256-omRgakYRDzmBvOT/OhngTCxzewClgaWjrRADOsbIJr0=",
+        "/nix/store/p309krshpp5np46fpzm6gbwwr65mcqkv-xo-rolling-supply-protector-unstable-2026-10-19": "sha256-6xyNzIa3aPa986dD5YeDDenMW+52YSWaFVeSdtjQiAg=",
+        "/nix/store/qbskrgbrlfil2f4nm5ran41ixp4ffnfa-xen-orchestra-ce-unstable-2026-10-19": "sha256-B5pqNl9eTCpcTp0UWayqHuqhTLGv8zh+EalK9l/udTY=",
+        "/nix/store/v0nhj3yb6vnk2akl1zrn40w8gvwk355s-xo-stable-supply-protector-6.9.0": "sha256-YzuEpvuhofsxvVw4/rE/V+wC2ANgCyePnE/p3Bntos8="
+      },
+      "observed": {
+        "/nix/store/7rgckrz7zf9l3rvidb4987gcxgi07a8i-xen-orchestra-ce-6.9.1": "sha256-xc1ppaaqEWgTOuKmIg/0+3mj8cd4BEmuncuJYx/+GfI=",
+        "/nix/store/8nzizs27j3kyidj2rlffwa1hxx2palvi-libvhdi-20260901": "sha256-ip8mHBq2UMgRL5Uu91EZt+3QnmMRibyOuZ/tV9xub88=",
+        "/nix/store/f5m0vl536gyw54sqcl11bxkkk1n7kxvb-xo-nixpkg-automation-runtime-0.10.1": "sha256-1TTQ9/R52efgi43+GPXde74Si9w8mlKqZTPbyVb0NOI=",
+        "/nix/store/isdd9f6z1yd81aiimhzdcdcckdffl4lk-xen-orchestra-ce-6.9.0": "sha256-NdXp4BuPIGaWPXgg2zlA7s7ht6D+uOxsd+8G4y38LAA=",
+        "/nix/store/ma21c8myvvn7pkcv3zc8mb5k400giq58-xo-latest-supply-protector-6.9.1": "sha256-omRgakYRDzmBvOT/OhngTCxzewClgaWjrRADOsbIJr0=",
+        "/nix/store/p309krshpp5np46fpzm6gbwwr65mcqkv-xo-rolling-supply-protector-unstable-2026-10-19": "sha256-6xyNzIa3aPa986dD5YeDDenMW+52YSWaFVeSdtjQiAg=",
+        "/nix/store/qbskrgbrlfil2f4nm5ran41ixp4ffnfa-xen-orchestra-ce-unstable-2026-10-19": "sha256-B5pqNl9eTCpcTp0UWayqHuqhTLGv8zh+EalK9l/udTY=",
+        "/nix/store/v0nhj3yb6vnk2akl1zrn40w8gvwk355s-xo-stable-supply-protector-6.9.0": "sha256-YzuEpvuhofsxvVw4/rE/V+wC2ANgCyePnE/p3Bntos8="
+      },
+      "productHash": "f1f7ff33d59464f8e10b9ce2bd54f6858bd03ad8ca3694f41e2abd8787da6827",
+      "schema": 1,
+      "status": "verified",
+      "verifiedAt": "2026-10-22T16:05:11.706839+00:00",
+      "verifier": "b7573547249bb8fc7359d29ebaea7dfab5f6d67f8c74361ce6eb1cf277fcd187"
+    }
+  },
+  "schema": 2,
   "steps": [
     {
       "identity": {
