@@ -14,6 +14,11 @@ nix run --accept-flake-config .#devenv -- shell
 nix run --accept-flake-config .#devenv -- test
 ```
 
+The CLI toolchain pins the same upstream Nixpkgs revision used by Devenv 2.4
+directly, avoiding the wrapper's unrelated Poetry source patch and an
+import-from-derivation dependency that failed on a clean protected builder.
+The application and development Nixpkgs pins are unchanged.
+
 With Devenv 2.4 already installed, use `devenv shell` and `devenv test` directly.
 `nix develop --accept-flake-config` remains a plain `mkShellNoCC` alternative.
 The toolchain includes Node.js 22, Yarn classic, Valkey, native Node build

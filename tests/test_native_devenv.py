@@ -18,6 +18,26 @@ def yaml(path):
 
 
 class NativeDevenvTests(unittest.TestCase):
+    def test_cli_toolchain_pin_avoids_the_cold_ifd_wrapper(self):
+        revision = 'c8f90650c15282fa8656a041bfbbd2403997a9a7'
+        config = yaml(ROOT / 'devenv.yaml')
+        self.assertEqual(config['inputs']['devenv']['inputs']['nixpkgs']['url'],
+                         'github:NixOS/nixpkgs/' + revision)
+        for name in ('flake.lock', 'devenv.lock'):
+            lock = json.loads((ROOT / name).read_text())
+            nodes = lock['nodes']
+            tool = nodes[nodes['root']['inputs']['devenv']]
+            source = nodes[tool['inputs']['nixpkgs']]
+            self.assertEqual(source['locked']['owner'], 'NixOS')
+            self.assertEqual(source['locked']['repo'], 'nixpkgs')
+            self.assertEqual(source['locked']['rev'], revision)
+            self.assertEqual(source['locked']['narHash'], 'sha256-pRGOQSClnXNI2iLUG6DYpsGvYcuw0drOutVZFTJNw90=')
+            self.assertNotIn('inputs', source)
+            self.assertNotIn('flake', source)
+            self.assertNotEqual(nodes['root']['inputs']['nixpkgs'], tool['inputs']['nixpkgs'])
+            self.assertFalse(any(node.get('locked', {}).get('repo') == 'devenv-nixpkgs'
+                                 for node in nodes.values()))
+
     def test_default_local_and_hosted_configuration_contract(self):
         base = yaml(ROOT / 'devenv.yaml')
         local = yaml(ROOT / 'devenv.local.yaml.example')

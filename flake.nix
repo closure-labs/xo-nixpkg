@@ -11,7 +11,12 @@ rec {
   };
 
   inputs = {
-    devenv.url = "github:cachix/devenv/v2.4.0";
+    devenv = {
+      url = "github:cachix/devenv/v2.4.0";
+      # Keep the CLI toolchain on its original upstream Nixpkgs revision without
+      # the wrapper's unrelated Poetry patch and import-from-derivation.
+      inputs.nixpkgs.url = "github:NixOS/nixpkgs/c8f90650c15282fa8656a041bfbbd2403997a9a7";
+    };
     nixpkgs.url = "github:NixOS/nixpkgs/nixos-unstable";
     xo-latest = {
       url = "github:vatesfr/xen-orchestra/5999d53e0b6172820567a1caee67da798e5a673f";

@@ -8,6 +8,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## Unreleased
 
+- Pin the Devenv CLI toolchain directly to its upstream Nixpkgs revision so clean hosted evaluation does not depend on an intermediate patched-source derivation.
+
 - Pin native Devenv 2.4 for non-flake local and hosted tasks, add an optional private SecretSpec Cachix prompt, and check named cache token permissions without uploading.
 
 - Verify clean-store consumers through Cachix and its pinned official NixOS upstream, retaining substitution-only execution and recursive signature checks.

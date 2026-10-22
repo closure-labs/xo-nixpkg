@@ -9,5 +9,8 @@ secretspec:
 inputs:
   devenv:
     url: github:cachix/devenv/v2.4.0
+    inputs:
+      nixpkgs:
+        url: github:NixOS/nixpkgs/c8f90650c15282fa8656a041bfbbd2403997a9a7
   nixpkgs:
     url: github:NixOS/nixpkgs/nixos-unstable
