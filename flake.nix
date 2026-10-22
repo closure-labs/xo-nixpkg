@@ -11,12 +11,6 @@ rec {
   };
 
   inputs = {
-    devenv = {
-      url = "github:cachix/devenv/v2.4.0";
-      # Keep the CLI toolchain on its original upstream Nixpkgs revision without
-      # the wrapper's unrelated Poetry patch and import-from-derivation.
-      inputs.nixpkgs.url = "github:NixOS/nixpkgs/c8f90650c15282fa8656a041bfbbd2403997a9a7";
-    };
     nixpkgs.url = "github:NixOS/nixpkgs/nixos-unstable";
     xo-latest = {
       url = "github:vatesfr/xen-orchestra/5999d53e0b6172820567a1caee67da798e5a673f";
@@ -35,7 +29,6 @@ rec {
   outputs =
     {
       self,
-      devenv,
       nixpkgs,
       xo-latest,
       xo-rolling,
@@ -112,7 +105,6 @@ rec {
           flakePlanRunner = pkgs.callPackage ./nix/flake-plan-runner.nix { };
           applications = import ./nix/applications.nix {
             inherit binaryCache pkgs;
-            devenv = devenv.packages.${system}.devenv;
             nixpkgsPath = nixpkgs.outPath;
             planRunner = flakePlanRunner;
           };
@@ -124,7 +116,7 @@ rec {
         in
         {
           inherit latest rolling stable;
-          devenv = devenv.packages.${system}.devenv;
+          devenv = pkgs.devenv;
           rolling-candidate = rolling;
           runtime-node = (pkgs.callPackage ./nix/runtime-node.nix { }).nodejs;
           supply-protector = latestSupplyProtector;
@@ -163,7 +155,7 @@ rec {
           default = pkgs.mkShellNoCC (
             developmentEnvironment.env
             // {
-              packages = developmentEnvironment.packages ++ [ devenv.packages.${system}.devenv ];
+              packages = developmentEnvironment.packages ++ [ pkgs.devenv ];
             }
           );
 
@@ -191,7 +183,6 @@ rec {
           pkgs = nixpkgs.legacyPackages.${system};
           applications = import ./nix/applications.nix {
             inherit binaryCache pkgs;
-            devenv = devenv.packages.${system}.devenv;
             nixpkgsPath = nixpkgs.outPath;
             planRunner = self.packages.${system}.flake-plan-runner;
           };
@@ -257,7 +248,6 @@ rec {
           pkgs = nixpkgs.legacyPackages.${system};
           applications = import ./nix/applications.nix {
             inherit binaryCache pkgs;
-            devenv = devenv.packages.${system}.devenv;
             nixpkgsPath = nixpkgs.outPath;
             planRunner = self.packages.${system}.flake-plan-runner;
           };

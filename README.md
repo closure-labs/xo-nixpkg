@@ -46,8 +46,8 @@ nix run --accept-flake-config .#ci
 ```
 
 The same toolchain uses the non-flake [Devenv](https://devenv.sh/) configuration.
-Bootstrap the pinned 2.4 CLI through the package output, or use an installed 2.4
-CLI. Public Cachix pulls need no token:
+Bootstrap the Nixpkgs-provided CLI through the package output, or use a
+compatible installed CLI. Public Cachix pulls need no token:
 
 ```bash
 nix run --accept-flake-config .#devenv -- shell

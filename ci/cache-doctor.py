@@ -24,7 +24,7 @@ class NoRedirect(urllib.request.HTTPRedirectHandler):
 
 
 def resolve_token(name, provider):
-    # Matches Devenv 2.4 load_cachix_secretspec exactly. No secret enters the
+    # Matches native Devenv load_cachix_secretspec. No secret enters the
     # manifest, command arguments, Nix evaluation, or the calling environment.
     manifest = ('[project]\nname = "devenv-cachix"\nrevision = "1.0"\n'
                 'require_reason = false\n\n[profiles.default]\n'

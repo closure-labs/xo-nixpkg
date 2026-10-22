@@ -18,26 +18,6 @@ def yaml(path):
 
 
 class NativeDevenvTests(unittest.TestCase):
-    def test_cli_toolchain_pin_avoids_the_cold_ifd_wrapper(self):
-        revision = 'c8f90650c15282fa8656a041bfbbd2403997a9a7'
-        config = yaml(ROOT / 'devenv.yaml')
-        self.assertEqual(config['inputs']['devenv']['inputs']['nixpkgs']['url'],
-                         'github:NixOS/nixpkgs/' + revision)
-        for name in ('flake.lock', 'devenv.lock'):
-            lock = json.loads((ROOT / name).read_text())
-            nodes = lock['nodes']
-            tool = nodes[nodes['root']['inputs']['devenv']]
-            source = nodes[tool['inputs']['nixpkgs']]
-            self.assertEqual(source['locked']['owner'], 'NixOS')
-            self.assertEqual(source['locked']['repo'], 'nixpkgs')
-            self.assertEqual(source['locked']['rev'], revision)
-            self.assertEqual(source['locked']['narHash'], 'sha256-pRGOQSClnXNI2iLUG6DYpsGvYcuw0drOutVZFTJNw90=')
-            self.assertNotIn('inputs', source)
-            self.assertNotIn('flake', source)
-            self.assertNotEqual(nodes['root']['inputs']['nixpkgs'], tool['inputs']['nixpkgs'])
-            self.assertFalse(any(node.get('locked', {}).get('repo') == 'devenv-nixpkgs'
-                                 for node in nodes.values()))
-
     def test_default_local_and_hosted_configuration_contract(self):
         base = yaml(ROOT / 'devenv.yaml')
         local = yaml(ROOT / 'devenv.local.yaml.example')
@@ -45,12 +25,18 @@ class NativeDevenvTests(unittest.TestCase):
         self.assertEqual(local['secretspec'], {
             'enable': True, 'provider': 'keyring', 'profile': 'development',
             'cachix_auth_token': 'CACHIX_XO_DEVENV_TOKEN'})
-        self.assertEqual(base['require_version'], '>= 2.4')
-        self.assertEqual(base['inputs']['devenv']['url'], 'github:cachix/devenv/v2.4.0')
+        self.assertEqual(base['require_version'], '>= 2.2')
+        self.assertEqual(set(base['inputs']), {'nixpkgs'})
         locks = [json.loads((ROOT / name).read_text()) for name in ('flake.lock', 'devenv.lock')]
-        for lock in locks:
-            node = lock['nodes'][lock['nodes']['root']['inputs']['devenv']]
-            self.assertEqual(node['locked']['rev'], 'b904dcb51fe48c30db250038241507f60752f222')
+        identities = [lock['nodes'][lock['nodes']['root']['inputs']['nixpkgs']]['locked']
+                      for lock in locks]
+        self.assertEqual(identities[0], identities[1])
+        # The CLI comes from Nixpkgs; native module inputs follow the CLI's
+        # default rolling source without a release tag or a second CLI graph.
+        self.assertNotIn('devenv', locks[0]['nodes']['root']['inputs'])
+        native = locks[1]['nodes'][locks[1]['nodes']['root']['inputs']['devenv']]
+        self.assertNotIn('ref', native['original'])
+        self.assertEqual(native['original']['dir'], 'src/modules')
         manifest = tomllib.loads((ROOT / 'secretspec.toml').read_text())
         self.assertEqual(set(manifest['profiles']['default']), PUBLIC)
         self.assertEqual(manifest['profiles']['development'], {})

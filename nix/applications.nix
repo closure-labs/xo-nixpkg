@@ -3,7 +3,6 @@
   pkgs,
   nixpkgsPath,
   planRunner,
-  devenv,
 }:
 
 let
@@ -62,7 +61,7 @@ rec {
     name = "xo-nixpkg-cache-doctor";
     runtimeInputs = [
       pkgs.python3
-      devenv
+      pkgs.devenv
     ];
     text = ''
       export PYTHONPATH=${../ci/decisions}
@@ -653,6 +652,7 @@ rec {
     runtimeInputs = with pkgs; [
       coreutils
       git
+      jq
       nix
     ];
   };

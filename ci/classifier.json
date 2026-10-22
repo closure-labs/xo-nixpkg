@@ -584,7 +584,7 @@
       ]
     },
     {
-      "pattern": "^(?:tests/distribution\\-cache\\.py|tests/publication\\-boundary\\.sh|tests/security\\-database\\.py|tests/supply\\-inventory\\.py|tests/test_cache_doctor\\.py|tests/test_native_devenv\\.py|tests/test_build_reuse\\.py|tests/test_consumer_probe\\.py|tests/test_evidence_download\\.py|tests/test_native_advisories\\.py|tests/test_operations\\.py|tests/test_parallel_runner\\.py|tests/test_profile_database\\.py|tests/test_publish_readback\\.py|tests/test_reconcile_retained\\.py|tests/test_scheduling\\.py|tests/test_security\\.py)$",
+      "pattern": "^(?:tests/distribution\\-cache\\.py|tests/publication\\-boundary\\.sh|tests/security\\-database\\.py|tests/supply\\-inventory\\.py|tests/test_cache_doctor\\.py|tests/test_update_flake_lock\\.py|tests/test_native_devenv\\.py|tests/test_build_reuse\\.py|tests/test_consumer_probe\\.py|tests/test_evidence_download\\.py|tests/test_native_advisories\\.py|tests/test_operations\\.py|tests/test_parallel_runner\\.py|tests/test_profile_database\\.py|tests/test_publish_readback\\.py|tests/test_reconcile_retained\\.py|tests/test_scheduling\\.py|tests/test_security\\.py)$",
       "validation": [
         "repository-policy",
         "ci-runtime-fixtures",

@@ -81,6 +81,8 @@ run_fixture() {
   local remote_sha=${6:-}
   local open_pr_json=${7:-'{}'}
   local queue_entry=${8:-}
+  local update_branch=${9:-automation/test}
+  local update_path=${10:-update}
   (
     cd "$repository"
     env \
@@ -95,12 +97,12 @@ run_fixture() {
       FAKE_QUEUE_ENTRY="$queue_entry" \
       GH_TOKEN=fixture \
       GITHUB_REPOSITORY=example/xo-nixpkg \
-      UPDATE_BRANCH=automation/test \
+      UPDATE_BRANCH="$update_branch" \
       UPDATE_TITLE='Fixture update' \
       UPDATE_BODY='Fixture body' \
       UPDATE_REVIEWER=declarative-dale \
       XO_NIXPKG_RETRY_DELAY_SECONDS=0 \
-      bash "$root/ci/open-update-pr.sh" update
+      bash "$root/ci/open-update-pr.sh" "$update_path"
   )
 }
 
@@ -173,5 +175,38 @@ fi
 [[ $(<"$persistent_push_count") == 3 ]]
 [[ ! -s $persistent_gh_log ]]
 grep -F 'failed after 3 attempt(s)' "$temporary/persistent.stderr" >/dev/null
+
+# Native-only weekly changes must not disappear behind the historical selector.
+weekly_repository=$temporary/weekly-native
+make_repository "$weekly_repository"
+printf 'unchanged flake\n' >"$weekly_repository/flake.lock"
+printf 'before native\n' >"$weekly_repository/devenv.lock"
+git -C "$weekly_repository" add flake.lock devenv.lock
+git -C "$weekly_repository" commit -qm 'base locks'
+printf 'after native\n' >"$weekly_repository/devenv.lock"
+weekly_before=$(git -C "$weekly_repository" rev-parse HEAD)
+weekly_gh_log=$temporary/weekly-gh-log
+: >"$weekly_gh_log"
+if run_fixture "$weekly_repository" 0 "$temporary/weekly-invalid-push" "$weekly_gh_log" \
+  unused '' '{}' '' automation/weekly-flake-input-refresh update \
+  >"$temporary/weekly-invalid.stdout" 2>"$temporary/weekly-invalid.stderr"; then
+  echo 'Weekly input updater accepted an unrelated selector' >&2
+  exit 1
+fi
+[[ $(git -C "$weekly_repository" rev-parse HEAD) == "$weekly_before" ]]
+[[ ! -e $temporary/weekly-invalid-push && ! -s $weekly_gh_log ]]
+run_fixture "$weekly_repository" 0 "$temporary/weekly-push" "$weekly_gh_log" \
+  unused '' '{}' '' automation/weekly-flake-input-refresh flake.lock
+[[ $(git -C "$weekly_repository" diff-tree --no-commit-id --name-only -r HEAD) == devenv.lock ]]
+grep -F 'Includes the native Devenv lockfile' "$weekly_gh_log" >/dev/null
+
+# An unrelated updater still commits only its explicitly supplied path.
+other_repository=$temporary/other-selector
+make_repository "$other_repository"
+printf 'unrelated native change\n' >"$other_repository/devenv.lock"
+other_gh_log=$temporary/other-gh-log
+: >"$other_gh_log"
+run_fixture "$other_repository" 0 "$temporary/other-push" "$other_gh_log"
+[[ $(git -C "$other_repository" diff-tree --no-commit-id --name-only -r HEAD) == update ]]
 
 printf 'Update pull-request retry fixtures passed\n'

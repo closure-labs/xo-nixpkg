@@ -93,7 +93,7 @@ let
           python3
         ])
         ''
-          export SECRETSPEC_BIN=${self.packages.${pkgs.stdenv.hostPlatform.system}.devenv}/bin/secretspec
+          export SECRETSPEC_BIN=${pkgs.devenv}/bin/secretspec
           bash source/tests/policy.sh
           bash source/tests/yarn-fetch.sh
         '';

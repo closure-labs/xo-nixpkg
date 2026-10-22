@@ -4,7 +4,7 @@
 ## Setup
 
 XO uses Devenv's non-flake configuration: `devenv.yaml`, `devenv.lock`, and
-`devenv.nix`. The repository flake packages the pinned Devenv 2.4 CLI and the
+`devenv.nix`. The repository flake exposes the Nixpkgs-provided Devenv CLI and the
 small commands called by tasks; it does not define a Devenv flake shell.
 
 ```bash
@@ -14,12 +14,16 @@ nix run --accept-flake-config .#devenv -- shell
 nix run --accept-flake-config .#devenv -- test
 ```
 
-The CLI toolchain pins the same upstream Nixpkgs revision used by Devenv 2.4
-directly, avoiding the wrapper's unrelated Poetry source patch and an
-import-from-derivation dependency that failed on a clean protected builder.
-The application and development Nixpkgs pins are unchanged.
+The CLI follows the repository's Nixpkgs input, with no separate Devenv release
+pin or upstream CLI build graph. Native modules use the CLI's default rolling
+source. The existing weekly input workflow refreshes `devenv.lock` and the
+Nixpkgs input in `flake.lock`, checks their shared Nixpkgs identity, and includes
+both files in its update PR through the packaged updater command. The workflow
+path, historical PR title and automatic queue guard stay unchanged; a PR that
+changes both lockfiles needs normal source review. XO channel sources retain
+their dedicated updaters.
 
-With Devenv 2.4 already installed, use `devenv shell` and `devenv test` directly.
+With a compatible Devenv already installed, use `devenv shell` and `devenv test`.
 `nix develop --accept-flake-config` remains a plain `mkShellNoCC` alternative.
 The toolchain includes Node.js 22, Yarn classic, Valkey, native Node build
 helpers, update tools, Nix linters, actionlint, ShellCheck, and zizmor.
@@ -334,7 +338,7 @@ exposure must first be established. See
 Workflow command bodies use declared `devenv tasks` backed by flake-packaged leaf
 commands. The existing pinned Determinate Nix setup runs on ephemeral GitHub
 hosted runners. `nix run .#devenv -- tasks run --mode single --option
-'packages:pkgs!' '' <task>` bootstraps the locked 2.4 CLI and evaluates the
+'packages:pkgs!' '' <task>` bootstraps the Nixpkgs-provided CLI and evaluates the
 non-flake configuration with the minimal controller profile. Ordinary validation
 uses public caches and needs no Cachix token, local override, or interactive
 prompt. The committed configuration disables implicit SecretSpec resolution.
