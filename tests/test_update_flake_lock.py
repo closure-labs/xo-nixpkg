@@ -4,6 +4,7 @@ import json
 import os
 from pathlib import Path
 import subprocess
+import sys
 import tempfile
 import unittest
 
@@ -19,8 +20,7 @@ class UpdateLocksTests(unittest.TestCase):
             for name in ('flake.lock', 'devenv.lock'):
                 (root / name).write_text(json.dumps(source))
             binary = root / 'nix'
-            binary.write_text('''#!/usr/bin/env python3
-import json, os, sys
+            binary.write_text('#!' + sys.executable + '\n' + '''import json, os, sys
 from pathlib import Path
 args = sys.argv[1:]
 with Path('calls').open('a') as stream: stream.write(json.dumps(args) + '\\n')
