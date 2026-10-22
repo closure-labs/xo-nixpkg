@@ -155,7 +155,7 @@ rec {
           default = pkgs.mkShellNoCC (
             developmentEnvironment.env
             // {
-              inherit (developmentEnvironment) packages;
+              packages = developmentEnvironment.packages ++ [ pkgs.devenv ];
             }
           );
 
@@ -193,6 +193,7 @@ rec {
           };
         in
         {
+          cache-doctor = mkApp applications.cacheDoctor "Check named Cachix token permissions without publishing";
           audit-policy = mkApp applications.auditPolicy "Audit effective protection with read-only administration credentials";
           consumer-probe = mkApp applications.consumerProbe "Verify downloaded public product bytes and signatures in a clean store";
           repository-audit = mkApp applications.repositoryAudit "Run the complete repository contract";

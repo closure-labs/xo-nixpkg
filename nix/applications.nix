@@ -57,6 +57,18 @@ let
   '';
 in
 rec {
+  cacheDoctor = pkgs.writeShellApplication {
+    name = "xo-nixpkg-cache-doctor";
+    runtimeInputs = [
+      pkgs.python3
+      pkgs.devenv
+    ];
+    text = ''
+      export PYTHONPATH=${../ci/decisions}
+      exec python3 ${../ci/cache-doctor.py} "$@"
+    '';
+  };
+
   securityApplicability =
     (pkgs.writeShellApplication {
       name = "xo-nixpkg-security-applicability";
@@ -640,6 +652,7 @@ rec {
     runtimeInputs = with pkgs; [
       coreutils
       git
+      jq
       nix
     ];
   };

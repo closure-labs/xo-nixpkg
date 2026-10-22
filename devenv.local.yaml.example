@@ -1,0 +1,8 @@
+# Copy to the ignored devenv.local.yaml for an interactive local Cachix prompt.
+# No token values belong in this file. Keep public cache publication in the
+# separately credentialed, exactly admitted publication commands.
+secretspec:
+  enable: true
+  provider: keyring
+  profile: development
+  cachix_auth_token: CACHIX_XO_DEVENV_TOKEN

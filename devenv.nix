@@ -22,6 +22,7 @@ in
     };
 
   tasks = {
+    "cache:doctor".exec = "nix run .#cache-doctor";
     "ci:classify".exec = "nix run .#classify-ci -- \"$GITHUB_OUTPUT\"";
     "ci:validate".exec = "nix run .#ci";
     "ci:trusted-validate".exec = "nix run .#build-reuse -- validate";

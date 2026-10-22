@@ -3,15 +3,30 @@
 
 ## Setup
 
+XO uses Devenv's non-flake configuration: `devenv.yaml`, `devenv.lock`, and
+`devenv.nix`. The repository flake exposes the Nixpkgs-provided Devenv CLI and the
+small commands called by tasks; it does not define a Devenv flake shell.
+
 ```bash
 git clone https://github.com/closure-labs/xo-nixpkg.git
 cd xo-nixpkg
-nix develop --accept-flake-config
+nix run --accept-flake-config .#devenv -- shell
+nix run --accept-flake-config .#devenv -- test
 ```
 
-The plain `mkShellNoCC` toolchain includes Node.js 22, Yarn classic, Valkey,
-native Node build helpers, update tools, Nix linters, actionlint, ShellCheck,
-and zizmor. Evaluation is pure.
+The CLI follows the repository's Nixpkgs input, with no separate Devenv release
+pin or upstream CLI build graph. Native modules use the CLI's default rolling
+source. The existing weekly input workflow refreshes `devenv.lock` and the
+Nixpkgs input in `flake.lock`, checks their shared Nixpkgs identity, and includes
+both files in its update PR through the packaged updater command. The workflow
+path, historical PR title and automatic queue guard stay unchanged; a PR that
+changes both lockfiles needs normal source review. XO channel sources retain
+their dedicated updaters.
+
+With a compatible Devenv already installed, use `devenv shell` and `devenv test`.
+`nix develop --accept-flake-config` remains a plain `mkShellNoCC` alternative.
+The toolchain includes Node.js 22, Yarn classic, Valkey, native Node build
+helpers, update tools, Nix linters, actionlint, ShellCheck, and zizmor.
 
 The pinned runtime uses stock Nixpkgs Node 22.23.3 and OpenSSL 3.5.9. Both
 substitute from the official Nix binary cache. `nix/runtime-node.nix` requires
@@ -19,19 +34,50 @@ the patched OpenSSL series without overriding its source or rebuilding Node;
 the package install check verifies both the reported crypto version and the
 actual mapped library paths.
 
-The repository also exposes the same toolchain as a Devenv environment:
+### Public cache and optional local token prompt
+
+Public development and CI pull from `https://xen-orchestra-ce.cachix.org` with
+`xen-orchestra-ce.cachix.org-1:WAOajkFLXWTaFiwMbLidlGa5kWB7Icu29eJnYbeMG7E=`.
+The shell exports the same trust root through `NIX_CONFIG` for nested commands.
+No token is needed to enter the shell or run validation.
+
+To test a Cachix token locally, create a token restricted to the
+`xen-orchestra-ce` cache in Cachix, with write permission if you want the
+read-only diagnostic to confirm that permission. Then:
 
 ```bash
-devenv shell
-devenv test
+cp devenv.local.yaml.example devenv.local.yaml
+unset CACHIX_AUTH_TOKEN
+nix run --accept-flake-config .#devenv -- shell
+# Devenv prompts privately for CACHIX_XO_DEVENV_TOKEN when it is missing.
+# Inside the shell:
+devenv tasks run cache:doctor
 ```
 
-Devenv's Cachix integration pulls from `https://xen-orchestra-ce.cachix.org`
-with the public key
-`xen-orchestra-ce.cachix.org-1:WAOajkFLXWTaFiwMbLidlGa5kWB7Icu29eJnYbeMG7E=`.
-The shell also exports both values through `NIX_CONFIG`, so nested `nix`
-commands use the pinned trust root. The cache stays read-only unless a
-developer explicitly configures a local `cachix.push` value.
+The ignored override enables SecretSpec's `keyring` provider. An unlocked
+system keyring and an interactive terminal are required; headless runners
+should use environment-backed runtime credentials instead. Devenv stores its
+built-in Cachix secret under project `devenv-cachix`, profile `default`, with
+name `CACHIX_XO_DEVENV_TOKEN`. This differs from XO's project manifest and the
+legacy publication credential `CACHIX_AUTH_TOKEN`. The local `development`
+profile contains no credential declarations, including inherited defaults.
+Never put the token value in YAML, Nix, a command argument, or a committed file.
+
+`cache:doctor` reads Cachix metadata and prints only the expected cache identity,
+signing-key match, and effective `Read`, `Write`, or `Admin` permission. It exits
+successfully only for `Write` or `Admin`; public read access cannot prove token
+validity. It never uploads, authorizes publication, or proves that public cache
+bytes are available. Remove `devenv.local.yaml` to return to token-free startup.
+
+Automatic `cachix.push` is not enabled: Devenv observes realized toolchain paths,
+while this repository publishes only exact admitted products through separately
+credentialed commands. Local token setup does not change those gates. The
+explicit SecretSpec `runtime` and `github-*` profiles remain runtime contracts;
+do not select them for Devenv's Nix evaluation.
+
+See the upstream [binary cache guide](https://devenv.sh/binary-caching/) for the
+native SecretSpec integration and [GitHub Actions guide](https://devenv.sh/integrations/github-actions/)
+for running commands on ordinary hosted runners.
 
 ```bash
 valkey-server --bind 127.0.0.1
@@ -290,6 +336,12 @@ exposure must first be established. See
 [the npm triage](security-triage-2026-10-14.md).
 
 Workflow command bodies use declared `devenv tasks` backed by flake-packaged leaf
-commands. `nix run .#devenv -- tasks run <task>` bootstraps that exact locked
-toolchain on hosted runners. Credentials stay in runtime environment values
-declared by `secretspec.toml`; never put values in Nix evaluation or derivations.
+commands. The existing pinned Determinate Nix setup runs on ephemeral GitHub
+hosted runners. `nix run .#devenv -- tasks run --mode single --option
+'packages:pkgs!' '' <task>` bootstraps the Nixpkgs-provided CLI and evaluates the
+non-flake configuration with the minimal controller profile. Ordinary validation
+uses public caches and needs no Cachix token, local override, or interactive
+prompt. The committed configuration disables implicit SecretSpec resolution.
+Only protected authority/publication steps receive their declared, scoped runtime
+credentials. Keep them out of Devenv evaluation and derivations; adding a local
+token or using the upstream integration does not enable automatic publication.

@@ -1,5 +1,11 @@
 # yaml-language-server: $schema=https://devenv.sh/devenv.schema.json
 require_version: ">= 2.2"
+
+# Runtime publication leaves resolve their own explicitly scoped credentials.
+# Public shells and hosted validation never resolve project secrets into Nix.
+secretspec:
+  enable: false
+  cachix_auth_token: false
 inputs:
   nixpkgs:
     url: github:NixOS/nixpkgs/nixos-unstable
