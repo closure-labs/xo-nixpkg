@@ -34,6 +34,13 @@ review state, and merged ledger provenance. A generated report never substitutes
 for authority. `automation/decisions/` contains only immutable canonical proposal
 JSON under `security/` or `releases/`.
 
+Both `rolling` and `release` publication require a separate accepted
+`release-product` decision for the exact product document. A source review or
+accepted risk scope cannot substitute for that decision. The gate checks the
+product's current human review again before completing admission; publication
+purpose only selects distribution behavior. The existing reconciler prepares
+product proposals before scheduling admitted publication.
+
 `security-reconcile.yml` retains evidence in `ghcr.io/closure-labs/xo-nixpkg-decisions`
 and opens content-addressed bot proposal PRs. It reconciles retained candidates
 hourly for the latest successful main qualification, requests a refreshed scan when

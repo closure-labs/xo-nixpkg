@@ -217,8 +217,9 @@ def active_security(cfg, records, api=None, authenticate=True):
 
 def active_release(cfg, records, identity, api=None, authenticate=True):
     """Select one explicitly superseding release approval for these exact bytes."""
+    product_hash = canonical_hash(identity)
     candidates = {h: p for h, p in records.items() if p['kind'] == 'release-product'
-                  and p['payload'].get('product') == identity}
+                  and canonical_hash(p['payload'].get('product')) == product_hash}
     superseded = set()
     for digest, proposal in candidates.items():
         payload = proposal['payload']
@@ -466,7 +467,7 @@ def scans(path, cfg, api=None, allow_expired=False):
 def product(path, cfg, scan, api=None):
     value = load_json(path)
     require(set(value).issubset({'schema', 'repository', 'revision', 'products', 'assets', 'roots'})
-            and value.get('schema') == 1 and value.get('repository') == cfg['repository']
+            and type(value.get('schema')) is int and value['schema'] == 1 and value.get('repository') == cfg['repository']
             and value.get('revision') == scan['revision'], 'Invalid immutable product identity')
     require(isinstance(value.get('products'), dict) and value['products']
             and set(value['products']).issubset(scan['profiles']), 'Product profiles lack native evidence')
@@ -549,15 +550,14 @@ def gate(cfg, scan_path, product_path=None, purpose='rolling', api=None):
         identity = product(product_path, cfg, scan, api)
         digest = canonical_hash(identity)
         result['productHash'] = digest
-        if purpose == 'release':
-            release_digest, release = active_release(cfg, records, identity, api)
-            require(release is not None and release['payload'].get('disposition') == 'accepted',
-                    'Exact immutable official product approval required')
+        release_digest, release = active_release(cfg, records, identity, api)
+        require(release is not None and release['payload'].get('disposition') == 'accepted',
+                'Exact immutable product approval required')
     # Final complete-ledger refresh catches concurrent additions/revocations.
     _, current = ledger(cfg, api)
     require(current == records, 'Current-main ledger changed during admission')
     active_security(cfg, current, api)
-    if product_path and purpose == 'release':
+    if product_path:
         authorize(cfg, release, api)
     policy = authority.document_at(api, cfg['repository'], cfg['policyPath'], main_revision(cfg, api))
     require(policy == cfg and policy['enabled'], 'Publication policy changed during admission')
