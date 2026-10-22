@@ -47,6 +47,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- Require separate exact-product approval for rolling and release publication,
+  compare canonical identities with strict schema types, and recheck live review
+  before completing admission.
+
 - Recognize the native ORAS missing-manifest diagnostic only for the exact public XO handoff reference, so publication can safely resume an absent OCI destination.
 
 - Read the native multi-profile scans.json observation document with a dedicated 128 MiB bound while retaining 16 MiB limits for other packet metadata and all integrity/deadline checks.

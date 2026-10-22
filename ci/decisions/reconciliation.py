@@ -55,7 +55,7 @@ def validate_proposal_packet(proposal, cfg=None):
             require(payload.get('supersedes') == ([digest] if digest else []), 'Security proposal has stale supersession parent')
         elif proposal['kind'] == 'release-product':
             identity = product(root / 'product.json', cfg, native)
-            require(payload.get('product') == identity and payload['disposition'] == 'accepted',
+            require(canonical_hash(payload.get('product')) == canonical_hash(identity) and payload['disposition'] == 'accepted',
                     'Release approval differs from authenticated exact product')
             for name, digest in identity['assets'].items():
                 require((root / name).is_file() and packets.file_hash(root / name) == digest,

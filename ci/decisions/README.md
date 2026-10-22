@@ -67,7 +67,8 @@ completed successfully before a controller consumes it.
   proposal. Rendering or merging self-reported JSON grants no authority.
 - `admission.py --scans FILE` and `publication.py --scans FILE --product FILE
   --purpose rolling|release` authenticate current native health and admission.
-  Official releases additionally require approval of that exact product.
+  Rolling and official publication both require separate approval of the exact
+  canonical product, including strict JSON number types, and repeat its live review check.
   Call publication immediately before each external distribution side effect.
 - `readiness.py` validates enabled live policy, the App-bound main rule and
   the initial accepted baseline. This is an activation preflight, not a
