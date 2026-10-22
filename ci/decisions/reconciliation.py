@@ -9,10 +9,28 @@ import decision_authority as authority
 import decision_packets as packets
 from common import (require, command, scans, product, ledger, active_security, active_release,
                     authorize, historical_provenance, config, attest, required_check,
-                    security_contexts, accepted_contexts, compare_security_contexts)
+                    security_contexts, accepted_contexts, compare_security_contexts, main_revision)
 from security_decisions import load_json, canonical_hash, normalize_findings, compare_findings
 
 CHECK_CONFIG = None
+
+
+def validate_proposal_parent(proposal, cfg):
+    """Inspect immutable current-main parents; this grants no human authority."""
+    revision, records = ledger(cfg)
+    payload = proposal['payload']
+    if proposal['kind'] == 'security-findings':
+        digest, _ = active_security(cfg, records, authenticate=False)
+        require(payload.get('supersedes') == ([digest] if digest else []), 'Security proposal has stale supersession parent')
+    elif proposal['kind'] == 'release-product':
+        digest, parent = active_release(cfg, records, payload.get('product'), authenticate=False)
+        require(payload.get('supersedes', []) == ([digest] if digest else []),
+                'Release proposal has stale supersession parent')
+        if parent is not None:
+            historical_provenance(cfg, parent)
+    else:
+        raise ValueError('Unsupported proposal kind')
+    return revision
 
 
 def validate_proposal_packet(proposal, cfg=None):
@@ -32,6 +50,10 @@ def validate_proposal_packet(proposal, cfg=None):
                 and packet == parent['payload']['packet'] and payload['disposition'] == 'revoked',
                 'Revocation must copy current accepted decision exactly')
         return
+    # Stale proposals need no OCI payload or attestation work. Parent selection
+    # uses immutable ledger data only; packet verification and live human
+    # authority remain independent of this observation.
+    parent_revision = validate_proposal_parent(proposal, cfg)
     with tempfile.TemporaryDirectory() as temporary:
         root = Path(temporary) / 'packet'
         manifest = packets.fetch(packet['reference'], root, packet['sha256'])
@@ -50,9 +72,6 @@ def validate_proposal_packet(proposal, cfg=None):
             if 'securityContexts' in payload:
                 require(accepted_contexts(payload) == security_contexts(native),
                         'Proposed policy differs from authenticated native context')
-            _, records = ledger(cfg)
-            digest, _ = active_security(cfg, records, authenticate=False)
-            require(payload.get('supersedes') == ([digest] if digest else []), 'Security proposal has stale supersession parent')
         elif proposal['kind'] == 'release-product':
             identity = product(root / 'product.json', cfg, native)
             require(canonical_hash(payload.get('product')) == canonical_hash(identity) and payload['disposition'] == 'accepted',
@@ -60,14 +79,13 @@ def validate_proposal_packet(proposal, cfg=None):
             for name, digest in identity['assets'].items():
                 require((root / name).is_file() and packets.file_hash(root / name) == digest,
                         'Approved release bytes missing or mismatched in immutable packet')
-            _, records = ledger(cfg)
-            digest, parent = active_release(cfg, records, identity, authenticate=False)
-            require(payload.get('supersedes', []) == ([digest] if digest else []),
-                    'Release proposal has stale supersession parent')
-            if parent is not None:
-                historical_provenance(cfg, parent)
         else:
             raise ValueError('Unsupported proposal kind')
+        # Re-read protected main after verification. Equal commit identity means
+        # the parent data is unchanged, not that approval or attestation is
+        # reusable. An advancing ledger must pass parent selection again.
+        if main_revision(cfg) != parent_revision:
+            validate_proposal_parent(proposal, cfg)
 
 
 def api_write(endpoint, body, method='POST'):

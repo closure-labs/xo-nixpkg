@@ -147,7 +147,9 @@ class CoverageContext(unittest.TestCase):
         proposal['payload']['supersedes'] = []
         proposal['payload']['securityContexts']['maestro']['tcpPorts'].append(8443)
         with patch.object(reconciliation.packets, 'fetch', return_value={'producer': producer}), \
-                patch.object(reconciliation, 'scans', return_value=value):
+                patch.object(reconciliation, 'scans', return_value=value), \
+                patch.object(reconciliation, 'ledger', return_value=('a' * 40, {})), \
+                patch.object(reconciliation, 'active_security', return_value=(None, None)):
             with self.assertRaisesRegex(ValueError, 'policy differs from authenticated'):
                 reconciliation.validate_proposal_packet(proposal, CFG)
 

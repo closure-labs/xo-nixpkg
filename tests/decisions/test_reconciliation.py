@@ -72,7 +72,8 @@ class Reconciliation(unittest.TestCase):
         with patch.object(reconciliation.packets, 'fetch', return_value={'producer': producer}), \
                 patch.object(reconciliation, 'scans', return_value=native_scan) as verify_scan, \
                 patch.object(reconciliation, 'ledger', return_value=('a' * 40, {})), \
-                patch.object(reconciliation, 'active_security', return_value=(None, None)):
+                patch.object(reconciliation, 'active_security', return_value=(None, None)), \
+                patch.object(reconciliation, 'main_revision', return_value='a' * 40):
             reconciliation.validate_proposal_packet(proposal, CFG)
             self.assertEqual(verify_scan.call_args.kwargs, {'allow_expired': True})
             forged = deepcopy(proposal)
@@ -106,6 +107,109 @@ class Reconciliation(unittest.TestCase):
                 self.assertEqual(result['payload']['supersedes'], [digest])
                 self.assertEqual(result['payload']['product'], product)
                 historical.assert_called_once_with(CFG, parent)
+
+
+class MetadataFirstProposals(unittest.TestCase):
+    def setUp(self):
+        self.native = scan()
+        self.producer = dict(self.native['producer'], repository=CFG['repository'],
+                             revision=self.native['revision'], sourceRevision=self.native['revision'])
+        self.identity = {'schema': 1, 'assets': {}}
+
+    def proposal(self, kind):
+        value = release(self.identity)
+        value['kind'] = kind
+        value['payload']['packet']['producer'] = self.producer
+        if kind == 'security-findings':
+            del value['payload']['product']
+            value['payload']['profiles'] = {
+                p: common.evaluate(s, p)['findings'] for p, s in self.native['profiles'].items()}
+        return value
+
+    def test_stale_security_and_product_parents_fetch_no_packet(self):
+        for kind, selector in [('security-findings', 'active_security'), ('release-product', 'active_release')]:
+            with self.subTest(kind=kind), \
+                    patch.object(reconciliation, 'ledger', return_value=('a' * 40, {})), \
+                    patch.object(reconciliation, selector, return_value=('b' * 64, None)), \
+                    patch.object(reconciliation.packets, 'fetch') as fetch:
+                with self.assertRaisesRegex(ValueError, 'stale supersession parent'):
+                    reconciliation.validate_proposal_packet(self.proposal(kind), CFG)
+                fetch.assert_not_called()
+
+    def test_unavailable_parent_metadata_is_not_an_empty_ledger(self):
+        with patch.object(reconciliation, 'ledger', side_effect=ValueError('metadata unavailable')), \
+                patch.object(reconciliation.packets, 'fetch') as fetch:
+            with self.assertRaisesRegex(ValueError, 'metadata unavailable'):
+                reconciliation.validate_proposal_packet(self.proposal('security-findings'), CFG)
+            fetch.assert_not_called()
+
+    def test_matching_revision_loads_immutable_parents_once_and_still_verifies_packet(self):
+        for kind, selector in [('security-findings', 'active_security'), ('release-product', 'active_release')]:
+            with self.subTest(kind=kind), \
+                    patch.object(reconciliation, 'ledger', return_value=('a' * 40, {})) as ledger, \
+                    patch.object(reconciliation, selector, return_value=(None, None)), \
+                    patch.object(reconciliation, 'main_revision', return_value='a' * 40) as current, \
+                    patch.object(reconciliation.packets, 'fetch', return_value={'producer': self.producer}) as fetch, \
+                    patch.object(reconciliation, 'scans', return_value=self.native) as scans, \
+                    patch.object(reconciliation, 'product', return_value=self.identity), \
+                    patch.object(reconciliation, 'authorize') as authorize:
+                reconciliation.validate_proposal_packet(self.proposal(kind), CFG)
+                ledger.assert_called_once_with(CFG)
+                current.assert_called_once_with(CFG)
+                fetch.assert_called_once()
+                scans.assert_called_once()
+                authorize.assert_not_called()  # Parent observations grant no human authority.
+
+    def test_parent_advance_during_packet_verification_blocks_both_kinds(self):
+        for kind, selector in [('security-findings', 'active_security'), ('release-product', 'active_release')]:
+            with self.subTest(kind=kind), \
+                    patch.object(reconciliation, 'ledger', side_effect=[('a' * 40, {}), ('b' * 40, {})]) as ledger, \
+                    patch.object(reconciliation, selector, side_effect=[(None, None), ('c' * 64, None)]), \
+                    patch.object(reconciliation, 'main_revision', return_value='b' * 40), \
+                    patch.object(reconciliation.packets, 'fetch', return_value={'producer': self.producer}) as fetch, \
+                    patch.object(reconciliation, 'scans', return_value=self.native), \
+                    patch.object(reconciliation, 'product', return_value=self.identity):
+                with self.assertRaisesRegex(ValueError, 'stale supersession parent'):
+                    reconciliation.validate_proposal_packet(self.proposal(kind), CFG)
+                self.assertEqual(ledger.call_count, 2)
+                fetch.assert_called_once()
+
+    def test_unrelated_main_advance_reloads_and_accepts_unchanged_parents(self):
+        with patch.object(reconciliation, 'ledger', side_effect=[('a' * 40, {}), ('b' * 40, {})]) as ledger, \
+                patch.object(reconciliation, 'active_security', return_value=(None, None)), \
+                patch.object(reconciliation, 'main_revision', return_value='b' * 40), \
+                patch.object(reconciliation.packets, 'fetch', return_value={'producer': self.producer}), \
+                patch.object(reconciliation, 'scans', return_value=self.native):
+            reconciliation.validate_proposal_packet(self.proposal('security-findings'), CFG)
+            self.assertEqual(ledger.call_count, 2)
+
+    def test_failed_final_revision_read_blocks_after_packet_verification(self):
+        with patch.object(reconciliation, 'ledger', return_value=('a' * 40, {})), \
+                patch.object(reconciliation, 'active_security', return_value=(None, None)), \
+                patch.object(reconciliation, 'main_revision', side_effect=ValueError('revision unavailable')), \
+                patch.object(reconciliation.packets, 'fetch', return_value={'producer': self.producer}) as fetch, \
+                patch.object(reconciliation, 'scans', return_value=self.native):
+            with self.assertRaisesRegex(ValueError, 'revision unavailable'):
+                reconciliation.validate_proposal_packet(self.proposal('security-findings'), CFG)
+            fetch.assert_called_once()
+
+    def test_parent_match_never_bypasses_invalid_packet_producer(self):
+        with patch.object(reconciliation, 'ledger', return_value=('a' * 40, {})), \
+                patch.object(reconciliation, 'active_security', return_value=(None, None)), \
+                patch.object(reconciliation.packets, 'fetch', return_value={'producer': {}}):
+            with self.assertRaisesRegex(ValueError, 'Packet producer differs'):
+                reconciliation.validate_proposal_packet(self.proposal('security-findings'), CFG)
+
+    def test_forged_release_parent_history_blocks_before_payload(self):
+        proposal = self.proposal('release-product')
+        proposal['payload']['supersedes'] = ['c' * 64]
+        with patch.object(reconciliation, 'ledger', return_value=('a' * 40, {})), \
+                patch.object(reconciliation, 'active_release', return_value=('c' * 64, {})), \
+                patch.object(reconciliation, 'historical_provenance', side_effect=ValueError('forged parent')), \
+                patch.object(reconciliation.packets, 'fetch') as fetch:
+            with self.assertRaisesRegex(ValueError, 'forged parent'):
+                reconciliation.validate_proposal_packet(proposal, CFG)
+            fetch.assert_not_called()
 
 
 if __name__ == '__main__':

@@ -81,6 +81,15 @@ flake contract being evaluated.
 
 ## Package 3: metadata and immutable bytes
 
+Proposal review checks the current protected-main supersession parent before
+fetching an OCI evidence packet. A stale security or exact-product parent blocks
+without a payload download. A matching parent still requires the complete
+packet, producer, attestation, finding/context and exact-product checks. After
+verification, a fresh main revision read proves whether the immutable parent
+selection is unchanged; an advance reloads the ledger and checks the parent
+again. API failure blocks. This reuses only immutable ledger data within this
+validation call, never a human approval, attestation result or publication gate.
+
 Packet inspection, bounded metadata reads and full materialization are separate
 APIs. An exact-run active publication/refresh is inspected before downloading
 closure payloads. A prior successful publication suppresses bulk work only after
