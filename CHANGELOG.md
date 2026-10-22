@@ -8,6 +8,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## Unreleased
 
+- Pin native Devenv 2.4 for non-flake local and hosted tasks, add an optional private SecretSpec Cachix prompt, and check named cache token permissions without uploading.
+
 - Verify clean-store consumers through Cachix and its pinned official NixOS upstream, retaining substitution-only execution and recursive signature checks.
 
 - Separate scan dependency fingerprints and retain fresh observations while reducing repeated inventory and advisory database work.

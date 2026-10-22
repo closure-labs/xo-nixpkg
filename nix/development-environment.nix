@@ -14,7 +14,6 @@ rec {
     pkgs.grype
     pkgs.gh
     pkgs.oras
-    pkgs.devenv
     pkgs.gnused
     pkgs.jq
     pkgs.nixd

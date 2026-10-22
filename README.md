@@ -45,14 +45,17 @@ nix develop --accept-flake-config
 nix run --accept-flake-config .#ci
 ```
 
-The same toolchain is available through [devenv](https://devenv.sh/). It
-automatically configures the public `xen-orchestra-ce` Cachix substituter and
-pins its signing key for Nix commands run inside the shell:
+The same toolchain uses the non-flake [Devenv](https://devenv.sh/) configuration.
+Bootstrap the pinned 2.4 CLI through the package output, or use an installed 2.4
+CLI. Public Cachix pulls need no token:
 
 ```bash
-devenv shell
-devenv test
+nix run --accept-flake-config .#devenv -- shell
+nix run --accept-flake-config .#devenv -- test
 ```
+
+For an optional private keyring prompt and a read-only token permission check,
+see the [development guide](docs/development.md#public-cache-and-optional-local-token-prompt).
 
 Inspect the project and package versions independently:
 

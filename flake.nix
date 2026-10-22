@@ -11,6 +11,7 @@ rec {
   };
 
   inputs = {
+    devenv.url = "github:cachix/devenv/v2.4.0";
     nixpkgs.url = "github:NixOS/nixpkgs/nixos-unstable";
     xo-latest = {
       url = "github:vatesfr/xen-orchestra/5999d53e0b6172820567a1caee67da798e5a673f";
@@ -29,6 +30,7 @@ rec {
   outputs =
     {
       self,
+      devenv,
       nixpkgs,
       xo-latest,
       xo-rolling,
@@ -105,6 +107,7 @@ rec {
           flakePlanRunner = pkgs.callPackage ./nix/flake-plan-runner.nix { };
           applications = import ./nix/applications.nix {
             inherit binaryCache pkgs;
+            devenv = devenv.packages.${system}.devenv;
             nixpkgsPath = nixpkgs.outPath;
             planRunner = flakePlanRunner;
           };
@@ -116,7 +119,7 @@ rec {
         in
         {
           inherit latest rolling stable;
-          devenv = pkgs.devenv;
+          devenv = devenv.packages.${system}.devenv;
           rolling-candidate = rolling;
           runtime-node = (pkgs.callPackage ./nix/runtime-node.nix { }).nodejs;
           supply-protector = latestSupplyProtector;
@@ -155,7 +158,7 @@ rec {
           default = pkgs.mkShellNoCC (
             developmentEnvironment.env
             // {
-              inherit (developmentEnvironment) packages;
+              packages = developmentEnvironment.packages ++ [ devenv.packages.${system}.devenv ];
             }
           );
 
@@ -183,6 +186,7 @@ rec {
           pkgs = nixpkgs.legacyPackages.${system};
           applications = import ./nix/applications.nix {
             inherit binaryCache pkgs;
+            devenv = devenv.packages.${system}.devenv;
             nixpkgsPath = nixpkgs.outPath;
             planRunner = self.packages.${system}.flake-plan-runner;
           };
@@ -193,6 +197,7 @@ rec {
           };
         in
         {
+          cache-doctor = mkApp applications.cacheDoctor "Check named Cachix token permissions without publishing";
           audit-policy = mkApp applications.auditPolicy "Audit effective protection with read-only administration credentials";
           consumer-probe = mkApp applications.consumerProbe "Verify downloaded public product bytes and signatures in a clean store";
           repository-audit = mkApp applications.repositoryAudit "Run the complete repository contract";
@@ -247,6 +252,7 @@ rec {
           pkgs = nixpkgs.legacyPackages.${system};
           applications = import ./nix/applications.nix {
             inherit binaryCache pkgs;
+            devenv = devenv.packages.${system}.devenv;
             nixpkgsPath = nixpkgs.outPath;
             planRunner = self.packages.${system}.flake-plan-runner;
           };
