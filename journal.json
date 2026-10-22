@@ -60,6 +60,22 @@
       "status": "verified",
       "verifiedAt": "2026-10-22T17:43:39.542049+00:00",
       "verifier": "b7573547249bb8fc7359d29ebaea7dfab5f6d67f8c74361ce6eb1cf277fcd187"
+    },
+    "xo-tag": {
+      "destination": "xo-tag",
+      "expected": {
+        "required": false,
+        "revision": "cc71a6c82674a26557271b5d4e730e2f05a8cf03"
+      },
+      "observed": {
+        "required": false,
+        "revision": "cc71a6c82674a26557271b5d4e730e2f05a8cf03"
+      },
+      "productHash": "f1f7ff33d59464f8e10b9ce2bd54f6858bd03ad8ca3694f41e2abd8787da6827",
+      "schema": 1,
+      "status": "verified",
+      "verifiedAt": "2026-10-22T17:48:18.691742+00:00",
+      "verifier": "b7573547249bb8fc7359d29ebaea7dfab5f6d67f8c74361ce6eb1cf277fcd187"
     }
   },
   "schema": 2,
