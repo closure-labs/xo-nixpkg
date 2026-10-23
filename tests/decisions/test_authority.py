@@ -5,8 +5,10 @@ import hashlib
 import copy
 import importlib.util
 import json
+import os
 from pathlib import Path
 import sys
+import tempfile
 import unittest
 from unittest.mock import patch
 import subprocess
@@ -84,6 +86,15 @@ def verify(api, **kwargs):
 
 
 class Authority(unittest.TestCase):
+    def setUp(self):
+        # Independent fake transports must not share previously verified bytes
+        # when this suite inherits a complete hosted-job environment.
+        temporary = tempfile.TemporaryDirectory()
+        self.addCleanup(temporary.cleanup)
+        environment = patch.dict(os.environ, {'RUNNER_TEMP': temporary.name})
+        environment.start()
+        self.addCleanup(environment.stop)
+
     def test_exact_human_maintainer_approval(self):
         result = verify(GitHub())
         self.assertEqual(result['status'], 'authorized')

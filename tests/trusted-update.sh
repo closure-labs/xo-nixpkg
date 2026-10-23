@@ -278,4 +278,45 @@ grep -F '| #3 | xo-rolling | `policy-error` |' \
 grep -F '| #4 | xo-rolling | `queued` |' \
   "$temporary/invalid-summary.md" >/dev/null
 
+# The weekly native updater can change either lockfile or both. Only edits to
+# existing lockfiles qualify; deletions, renames and extra paths block queuing.
+weekly_pr='{
+  "draft":false,"number":5,"title":"flake.lock: refresh nixpkgs",
+  "user":{"login":"github-actions[bot]"},"base":{"ref":"main"},
+  "head":{"ref":"automation/weekly-flake-input-refresh","sha":"weekly-sha","repo":{"full_name":"example/xo-nixpkg"}}
+}'
+queue_weekly() {
+  local changed_files=$1
+  : >"$temporary/trusted.log"
+  env PATH="$temporary/bin:$PATH" \
+    GH_TOKEN=fixture \
+    GITHUB_REPOSITORY=example/xo-nixpkg \
+    DEFAULT_BRANCH=main \
+    XO_NIXPKG_TRUSTED_UPDATE_COMMAND="$temporary/bin/fake-trusted-update" \
+    FAKE_TRUSTED_LOG="$temporary/trusted.log" \
+    FAKE_PULLS_JSON="[$weekly_pr]" \
+    FAKE_FILES_5="$changed_files" \
+    bash "$root/ci/queue-automation.sh" >/dev/null 2>&1
+}
+for changed_files in \
+  '[{"filename":"flake.lock","status":"modified"}]' \
+  '[{"filename":"devenv.lock","status":"modified"}]' \
+  '[{"filename":"flake.lock","status":"modified"},{"filename":"devenv.lock","status":"modified"}]'; do
+  queue_weekly "$changed_files"
+  grep -Fx '5 automatic' "$temporary/trusted.log" >/dev/null
+done
+for changed_files in \
+  '[]' \
+  '[{"filename":"devenv.lock","status":"removed"}]' \
+  '[{"filename":"devenv.lock","status":"added"}]' \
+  '[{"filename":"devenv.lock","status":"renamed","previous_filename":"ci/trusted-update.sh"}]' \
+  '[{"filename":"devenv.lock","status":"modified","previous_filename":"ci/trusted-update.sh"}]' \
+  '[{"filename":"devenv.lock","status":"modified"},{"filename":"devenv.nix","status":"modified"}]'; do
+  if queue_weekly "$changed_files"; then
+    echo 'Weekly queue accepted an invalid lockfile change set' >&2
+    exit 1
+  fi
+  [[ ! -s $temporary/trusted.log ]]
+done
+
 printf 'Trusted update fixtures passed\n'

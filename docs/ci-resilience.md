@@ -73,6 +73,10 @@ Auto-merge and explicit enqueue both bind the expected head. An ambiguous
 mutation is read back once; it is not blindly retried. API failure remains a
 blocked result, with fixed diagnostics instead of raw service responses.
 
+The weekly input updater's automatic queue path accepts edits to `flake.lock`,
+`devenv.lock`, or both. It rejects an empty change set, deletions, renames and
+other paths, while preserving the exact bot, branch, title, head and CI checks.
+
 The native XO audit captures its Nix executable before entering the packaged
 helper. This preserves the installed Determinate client when its daemon is newer
 than the helper's Nixpkgs client; the earlier client failed to decode the daemon's
@@ -80,6 +84,23 @@ BuildResult status16. It does not change the protected candidate builder or the
 flake contract being evaluated.
 
 ## Package 3: metadata and immutable bytes
+
+Decision ledger reads authenticate current main and a complete Git tree on every
+call. The tree binds each regular decision path to its blob SHA and size, so the
+reader fetches the blob directly rather than repeating a Contents lookup per
+record. Within one hosted job, raw Git bytes are retained under `RUNNER_TEMP`,
+scoped to repository, source revision, run, attempt, job and verifier source.
+Every hit checks file type, size and Git object hash, then parses JSON again.
+Missing entries are fetched normally; corrupt entries, unsafe paths and metadata
+failures block. Local invocations without a complete hosted scope stay uncached.
+
+Other document lookups still read authenticated Contents metadata every time.
+Current main, reviews, team membership, permissions, provenance and authorization
+results are never cached. Every publication boundary keeps its live gate.
+The [matched ledger fixture](benchmarks/decision-ledger-api-reuse.json) records
+eight API calls before and five after two reads of one non-inline record, with
+identical results and fresh main/tree reads throughout. This is a credential-free
+operation-count fixture, not a production throughput or quota guarantee.
 
 Proposal review checks the current protected-main supersession parent before
 fetching an OCI evidence packet. A stale security or exact-product parent blocks

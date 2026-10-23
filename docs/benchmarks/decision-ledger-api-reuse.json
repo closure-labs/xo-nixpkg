@@ -1,0 +1,43 @@
+{
+  "schema": 1,
+  "measurement": "credential-free non-inline Git blob fixture",
+  "baseline": "a67157b9ce3ff00ca313d151e3d03e59bce1a90b",
+  "records": 1,
+  "ledgerReads": 2,
+  "before": [
+    {
+      "mainReads": 1,
+      "treeReads": 1,
+      "contentsReads": 1,
+      "blobReads": 1,
+      "total": 4
+    },
+    {
+      "mainReads": 1,
+      "treeReads": 1,
+      "contentsReads": 1,
+      "blobReads": 1,
+      "total": 4
+    }
+  ],
+  "after": [
+    {
+      "mainReads": 1,
+      "treeReads": 1,
+      "contentsReads": 0,
+      "blobReads": 1,
+      "total": 3
+    },
+    {
+      "mainReads": 1,
+      "treeReads": 1,
+      "contentsReads": 0,
+      "blobReads": 0,
+      "total": 2
+    }
+  ],
+  "identicalResults": true,
+  "liveApiRequests": 0,
+  "authorizationResultsReused": false,
+  "productionPercentageSavingsClaimed": false
+}
