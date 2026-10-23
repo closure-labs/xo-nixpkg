@@ -1,0 +1,99 @@
+{
+  "kind": "release-product",
+  "payload": {
+    "disposition": "accepted",
+    "packet": {
+      "producer": {
+        "repository": "closure-labs/xo-nixpkg",
+        "revision": "b23d24233cf2553b313f0ed4999e87af52b5ba72",
+        "runAttempt": 1,
+        "runId": 39897273165,
+        "sourceRevision": "b23d24233cf2553b313f0ed4999e87af52b5ba72",
+        "workflow": ".github/workflows/qualification.yml"
+      },
+      "reference": "ghcr.io/closure-labs/xo-nixpkg-decisions@sha256:10a2bd24be5dc5bc42672580d105ab98484985f580cc45bd8339de82c38f9fe5",
+      "sha256": "9683dea4de52c7e34be5b38e4e0ac96984536431cd8d3ead9176d2dd2f67bfb7"
+    },
+    "product": {
+      "assets": {
+        "libvhdi--closure.json": "553b38f9ed24fd9dadd8a38f34a1ecd78019539fb19c4ce7ed432c3346553079",
+        "libvhdi--derivations.json": "b32971bbd87c3259e3db85453d01fac86c8ade28cc81aa88f4aa8a14fdb6c797",
+        "libvhdi--inventory.json": "8904f2040f466d1a6940c4cfafd757899b84a35e60f123e6af7f62fb09262977",
+        "libvhdi--runtime.cdx.json": "00ae99520fc41057064c7cef4514743bc62c90ed9ed9384555bb411494d8b8f8",
+        "xo-latest--closure.json": "f5a4cba7fd4da6cfc8492de7d722c41bf73af4bb8b27d1a8b0603de3e7567cc9",
+        "xo-latest--derivations.json": "1d11b1961e406c9837d10c46efb7788c648ac49c4d2b9f7d83ff99e66d9c2838",
+        "xo-latest--inventory.json": "67698cb1adaed898977c2e7099aa8f90101ffe2cdf8da9f9c4ec58774f5e7ccd",
+        "xo-latest--runtime.cdx.json": "13b762c4fb09a6f335d5604dbb4a9b1f0bdf0c7f33dfeecc1dae3a2ea59ddb5e",
+        "xo-latest--supply-protector--SHA256SUMS": "e8aa87cc857313693fba73fe37e8b98264b3c6e96bcf39c21c0ff056e1541496",
+        "xo-latest--supply-protector--assertion.json": "372c13562dd3558e2071098dcdbef673d27faa4bca16f305e99c64a986667210",
+        "xo-latest--supply-protector--closure.graph": "bacf1658d01210d445cdcb8d11df63148ab5d993e0217b6c7611811772f4587a",
+        "xo-latest--supply-protector--xen-orchestra.cdx.json": "d64a8f2367b3fcd2c1122deae05e835ad1c135b276d8a2053137b6b742d934d4",
+        "xo-latest--supply-protector--xen-orchestra.spdx.json": "7e95f9a8e13b6b5b0b68cc3c8d3fe4545facea710eda2234357dffd8cc3d65e9",
+        "xo-rolling--closure.json": "2bbfd82dd572c1c13ae61341c6380d9f00d57545c9499b1fefd02a12d1194fea",
+        "xo-rolling--derivations.json": "b7a1b1008caa85045a8c9a0eaaf7608012dc915677dc09d9be9b64956025a9da",
+        "xo-rolling--inventory.json": "426f1295b390337a4cb919d85a4e6b3b91c1a0583a49d52ded5a640f37e71284",
+        "xo-rolling--runtime.cdx.json": "1c00ef1770bd3217e455f0271ded7b855fa329889886a7a45b1a8909008cc114",
+        "xo-rolling--supply-protector--SHA256SUMS": "1520d8c4ab234e92b045f91a45a2e279d702b0d652a1104d435186f05602e2c5",
+        "xo-rolling--supply-protector--assertion.json": "52273b54d7605831b4dcdf4c4f788222753a5c1aeaf3699a4551a445aa81c6c1",
+        "xo-rolling--supply-protector--closure.graph": "c3d0d5bcd38cc47c56052f642de3e39ff9ba9598a708b960fdd38a1a46a996b7",
+        "xo-rolling--supply-protector--xen-orchestra.cdx.json": "1678ef1daa5937837c6ab3731f92d72ca4e46cb61fad9d83ca38c7bb019882f0",
+        "xo-rolling--supply-protector--xen-orchestra.spdx.json": "9f16e894db2c33aa168cabfdd882512ce4ff3d7dab44317255a0d0cd660ba7ff",
+        "xo-stable--closure.json": "6a810cdeb789a7222bac3b8fb6d28c1b7f2e2e1b4fc625324268b22d1a09fbc7",
+        "xo-stable--derivations.json": "86d5d87340ee0db6347eb4624b5ef2f041adef71fb05b7bde302cf244962beb8",
+        "xo-stable--inventory.json": "4f1f9088d230aac92e43839add72d8f3085a2cf7dcfb96a5d82a5a9010c8f03a",
+        "xo-stable--runtime.cdx.json": "9ee4ed44a5c5d214d3c72e545fd4c6c99fee5e12474305c781ece2025f27f5bf",
+        "xo-stable--supply-protector--SHA256SUMS": "43a1d27186737f3c448b28797c282dccbfabf0cc685d6084eaa06de32ab09cc6",
+        "xo-stable--supply-protector--assertion.json": "7db76770942dddde3fc962edf1a98cdc1365e1b68f83dda56a503c77b0fd8b2d",
+        "xo-stable--supply-protector--closure.graph": "5a0260facbcde48a11820a6cccd811504258cc7b3d4dc7451c830d4fc63594db",
+        "xo-stable--supply-protector--xen-orchestra.cdx.json": "bd2f4b594015f55fc9c7ca5c5799e2eb07bafe4fc6ce1bf7623bba0fefc3f2d6",
+        "xo-stable--supply-protector--xen-orchestra.spdx.json": "9908dbb45e68ef623d9e98334e22de8699239a94292c79d9348289268e6504fb"
+      },
+      "products": {
+        "libvhdi": {
+          "narHash": "sha256-ip8mHBq2UMgRL5Uu91EZt+3QnmMRibyOuZ/tV9xub88=",
+          "storePath": "/nix/store/8nzizs27j3kyidj2rlffwa1hxx2palvi-libvhdi-20260901"
+        },
+        "xo-latest": {
+          "narHash": "sha256-xc1ppaaqEWgTOuKmIg/0+3mj8cd4BEmuncuJYx/+GfI=",
+          "storePath": "/nix/store/7rgckrz7zf9l3rvidb4987gcxgi07a8i-xen-orchestra-ce-6.9.1"
+        },
+        "xo-rolling": {
+          "narHash": "sha256-GNR7/uQosQ8QeJonpesRxV0f0T6+LyFmW9IWlGmVqL4=",
+          "storePath": "/nix/store/p8cr6kcwsg6y4s12x4x6pwpnkgx727ih-xen-orchestra-ce-unstable-2026-10-22"
+        },
+        "xo-stable": {
+          "narHash": "sha256-NdXp4BuPIGaWPXgg2zlA7s7ht6D+uOxsd+8G4y38LAA=",
+          "storePath": "/nix/store/isdd9f6z1yd81aiimhzdcdcckdffl4lk-xen-orchestra-ce-6.9.0"
+        }
+      },
+      "repository": "closure-labs/xo-nixpkg",
+      "revision": "b23d24233cf2553b313f0ed4999e87af52b5ba72",
+      "roots": {
+        "automation-runtime": {
+          "narHash": "sha256-kDVHnSzIT31ZHkxFa7OR+H2EfS/r6K3WBdsbpfMrD1o=",
+          "profile": "xo-latest",
+          "storePath": "/nix/store/b32jk3mmk1whrbvda490i8yjadm8nmqy-xo-nixpkg-automation-runtime-0.10.1"
+        },
+        "supply-protector-latest": {
+          "narHash": "sha256-omRgakYRDzmBvOT/OhngTCxzewClgaWjrRADOsbIJr0=",
+          "profile": "xo-latest",
+          "storePath": "/nix/store/ma21c8myvvn7pkcv3zc8mb5k400giq58-xo-latest-supply-protector-6.9.1"
+        },
+        "supply-protector-rolling": {
+          "narHash": "sha256-wxmXKAUevpdqHBIgcA+u553C+q6py3GRYsoEwLw2Ay0=",
+          "profile": "xo-rolling",
+          "storePath": "/nix/store/q8pw0zkvlynqy38g5y12jczcpmrc0cws-xo-rolling-supply-protector-unstable-2026-10-22"
+        },
+        "supply-protector-stable": {
+          "narHash": "sha256-YzuEpvuhofsxvVw4/rE/V+wC2ANgCyePnE/p3Bntos8=",
+          "profile": "xo-stable",
+          "storePath": "/nix/store/v0nhj3yb6vnk2akl1zrn40w8gvwk355s-xo-stable-supply-protector-6.9.0"
+        }
+      },
+      "schema": 1
+    },
+    "rationale": "Review the complete authenticated native evidence and exact proposed scope.",
+    "supersedes": []
+  },
+  "schema": 1
+}
