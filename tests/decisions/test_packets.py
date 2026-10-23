@@ -154,7 +154,11 @@ class Packets(unittest.TestCase):
 
     def fetch(self, registry, expected=True):
         registry.refresh()
-        with tempfile.TemporaryDirectory() as directory, mock.patch.object(mod, 'command', side_effect=registry.command):
+        # Each transport fixture owns its cache; a valid packet retained by a
+        # previous fixture must not hide this fixture's corrupt remote bytes.
+        with tempfile.TemporaryDirectory() as directory, \
+             mock.patch.dict(os.environ, {'RUNNER_TEMP': directory}), \
+             mock.patch.object(mod, 'command', side_effect=registry.command):
             return mod.fetch(registry.reference, Path(directory) / 'packet',
                              mod.canonical_hash(registry.packet) if expected else None)
 
