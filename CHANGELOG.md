@@ -8,6 +8,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## Unreleased
 
+- Retain successful native publication operation summaries so repeated delivery can prove zero closure materialization and destination write attempts.
+
 - Reduce repeated decision API reads with job-local, hash-verified Git blob reuse,
   while keeping current-main metadata and human authorization checks live.
 - Allow the existing weekly input updater to queue edits to either or both native

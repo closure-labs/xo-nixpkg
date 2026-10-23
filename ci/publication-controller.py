@@ -61,6 +61,7 @@ def readback_error(reason, expected, observed, prior, attempts):
 class Journal:
     def __init__(self, repository, product, authorize=None):
         self.authorize = authorize or (lambda: None)
+        self.save_attempts = 0
         self.repository = repository
         self.digest = hashlib.sha256(canonical(product)).hexdigest()
         self.branch = 'automation/publication-' + self.digest
@@ -83,6 +84,7 @@ class Journal:
             self.save()
 
     def save(self):
+        self.save_attempts += 1
         self.authorize()
         tree = api(self.repository, 'git/trees', {'tree': [{'path': 'journal.json', 'mode': '100644',
             'type': 'blob', 'content': json.dumps(self.value, sort_keys=True, indent=2) + '\n'}]})
@@ -212,7 +214,7 @@ def source_descriptor(source):
         return descriptor
 
 
-def remote_handoff(source, descriptor):
+def remote_handoff(source, descriptor, observations=None):
     """Copy admitted immutable OCI content once; retries inspect manifest and descriptor only."""
     import decision_packets as packets
     destination = 'ghcr.io/' + os.environ['GITHUB_REPOSITORY'].lower() + '-products'
@@ -229,6 +231,8 @@ def remote_handoff(source, descriptor):
                 raise ValueError('Public OCI digest readback unavailable')
             run('xo-nixpkg-publication-gate')
             with operations.budget(900):
+                if observations is not None:
+                    observations['handoffCopyAttempts'] += 1
                 packets.command(['oras','copy',source['reference'],destination+':packet-'+source['sha256']])
         old_registry,old_reference=packets.REGISTRY,packets.REFERENCE
         try:
@@ -259,6 +263,14 @@ def verify_tag(repository, tag, revision):
 
 
 def main():
+    # Diagnostics never supply authority or select a publication operation.
+    result_path = Path(os.environ['RUNNER_TEMP']) / 'publication-result.json' if os.environ.get('RUNNER_TEMP') else None
+    if result_path is not None:
+        result_path.unlink(missing_ok=True)
+    observations = dict(closurePacketFetches=0, cachePublishInvocations=0,
+                        handoffCopyAttempts=0, handoffPushInvocations=0, xoTagLeafInvocations=0,
+                        projectTagInvocations=0, releasePublishInvocations=0,
+                        xoTagRequired=False)
     directory=Path(os.environ['XO_NIXPKG_EVIDENCE']).resolve()
     product=json.loads((directory/'product.json').read_text())
     scans=json.loads((directory/'scans.json').read_text())
@@ -266,6 +278,7 @@ def main():
     os.environ['GATED_SHA']=revision
     os.environ['XO_NIXPKG_PUBLICATION_PURPOSE']=os.environ.get('XO_NIXPKG_PUBLICATION_PURPOSE','release')
     run('xo-nixpkg-publication-gate')
+    controller_revision = commit_sha(subprocess.check_output(['git','rev-parse','HEAD'],text=True).strip())
     os.environ['BASE_SHA']=subprocess.check_output(['git','rev-parse',revision+'^'],text=True).strip()
     source_path=directory.with_suffix('.source.json')
     source=json.loads(source_path.read_text()) if source_path.exists() else None
@@ -296,17 +309,23 @@ def main():
             import decision_packets as packets
             with registry(), tempfile.TemporaryDirectory() as temp:
                 target=Path(temp)/'evidence'
+                observations['closurePacketFetches'] += 1
                 packets.fetch(source['reference'],target,source['sha256'])
                 (target/'decision-packet.json').unlink()
                 for path in target.rglob('*'):
                     if path.is_file():
                         relative=path.relative_to(target); output=directory/relative
                         packets.install_member(path, output, directory)
+        observations['cachePublishInvocations'] += 1
         run('xo-nixpkg-publish')
         state=destinations.cache(product,os.environ['XO_NIXPKG_CACHIX_CACHE_URL'])
     proof=destinations.receipt(state,product)
     journal.complete('cache', {'products':product['products'],'roots':product.get('roots',{})},proof)
-    packet=remote_handoff(source,descriptor) if source else publish_handoff(directory,scans,repository,revision)
+    if source:
+        packet=remote_handoff(source,descriptor,observations)
+    else:
+        observations['handoffPushInvocations'] += 1
+        packet=publish_handoff(directory,scans,repository,revision)
     if not source:
         # Historical artifact recovery must also read the immutable public manifest.
         import decision_packets as packets
@@ -318,10 +337,12 @@ def main():
         finally: packets.REGISTRY,packets.REFERENCE=old_registry,old_reference
     journal.complete('handoff',packet,destinations.receipt(destinations.result('handoff',packet,packet),product))
     if os.environ['XO_NIXPKG_PUBLICATION_PURPOSE']=='release':
+        observations['xoTagLeafInvocations'] += 1
         run('xo-nixpkg-tag-xo-release')
         before=json.loads(subprocess.check_output(['git','show',os.environ['BASE_SHA']+':nix/sources/xen-orchestra.json']))['channels']['latest']
         after=json.loads(subprocess.check_output(['git','show',revision+':nix/sources/xen-orchestra.json']))['channels']['latest']
         xo_identity={'revision':revision,'required':(before['version'],before['rev'])!=(after['version'],after['rev'])}
+        observations['xoTagRequired'] = xo_identity['required']
         if xo_identity['required']:
             version=after['version']; tag='v'+version+('.0' if version.count('.')==1 else '')
             if not verify_tag(repository,tag,revision):raise ValueError('XO tag readback missing')
@@ -333,16 +354,36 @@ def main():
             # Preserve independent historical project version policy; no new checkpoint.
             print('Project version already released; package publication is complete.')
         else:
-            if not verify_tag(repository,tag,revision):run('xo-nixpkg-tag-release')
+            if not verify_tag(repository,tag,revision):
+                observations['projectTagInvocations'] += 1
+                run('xo-nixpkg-tag-release')
             if not verify_tag(repository,tag,revision):raise ValueError('Project tag readback missing')
             identity={'tag':tag,'revision':revision}
             journal.complete('project-tag',identity,destinations.receipt(destinations.result('project-tag',identity,identity),product))
+            observations['releasePublishInvocations'] += 1
             run('xo-nixpkg-publish-release')
             release=api(repository,'releases/tags/'+tag)
             if release.get('tag_name')!=tag or release.get('draft') is not False or not verify_tag(repository,tag,revision):
                 raise ValueError('GitHub release readback differs')
             journal.complete('github-release',identity,destinations.receipt(destinations.result('github-release',identity,identity),product))
-    print(json.dumps({'schema':1,'productHash':journal.digest,'journalRef':journal.branch}))
+    observations['journalSaveAttempts'] = journal.save_attempts
+    result = {'schema':1, 'status':'verified', 'productHash':journal.digest,
+              'journalRef':journal.branch, 'sourceRevision':revision,
+              'controllerRevision':controller_revision,
+              'producer':scans['producer'], 'metadataSourceAvailable':source is not None,
+              'operations':observations}
+    if result_path is not None:
+        # Replace the final name atomically; never follow an existing symlink.
+        with tempfile.NamedTemporaryFile(mode='w', dir=result_path.parent, delete=False) as stream:
+            temporary = Path(stream.name)
+            try:
+                json.dump(result, stream, sort_keys=True)
+                stream.write('\n')
+                stream.flush()
+                os.replace(temporary, result_path)
+            finally:
+                temporary.unlink(missing_ok=True)
+    print(json.dumps(result))
 
 
 if __name__ == '__main__':
