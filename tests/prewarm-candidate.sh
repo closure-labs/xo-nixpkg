@@ -70,6 +70,9 @@ jq -e '[.targets[].name]==["xo-latest","supply-protector-latest","xo-stable","su
 bash "$root/ci/prewarm-candidate.sh" runtime
 jq -e '.targets==[{name:"runtime-node",attribute:"packages.x86_64-linux.runtime-node"}]' "$temporary/plan.json" >/dev/null
 [[ ! -e $temporary/pushed ]]
+FAKE_DIRTY_PATH=$'flake.lock\ndevenv.lock' bash "$root/ci/prewarm-candidate.sh" runtime
+jq -e '.targets==[{name:"runtime-node",attribute:"packages.x86_64-linux.runtime-node"}]' "$temporary/plan.json" >/dev/null
+[[ ! -e $temporary/pushed ]]
 reject() {
   rm -f "$temporary/plan.json" "$temporary/pushed"
   if "$@" >"$temporary/rejected.log" 2>&1; then echo 'Invalid privileged prewarm accepted' >&2;exit 1;fi
@@ -84,6 +87,10 @@ FAKE_PROTECTED=false reject bash "$root/ci/prewarm-candidate.sh" runtime
 FAKE_DIRTY_PATH=ci/prewarm-candidate.sh reject bash "$root/ci/prewarm-candidate.sh" runtime
 [[ ! -e $temporary/plan.json ]]
 FAKE_DIRTY_PATH=flake.nix reject bash "$root/ci/prewarm-candidate.sh" runtime
+[[ ! -e $temporary/plan.json ]]
+FAKE_DIRTY_PATH=$'flake.lock\ndevenv.lock\nci/prewarm-candidate.sh' reject bash "$root/ci/prewarm-candidate.sh" runtime
+[[ ! -e $temporary/plan.json ]]
+FAKE_DIRTY_PATH=devenv.lock reject bash "$root/ci/prewarm-candidate.sh" release latest
 [[ ! -e $temporary/plan.json ]]
 FAKE_OUTPUT_NAME=unexpected reject bash "$root/ci/prewarm-candidate.sh" runtime
 reject bash "$root/ci/prewarm-candidate.sh" release rolling

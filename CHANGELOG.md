@@ -58,6 +58,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- Allow the native lock updater to prewarm its synchronized `flake.lock` and `devenv.lock` changes while rejecting runtime source edits and native-lock changes in release prewarm.
+
+- Identify cache diagnostics with an explicit HTTP client user-agent and distinguish Cloudflare request blocks from rejected tokens.
+
 - Require separate exact-product approval for rolling and release publication,
   compare canonical identities with strict schema types, and recheck live review
   before completing admission.
@@ -157,6 +161,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [0.10.0] - 2026-08-28
 
 ### Added
+
+- Retain public immutable decision-byte reuse observations from hosted authority and publication jobs while keeping live authorization checks fresh. Suppress unsuccessful queue callbacks before controller startup.
 
 - Prewarm the exact rolling candidate closure in the existing
   `xen-orchestra-ce` Cachix before preserving it in a draft pull request.

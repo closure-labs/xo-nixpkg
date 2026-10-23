@@ -28,3 +28,19 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: nix run .#devenv -- tasks run --mode single --option 'packages:pkgs!' '' ci:consumer-probe
+      - name: Retain immutable decision byte reuse observations
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: xo-decision-byte-reuse-${{ github.job }}
+          path: ${{ runner.temp }}/decision-git-blobs/*/observations.jsonl
+          if-no-files-found: ignore
+          retention-days: 30
+      - name: Retain exact public consumer result
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: xo-public-consumer-result
+          path: ${{ runner.temp }}/public-consumer-result.json
+          if-no-files-found: ignore
+          retention-days: 30
