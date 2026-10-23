@@ -365,42 +365,120 @@ def validate_plan(plan):
         names.add(item['name']); attributes.add(item['attribute'])
 
 
-def validate(candidate, controller, evidence):
+def preflight_identity(candidate, controller, plan):
+    source = git(candidate, 'rev-parse', 'HEAD')
+    require(source == os.environ['GITHUB_SHA'], 'Preflight checkout differs from GitHub source identity')
+    identity = {'schema': 1, 'repository': REPOSITORY, 'workflow': WORKFLOW,
+                'source': source, 'tree': git(candidate, 'rev-parse', 'HEAD^{tree}'),
+                'controller': git(controller, 'rev-parse', 'HEAD'),
+                'workflowSha256': digest(controller / WORKFLOW), 'launcherSha256': digest(Path(__file__)),
+                'planSha256': hashlib.sha256(json.dumps(plan, sort_keys=True, separators=(',', ':')).encode()).hexdigest(),
+                'runId': int(os.environ['GITHUB_RUN_ID']), 'runAttempt': int(os.environ['GITHUB_RUN_ATTEMPT']),
+                'authorityClaim': False}
+    require(all(SHA.fullmatch(identity[key]) for key in ('source', 'tree', 'controller'))
+            and identity['runId'] > 0 and identity['runAttempt'] > 0, 'Invalid preflight source or invocation')
+    return identity
+
+
+def verify_preflight(directory, candidate, controller, plan, targets):
+    """Only same-execution successful preflight data can replace this phase."""
+    binding = read_json(directory / 'preflight-binding.json')
+    expected = preflight_identity(candidate, controller, plan)
+    require(set(binding) == set(expected) | {'files', 'securityFixtures', 'historyScan'}
+            and all(binding[key] == value for key, value in expected.items())
+            and binding['securityFixtures'] == 'success' and binding['historyScan'] == 'success',
+            'Preflight identity or required security coverage differs')
+    names = {'preflight.json', 'preflight-timings.json'} if targets else set()
+    require(isinstance(binding['files'], dict) and set(binding['files']) == names, 'Incomplete preflight evidence inventory')
+    for name in names:
+        path = directory / name
+        read_json(path)  # Enforce bounded regular files before hashing.
+        require(digest(path) == binding['files'][name], 'Preflight evidence hash differs')
+    if targets:
+        manifest = read_json(directory / 'preflight.json')
+        timing = read_json(directory / 'preflight-timings.json')
+        require(type(manifest.get('schemaVersion')) is int and manifest['schemaVersion'] == 2
+                and type(manifest.get('targetCount')) is int and manifest['targetCount'] == len(targets)
+                and type(manifest.get('failureCount')) is int and manifest['failureCount'] == 0
+                and manifest.get('plan') == plan['name'] + '-preflight'
+                and [(item.get('name'), item.get('attribute')) for item in manifest['results']]
+                    == [(item['name'], item['attribute']) for item in targets]
+                and all(item.get('status') == 'success' for item in manifest['results'])
+                and type(timing.get('schemaVersion')) is int and timing['schemaVersion'] == 1
+                and timing.get('plan') == plan['name'] + '-preflight'
+                and [(item.get('name'), item.get('attribute')) for item in timing['results']]
+                    == [(item['name'], item['attribute']) for item in targets]
+                and all(item.get('status') == 'success' and type(item.get('elapsedSeconds')) is int
+                        and item['elapsedSeconds'] >= 0 for item in timing['results']),
+                'Preflight manifests or timings do not prove the complete selected phase')
+    return binding
+
+
+def validate(candidate, controller, evidence, phase='all', preflight=None):
     prepared = json.loads(os.environ['PREPARED_CI_WORKFLOW'])
     plan = prepared['jobs']['validate']['plan']
-    validate_plan(plan)
+    if plan is not None:
+        validate_plan(plan)
+    require(plan is not None or phase == 'preflight', 'Runtime validation requires a selected plan')
+    wrapper = os.environ['XO_NIXPKG_TRUSTED_PLAN_NIX']
+    require(wrapper.startswith('/nix/store/') and wrapper.endswith('/bin/xo-nixpkg-candidate-nix'),
+            'Pinned sandboxed plan Nix required')
+    contract = json.loads((controller / 'ci/classifier.json').read_text())
+    cheap = set(contract['preflightTargets'])
+    targets = plan['targets'] if plan else []
+    preflight_targets = [item for item in targets if item['name'] in cheap]
+    if phase == 'runtime':
+        require(preflight is not None, 'Runtime-only validation requires same-run preflight evidence')
+        verify_preflight(preflight, candidate, controller, plan, preflight_targets)
     evidence.mkdir(parents=True, exist_ok=True)
+    if phase != 'runtime':
+        for name in ('preflight-binding.json', 'preflight.json', 'preflight-timings.json'):
+            (evidence / name).unlink(missing_ok=True)
+    if phase != 'preflight':
+        for name in ('runtime.json', 'runtime-timings.json'):
+            (evidence / name).unlink(missing_ok=True)
     github_output = os.environ.get('GITHUB_OUTPUT')
     if github_output:
         with open(github_output, 'a') as stream: stream.write('cache_eligible=false\n')
     with tempfile.TemporaryDirectory(prefix='xo-trusted-build-') as temporary:
         temporary = Path(temporary)
         environment = child_environment(temporary / 'native')
-        wrapper = os.environ['XO_NIXPKG_TRUSTED_PLAN_NIX']
-        require(wrapper.startswith('/nix/store/') and wrapper.endswith('/bin/xo-nixpkg-candidate-nix'),
-                'Pinned sandboxed plan Nix required')
         environment['FLAKE_PLAN_RUNNER_NIX'] = wrapper
         reference = 'git+file://' + str(candidate)
-        nix(environment, 'flake', 'check', '--no-build', '--no-write-lock-file', reference)
-        contract = json.loads((controller / 'ci/classifier.json').read_text())
-        cheap = set(contract['preflightTargets'])
-        for phase, targets in [('preflight', [x for x in plan['targets'] if x['name'] in cheap]),
-                               ('runtime', [x for x in plan['targets'] if x['name'] not in cheap])]:
-            if not targets:
+        if phase == 'preflight':
+            require(git(candidate, 'rev-parse', '--is-shallow-repository') == 'false',
+                    'History security scan requires a complete Git checkout')
+            operations.run(['gitleaks', 'git', '--redact', '--no-banner'], cwd=candidate,
+                           env=environment, check=True, timeout=600)
+            nix(environment, 'build', '--no-link', '--no-write-lock-file',
+                reference + '#lib.ciSecurityFixtures.x86_64-linux')
+        if phase != 'runtime':
+            nix(environment, 'flake', 'check', '--no-build', '--no-write-lock-file', reference)
+        for selected_phase, selected_targets in [('preflight', preflight_targets),
+                                                ('runtime', [x for x in targets if x['name'] not in cheap])]:
+            if phase not in ('all', selected_phase) or not selected_targets:
                 continue
-            if phase == 'runtime':
-                names = sorted({x['name'] for x in targets} & ATTRIBUTES.keys())
+            if selected_phase == 'runtime':
+                names = sorted({x['name'] for x in selected_targets} & ATTRIBUTES.keys())
                 if names:
                     restore(candidate, controller, evidence / 'reuse-restore.json', names)
-            phase_plan = dict(plan, name=plan['name'] + '-' + phase, targets=targets)
-            plan_path = temporary / (phase + '.json')
+            phase_plan = dict(plan, name=plan['name'] + '-' + selected_phase, targets=selected_targets)
+            plan_path = temporary / (selected_phase + '.json')
             write_json(plan_path, phase_plan)
-            jobs = os.environ.get('XO_NIXPKG_BUILD_JOBS', '1') if phase == 'runtime' else '1'
+            jobs = os.environ.get('XO_NIXPKG_BUILD_JOBS', '1') if selected_phase == 'runtime' else '1'
             require(jobs in ('1', '2'), 'Build concurrency must be 1 or 2')
             subprocess.run([os.environ['XO_NIXPKG_PLAN_RUNNER'], '--flake', reference,
-                            '--plan-file', str(plan_path), '--manifest', str(evidence / (phase + '.json')),
-                            '--timings', str(evidence / (phase + '-timings.json')), '--jobs', jobs],
+                            '--plan-file', str(plan_path), '--manifest', str(evidence / (selected_phase + '.json')),
+                            '--timings', str(evidence / (selected_phase + '-timings.json')), '--jobs', jobs],
                            env=environment, check=True)
+        if phase == 'preflight':
+            files = {name: digest(evidence / name) for name in
+                     ('preflight.json', 'preflight-timings.json')} if preflight_targets else {}
+            write_json(evidence / 'preflight-binding.json', dict(
+                preflight_identity(candidate, controller, plan), files=files,
+                securityFixtures='success', historyScan='success'))
+            verify_preflight(evidence, candidate, controller, plan, preflight_targets)
+            return
         event = os.environ.get('GITHUB_EVENT_NAME')
         if event not in ('pull_request', 'merge_group', 'workflow_dispatch') or os.environ.get('GITHUB_REPOSITORY') != REPOSITORY:
             return
@@ -447,7 +525,8 @@ def validate(candidate, controller, evidence):
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument('operation', choices=['validate', 'restore'])
+    parser.add_argument('operation', choices=['validate', 'preflight', 'runtime', 'restore'])
+    parser.add_argument('--preflight', type=Path, default=os.environ.get('XO_NIXPKG_PREFLIGHT_DIRECTORY'))
     parser.add_argument('--candidate', type=Path, default=os.environ.get('CI_CANDIDATE_ROOT', '.'))
     parser.add_argument('--controller', type=Path, default=os.environ.get('CI_CONTROLLER_ROOT', '.'))
     parser.add_argument('--output', type=Path)
@@ -458,8 +537,10 @@ def main():
         if args.operation == 'restore':
             args.output /= 'reuse-restore.json'
     require(platform.system() == 'Linux' and platform.machine() == 'x86_64', 'Native x86_64 Linux required')
-    if args.operation == 'validate':
-        validate(args.candidate.resolve(), args.controller.resolve(), args.output.resolve())
+    if args.operation != 'restore':
+        validate(args.candidate.resolve(), args.controller.resolve(), args.output.resolve(),
+                 phase='all' if args.operation == 'validate' else args.operation,
+                 preflight=args.preflight.resolve() if args.preflight else None)
     else:
         print(json.dumps(restore(args.candidate.resolve(), args.controller.resolve(), args.output.resolve(), args.names)))
 

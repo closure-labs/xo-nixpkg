@@ -2,6 +2,7 @@
   applications,
   self,
   pkgs,
+  securityFixtures,
 }:
 
 let
@@ -94,6 +95,8 @@ let
         ])
         ''
           export SECRETSPEC_BIN=${pkgs.devenv}/bin/secretspec
+          test -e ${securityFixtures}
+          export XO_NIXPKG_SHARED_FIXTURES_READY=true
           bash source/tests/policy.sh
           bash source/tests/yarn-fetch.sh
         '';

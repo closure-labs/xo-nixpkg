@@ -117,6 +117,31 @@ contract declares `preflightTargets`; each selected target runs once. A failed
 preflight emits its evidence and stops the runtime stage. Selection and required
 CI verdicts retain their existing behavior.
 
+For PR and merge-group events, CI's required **Repository security audit** job
+owns full-history `gitleaks git`, the private pure fixture component
+`lib.ciSecurityFixtures.x86_64-linux`, and selected preflight targets. The shared
+component validates the signal relay, workflows with actionlint/zizmor, Python
+suites and distribution-cache fixtures. `repository-policy` depends on that
+same derivation. It does not execute the shared fixtures again. Standalone
+`ci:security-lint` and `tests/policy.sh` retain complete default coverage.
+
+Runtime validation depends on successful preflight. Its bounded artifact is
+named `xo-ci-preflight-RUN-ATTEMPT`; native verification requires matching source
+commit/tree, protected controller, launcher/workflow/plan hashes, run and attempt,
+plus all successful selected target manifests and timings. A missing, stale or
+mutated artifact blocks runtime before any build import. Output attestation
+remains a separate job that executes no candidate code. The required contexts
+remain **Repository security audit** and **CI gate**, each with one owner per
+eligible event. The standalone security workflow retains push, daily schedule
+and manual coverage, and its separately credentialed protection audit.
+
+A proposed CI workflow that differs from its protected controller uses complete
+bootstrap validation with Actions build imports and reuse certification disabled.
+Temporary bootstrap duplication is intentional. Default `ci:validate` still runs
+both phases; complete plans retain all nine preflight and ten runtime targets
+with corresponding timings. For a hosted complete audit, dispatch CI with
+`reuse_builds=false`; no local Nix evaluation or builds are needed.
+
 Validation and publication retain schema-v2 manifests plus separate schema-v1
 per-target timing receipts. Set `XO_NIXPKG_CI_EVIDENCE` for an explicit directory;
 the default is `$RUNNER_TEMP/xo-nixpkg-ci-evidence` in Actions and

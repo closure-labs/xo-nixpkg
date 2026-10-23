@@ -68,11 +68,65 @@ jobs:
         working-directory: candidate
         run: nix run .#devenv -- tasks run --mode single --option 'packages:pkgs!' '' ci:classify
 
+  preflight:
+    name: Repository security audit
+    needs: classify
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    permissions:
+      contents: read
+      actions: read
+      attestations: read
+    env:
+      XO_NIXPKG_BUILD_JOBS: ${{ github.event_name == 'workflow_dispatch' && inputs.build_jobs || '2' }}
+      XO_NIXPKG_REUSE_BUILDS: ${{ (github.event_name != 'schedule' && (github.event_name != 'workflow_dispatch' || inputs.reuse_builds)) && 'true' || 'false' }}
+      PREPARED_CI_WORKFLOW: ${{ needs.classify.outputs.workflow }}
+    steps:
+      - name: Audit runner traffic
+        uses: step-security/harden-runner@dc2769abcc0fcfbadfc1df54081c1608579ef6b2 # v2
+        with:
+          egress-policy: audit
+      - name: Checkout protected controller
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.event.pull_request.base.sha || github.event.merge_group.base_sha || 'main' }}
+          path: controller
+          persist-credentials: false
+      - name: Checkout candidate data
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          path: candidate
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Set up protected native toolchain
+        uses: ./controller/.github/actions/setup-nix # zizmor: ignore[self-repository] -- protected controller checkout, never candidate setup code.
+        with:
+          github-token: ${{ github.token }}
+      - name: Scan full history and run selected pure preflight through protected code
+        if: hashFiles('controller/.github/workflows/ci.yml') == hashFiles('candidate/.github/workflows/ci.yml')
+        working-directory: controller
+        env:
+          CI_CONTROLLER_ROOT: ${{ github.workspace }}/controller
+          CI_CANDIDATE_ROOT: ${{ github.workspace }}/candidate
+        run: nix run .#devenv -- tasks run --mode single --option 'packages:pkgs!' '' ci:preflight
+      - name: Validate bootstrap security conservatively
+        if: hashFiles('controller/.github/workflows/ci.yml') != hashFiles('candidate/.github/workflows/ci.yml')
+        working-directory: candidate
+        run: nix run .#devenv -- tasks run --mode single --option 'packages:pkgs!' '' ci:security-lint
+      - name: Retain bounded same-execution preflight evidence
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: xo-ci-preflight-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/xo-nixpkg-ci-evidence/preflight*.json
+          if-no-files-found: ignore
+          retention-days: 7
+
   validate:
     name: Flake-defined validation
-    needs: classify
+    needs: [classify, preflight]
     if: >-
-      needs.classify.result == 'success' &&
+      needs.classify.result == 'success' && needs.preflight.result == 'success' &&
       fromJSON(needs.classify.outputs.workflow).jobs.validate.enabled
     runs-on: ubuntu-24.04
     timeout-minutes: 180
@@ -106,19 +160,26 @@ jobs:
         uses: ./controller/.github/actions/setup-nix # zizmor: ignore[self-repository] -- protected controller checkout, never candidate setup code.
         with:
           github-token: ${{ github.token }}
-      - name: Run sandboxed selected targets through the protected controller
+      - name: Download successful preflight from this run and attempt
+        if: hashFiles('controller/.github/workflows/ci.yml') == hashFiles('candidate/.github/workflows/ci.yml')
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: xo-ci-preflight-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/xo-nixpkg-ci-evidence
+      - name: Run runtime targets after verifying protected preflight
         id: trusted
         if: hashFiles('controller/.github/workflows/ci.yml') == hashFiles('candidate/.github/workflows/ci.yml')
         working-directory: controller
         env:
+          XO_NIXPKG_PREFLIGHT_DIRECTORY: ${{ runner.temp }}/xo-nixpkg-ci-evidence
           GH_TOKEN: ${{ github.token }}
           CI_CONTROLLER_ROOT: ${{ github.workspace }}/controller
           CI_CANDIDATE_ROOT: ${{ github.workspace }}/candidate
-        run: nix run .#devenv -- tasks run --mode single --option 'packages:pkgs!' '' ci:trusted-validate
+        run: nix run .#devenv -- tasks run --mode single --option 'packages:pkgs!' '' ci:runtime
       - name: Validate proposed workflow bootstrap without reuse certification
         if: hashFiles('controller/.github/workflows/ci.yml') != hashFiles('candidate/.github/workflows/ci.yml')
         working-directory: candidate
-        run: nix run .#devenv -- tasks run --mode single --option 'packages:pkgs!' '' ci:validate
+        run: nix run .#devenv -- tasks run --mode single --option 'packages:pkgs!' '' ci:bootstrap-validate
       - name: Retain selected-target manifests and timings
         if: always()
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
@@ -211,10 +272,11 @@ jobs:
   gate:
     name: CI gate
     if: always()
-    needs: [classify, validate, attest-builds]
+    needs: [classify, preflight, validate, attest-builds]
     runs-on: ubuntu-24.04
     timeout-minutes: 5
     env:
+      PREFLIGHT_RESULT: ${{ needs.preflight.result }}
       CLASSIFY_RESULT: ${{ needs.classify.result }}
       VALIDATE_RESULT: ${{ needs.validate.result }}
       VALIDATE_ENABLED: ${{ needs.classify.result == 'success' && fromJSON(needs.classify.outputs.workflow).jobs.validate.enabled || false }}

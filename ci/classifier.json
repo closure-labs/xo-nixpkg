@@ -169,6 +169,13 @@
   ],
   "pathRules": [
     {
+      "pattern": "^(?:ci/security-fixtures\\.sh|nix/security-fixtures\\.nix|tests/test_preflight\\.py)$",
+      "validation": [
+        "repository-policy"
+      ],
+      "publication": []
+    },
+    {
       "pattern": "^ci/decisions/",
       "validation": [
         "repository-policy",

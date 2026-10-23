@@ -292,6 +292,8 @@ rec {
       zizmor
       gitleaks
       python3
+      nix
+      git
     ];
   };
   decisionReconcile = mkRepositoryApplication {
@@ -436,6 +438,7 @@ rec {
       nix
       planRunner
       trustedCandidateNix
+      gitleaks
     ];
     prelude = ''
       export XO_NIXPKG_BUILD_REUSE_SOURCE=${../ci/build-reuse.py}
