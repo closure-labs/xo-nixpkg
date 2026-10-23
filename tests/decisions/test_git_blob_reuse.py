@@ -123,6 +123,18 @@ class GitBlobReuse(unittest.TestCase):
         with self.assertRaises(authority.AuthorityError):
             self.ledger()
 
+    def test_parent_replaced_during_download_cannot_escape_runner_root(self):
+        cache = authority.blob_cache_path(REPO, self.blob['sha'])
+        with tempfile.TemporaryDirectory() as temporary:
+            outside = Path(temporary)
+            def swapped(endpoint):
+                cache.parent.parent.mkdir(parents=True, exist_ok=True)
+                cache.parent.symlink_to(outside, target_is_directory=True)
+                return self.api(endpoint)
+            with self.assertRaises(authority.AuthorityError):
+                authority.document_blob(swapped, REPO, self.blob['sha'], self.blob['size'])
+            self.assertEqual(list(outside.iterdir()), [])
+
     def test_job_run_revision_repository_and_verifier_change_cache_scope(self):
         original = authority.blob_cache_path(REPO, self.blob['sha'])
         for field, value in [('GITHUB_JOB', 'another_job'), ('GITHUB_RUN_ID', '124'),

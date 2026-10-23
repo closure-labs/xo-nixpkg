@@ -2,6 +2,7 @@
 """Authenticate human decisions against authoritative GitHub PR reviews, not ledger claims."""
 import argparse
 import base64
+from contextlib import contextmanager
 import datetime
 import hashlib
 import json
@@ -224,11 +225,41 @@ def validate_blob_bytes(raw, identity, size):
     return raw
 
 
-def cached_blob(path, identity, size):
-    if path is None:
-        return None
+@contextmanager
+def blob_cache_directory(path, create=False):
+    """Traverse without following symlinks, anchoring every operation to dirfds."""
+    directory = None
     try:
-        descriptor = os.open(path, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK)
+        directory = os.open('/', os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW)
+        for component in path.parent.parts[1:]:
+            if create:
+                try:
+                    os.mkdir(component, mode=0o700, dir_fd=directory)
+                except FileExistsError:
+                    pass
+            child = os.open(component, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW, dir_fd=directory)
+            os.close(directory)
+            directory = child
+    except FileNotFoundError as error:
+        if directory is not None:
+            os.close(directory)
+            directory = None
+        if create:
+            raise AuthorityError('Git blob cache directory disappeared') from error
+    except OSError as error:
+        if directory is not None:
+            os.close(directory)
+        raise AuthorityError('Unsafe Git blob cache directory') from error
+    try:
+        yield directory
+    finally:
+        if directory is not None:
+            os.close(directory)
+
+
+def read_cached_blob(directory, name, identity, size):
+    try:
+        descriptor = os.open(name, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK, dir_fd=directory)
     except FileNotFoundError:
         return None
     except OSError as error:
@@ -240,24 +271,32 @@ def cached_blob(path, identity, size):
         return validate_blob_bytes(stream.read(size + 1), identity, size)
 
 
+def cached_blob(path, identity, size):
+    if path is None:
+        return None
+    with blob_cache_directory(path) as directory:
+        return None if directory is None else read_cached_blob(directory, path.name, identity, size)
+
+
 def retain_blob(path, raw, identity, size):
     if path is None:
         return
     # Publish an already complete file with an exclusive link. Concurrent
     # callers verify the existing bytes rather than overwrite a damaged entry.
-    path.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
-    staging = None
-    try:
-        with tempfile.NamedTemporaryFile(dir=path.parent, delete=False) as stream:
-            staging = Path(stream.name)
-            stream.write(raw)
+    with blob_cache_directory(path, create=True) as directory:
+        staging = '.blob-' + os.urandom(16).hex()
+        descriptor = os.open(staging, os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW,
+                             mode=0o600, dir_fd=directory)
         try:
-            os.link(staging, path)
-        except FileExistsError:
-            cached_blob(path, identity, size)
-    finally:
-        if staging is not None:
-            staging.unlink()
+            with os.fdopen(descriptor, 'wb') as stream:
+                stream.write(raw)
+            try:
+                os.link(staging, path.name, src_dir_fd=directory, dst_dir_fd=directory, follow_symlinks=False)
+            except FileExistsError:
+                if read_cached_blob(directory, path.name, identity, size) is None:
+                    raise AuthorityError('Concurrent Git blob cache entry disappeared')
+        finally:
+            os.unlink(staging, dir_fd=directory)
 
 
 def decode_blob(blob, identity, size):
