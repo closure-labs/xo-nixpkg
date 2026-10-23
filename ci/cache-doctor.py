@@ -50,7 +50,8 @@ def resolve_token(name, provider):
 def inspect_cache(cache, public_key, token, opener):
     request = urllib.request.Request('https://cachix.org/api/v1/cache/' + cache,
                                      headers={'Authorization': 'Bearer ' + token,
-                                              'Accept': 'application/json'})
+                                              'Accept': 'application/json',
+                                              'User-Agent': 'xo-nixpkg-cache-doctor/1'})
     try:
         with opener.open(request, timeout=30) as response:
             if response.status != 200:
@@ -58,7 +59,12 @@ def inspect_cache(cache, public_key, token, opener):
             body = response.read(1024 * 1024 + 1)
     except urllib.error.HTTPError as error:
         code = error.code
+        request_blocked = (code == 403
+                           and error.headers.get('Server', '').lower() == 'cloudflare'
+                           and not error.headers.get('Content-Type', '').lower().startswith('application/json'))
         error.close()
+        if request_blocked:
+            raise DiagnosticError('cache-request-blocked') from None
         raise DiagnosticError('token-rejected' if code in (401, 403)
                               else 'cache-unavailable') from None
     if len(body) > 1024 * 1024:

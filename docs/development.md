@@ -345,3 +345,8 @@ prompt. The committed configuration disables implicit SecretSpec resolution.
 Only protected authority/publication steps receive their declared, scoped runtime
 credentials. Keep them out of Devenv evaluation and derivations; adding a local
 token or using the upstream integration does not enable automatic publication.
+
+Cache permission diagnostics identify their HTTP client explicitly so Cachix's
+edge service does not reject Python's default user-agent. A Cloudflare non-JSON
+403 reports `cache-request-blocked`, rather than implying the stored token was
+rejected. Credential and API response bodies remain withheld.

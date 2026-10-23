@@ -37,6 +37,7 @@ class Opener:
     def open(self, request, timeout):
         assert request.full_url == 'https://cachix.org/api/v1/cache/xen-orchestra-ce'
         assert request.get_header('Authorization') == 'Bearer ' + TOKEN
+        assert request.get_header('User-agent') == 'xo-nixpkg-cache-doctor/1'
         assert timeout == 30
         return Response(json.dumps(self.value).encode())
 
@@ -98,6 +99,16 @@ class DoctorTests(unittest.TestCase):
             self.assertEqual(value['error'], expected)
         opener = Opener(); opener.value['permission'] = 'Read'
         self.assertEqual(self.run_main(opener)[0], 1)
+
+    def test_cloudflare_request_block_is_not_a_token_rejection(self):
+        opener = Opener()
+        opener.open = lambda *a, **k: (_ for _ in ()).throw(
+            urllib.error.HTTPError('https://cachix.org', 403, TOKEN,
+                                   {'Server': 'cloudflare', 'Content-Type': 'text/plain'},
+                                   io.BytesIO(TOKEN.encode())))
+        status, value = self.run_main(opener)
+        self.assertEqual(status, 1)
+        self.assertEqual(value['error'], 'cache-request-blocked')
 
     def test_pinned_secretspec_resolves_builtin_namespace_without_export(self):
         if not os.environ.get('SECRETSPEC_BIN'):

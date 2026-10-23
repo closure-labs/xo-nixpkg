@@ -28,7 +28,7 @@ if [[ ${GITHUB_ACTIONS:-false} == true ]]; then
   while IFS= read -r changed; do
     [[ -n $changed ]] || continue
     case "$mode:$changed" in
-      runtime:flake.lock | release:flake.lock | release:flake.nix | release:nix/sources/xen-orchestra.json) ;;
+      runtime:flake.lock | runtime:devenv.lock | release:flake.lock | release:flake.nix | release:nix/sources/xen-orchestra.json) ;;
       *) echo 'Prewarm checkout contains changes outside trusted updater pins.' >&2; exit 1 ;;
     esac
   done <<<"$changed_paths"
