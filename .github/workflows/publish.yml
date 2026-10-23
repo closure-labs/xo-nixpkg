@@ -92,3 +92,11 @@ jobs:
           path: ${{ runner.temp }}/decision-git-blobs/*/observations.jsonl
           if-no-files-found: ignore
           retention-days: 30
+      - name: Retain exact publication operation summary
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: xo-publication-result
+          path: ${{ runner.temp }}/publication-result.json
+          if-no-files-found: ignore
+          retention-days: 30

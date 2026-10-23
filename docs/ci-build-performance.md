@@ -144,3 +144,24 @@ the repair schedule still run ordinary live queue validation. Keep
 `XO_AUTHORITY_WAKEUPS_VALIDATED` disabled until an eligible updater has actually
 reached the queue through authority completion; a decision-record PR or a
 successful empty reconciliation is insufficient proof.
+
+### Publication operation evidence
+
+The existing native publisher retains `xo-publication-result` after successful
+remote verification. It binds the exact product, source, producer and checked
+out controller revision to operation counters, independently of journal bytes.
+Counters record entry into closure-packet fetching, cache publication, OCI
+copy/push, project-tag/release publication and journal-save branches. Counts
+are conservative attempts or leaf invocations; a positive count does not prove
+a remote write occurred. XO tag reconciliation records both its leaf invocation
+and whether the before/after official pins require a tag. An unchanged pin pair
+retains the existing leaf's explicit no-tag route and live authority check.
+
+For a verified no-op, require a retained packet source, zero closure fetches,
+zero cache publication invocations, zero OCI copy/push attempts, zero journal
+saves, and no required tag/release operation. Read back current destination
+identities as well. Journal equality alone cannot rule out repairing an absent
+OCI object to its original identity. These observations exclude setup tools,
+metadata reads, registry login and diagnostic artifact uploads, and do not
+measure network bytes or establish a production percentage saving. A failed
+run removes any stale success artifact and produces no successful result.
