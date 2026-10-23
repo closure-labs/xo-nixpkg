@@ -54,6 +54,13 @@ rec {
         projectVersion = nixpkgs.lib.removeSuffix "\n" (builtins.readFile ./VERSION);
         inherit binaryCache sourcePins;
         ciClassifier = classifierContract;
+        ciSecurityFixtures = forAllSystems (
+          system:
+          import ./nix/security-fixtures.nix {
+            pkgs = nixpkgs.legacyPackages.${system};
+            source = self;
+          }
+        );
         ciPlans = forAllSystems (system: {
           validation = ciLib.mkCiPlan {
             name = "xo-nixpkg-validation";
@@ -252,6 +259,7 @@ rec {
             planRunner = self.packages.${system}.flake-plan-runner;
           };
           repositoryChecks = import ./nix/repository-checks.nix {
+            securityFixtures = self.lib.ciSecurityFixtures.${system};
             inherit
               applications
               pkgs

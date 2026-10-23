@@ -35,11 +35,9 @@ if rg 'persist-credentials: true|cachix\.push|git tag -f' .github devenv.nix ci;
   echo 'Credential persistence or mutable publication is forbidden' >&2
   exit 1
 fi
-actionlint -ignore 'unexpected key "queue"' .github/workflows/*.yml
-zizmor .github
+if [[ ${XO_NIXPKG_SHARED_FIXTURES_READY:-false} != true ]]; then
+  bash ci/security-fixtures.sh
+fi
 shellcheck ci/*.sh scripts/*.sh tests/*.sh
-python3 -m unittest discover -s tests -p 'test_*.py'
-python3 -m unittest discover -s tests/decisions -p 'test_*.py'
-python3 tests/distribution-cache.py
 bash tests/publication-boundary.sh
 printf 'Repository policy passed\n'

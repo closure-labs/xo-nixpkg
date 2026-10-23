@@ -17,6 +17,11 @@ mkdir -p "$evidence_dir"
 rm -f -- "$evidence_dir/preflight.json" "$evidence_dir/preflight-timings.json" \
   "$evidence_dir/runtime.json" "$evidence_dir/runtime-timings.json"
 contract=${XO_NIXPKG_CLASSIFIER_CONTRACT:-$repo_root/ci/classifier.json}
+if [[ ${XO_NIXPKG_FORCE_FULL_VALIDATION:-false} == true ]]; then
+  PREPARED_CI_WORKFLOW=$(jq -cn --slurpfile contract "$contract" '
+    {schemaVersion:2,jobs:{validate:{enabled:true,plan:{schemaVersion:2,
+     name:"xo-nixpkg-validation-bootstrap",targets:[$contract[0].validationTargets[] | del(.requires)]}}}}')
+fi
 trap 'rm -f -- "$validation_plan" "$preflight_plan" "$runtime_plan"' EXIT
 jq -er '
   select(

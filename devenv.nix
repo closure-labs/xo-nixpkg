@@ -25,7 +25,11 @@ in
     "cache:doctor".exec = "nix run .#cache-doctor";
     "ci:classify".exec = "nix run .#classify-ci -- \"$GITHUB_OUTPUT\"";
     "ci:validate".exec = "nix run .#ci";
+    "ci:bootstrap-validate".exec =
+      "XO_NIXPKG_FORCE_FULL_VALIDATION=true XO_NIXPKG_REUSE_BUILDS=false nix run .#ci";
     "ci:trusted-validate".exec = "nix run .#build-reuse -- validate";
+    "ci:preflight".exec = "nix run .#build-reuse -- preflight";
+    "ci:runtime".exec = "nix run .#build-reuse -- runtime";
     "ci:restore-builds".exec = "nix run .#build-reuse -- restore";
     "ci:verdict".exec = "nix run .#ci-verdict";
     "ci:security-lint".exec = "nix run .#security-lint";
