@@ -68,6 +68,26 @@ class GitBlobReuse(unittest.TestCase):
         self.assertEqual(sum('/git/trees/' in c for c in self.calls), 2)
         self.assertFalse(any('/contents/' in c for c in self.calls))
 
+    def test_observations_distinguish_verified_bytes_without_authority_data(self):
+        self.ledger()
+        self.ledger()
+        path = authority.blob_cache_path(REPO, self.blob['sha']).parent / 'observations.jsonl'
+        rows = [json.loads(line) for line in path.read_text().splitlines()]
+        self.assertEqual([row['reused'] for row in rows], [False, True])
+        self.assertEqual(rows[0], dict(schema=1, repository=REPO, blob=self.blob['sha'],
+                                      bytes=len(self.raw), reused=False, inline=False))
+
+    def test_observation_symlink_cannot_overwrite_another_file(self):
+        self.ledger()
+        path = authority.blob_cache_path(REPO, self.blob['sha']).parent / 'observations.jsonl'
+        path.unlink()
+        target = Path(self.temporary.name) / 'target'
+        target.write_text('unchanged')
+        path.symlink_to(target)
+        with self.assertRaises(OSError):
+            self.ledger()
+        self.assertEqual(target.read_text(), 'unchanged')
+
     def test_changed_main_and_blob_are_observed(self):
         self.ledger()
         self.main = 'b' * 40

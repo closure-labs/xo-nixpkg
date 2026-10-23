@@ -158,6 +158,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- Retain public immutable decision-byte reuse observations from hosted authority and publication jobs while keeping live authorization checks fresh. Suppress unsuccessful queue callbacks before controller startup.
+
 - Prewarm the exact rolling candidate closure in the existing
   `xen-orchestra-ce` Cachix before preserving it in a draft pull request.
 - Add `packages.x86_64-linux.automation-runtime`, a reusable closure containing

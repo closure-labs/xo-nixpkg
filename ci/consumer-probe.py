@@ -3,6 +3,7 @@
 """Download public bytes into a disposable store and verify hashes and signatures."""
 import argparse
 import json
+import os
 import re
 from pathlib import Path
 import tempfile
@@ -74,7 +75,12 @@ def main():
     common.require(candidates, 'No admitted consumer product')
     selected = max(candidates, key=lambda p: (p['payload']['packet']['producer']['runId'],
                                              p['payload']['packet']['producer']['runAttempt']))
-    common.emit(probe(selected['payload']['product'], args.cache, args.key))
+    result = probe(selected['payload']['product'], args.cache, args.key)
+    result['proposalHash'] = common.canonical_hash(selected)
+    if os.environ.get('RUNNER_TEMP'):
+        common.emit(result, Path(os.environ['RUNNER_TEMP']) / 'public-consumer-result.json')
+    else:
+        common.emit(result)
 
 
 if __name__ == '__main__':

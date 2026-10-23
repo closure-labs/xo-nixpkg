@@ -127,3 +127,20 @@ runs every target on failure, and promotes result links only after full success.
 Cancellation terminates its own build children. The bound remains two. A branch
 benchmark cannot certify cache output until its producer workflow is reviewed;
 the measured runs are performance evidence, without release or cache authority.
+
+### Hosted decision byte observations
+
+Authority, reconciliation, publication and disposable consumer jobs retain
+`xo-decision-byte-reuse-<job>` artifacts. Each `observations.jsonl` row records a
+verified public Git object identity, byte count, whether the job reused bytes,
+and whether fresh Contents metadata supplied inline bytes. They contain no
+review, membership or authorization results. Corrupt bytes still block; current
+main, reviews, membership and every write gate are rechecked. These observations
+can establish production use of reuse, but do not establish a throughput or
+percentage saving without equivalent hosted samples.
+
+Unsuccessful workflow callbacks skip queue startup. Successful callbacks and
+the repair schedule still run ordinary live queue validation. Keep
+`XO_AUTHORITY_WAKEUPS_VALIDATED` disabled until an eligible updater has actually
+reached the queue through authority completion; a decision-record PR or a
+successful empty reconciliation is insufficient proof.

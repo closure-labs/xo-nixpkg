@@ -339,10 +339,23 @@ def document_blob(api, repository, identity, size, inline=None):
                     raise ValueError('Duplicate proposal key')
                 result[key] = value
             return result
-        return json.loads(raw, object_pairs_hook=unique,
-                          parse_constant=lambda value: (_ for _ in ()).throw(ValueError('Nonfinite proposal number')))
+        document = json.loads(raw, object_pairs_hook=unique,
+                              parse_constant=lambda value: (_ for _ in ()).throw(ValueError('Nonfinite proposal number')))
     except (ValueError, TypeError) as error:
         raise AuthorityError('Invalid proposal blob') from error
+    if path is not None:
+        # Diagnostics contain only public object identities and byte reuse. No
+        # review, membership or authorization result is retained here.
+        observation = {'schema': 1, 'repository': repository, 'blob': identity,
+                       'bytes': size, 'reused': reused, 'inline': inline is not None}
+        with blob_cache_directory(path, create=True) as directory:
+            descriptor = os.open('observations.jsonl', os.O_WRONLY | os.O_CREAT | os.O_APPEND
+                                 | os.O_NOFOLLOW | os.O_NONBLOCK, mode=0o600, dir_fd=directory)
+            with os.fdopen(descriptor, 'a') as stream:
+                if not stat.S_ISREG(os.fstat(stream.fileno()).st_mode):
+                    raise AuthorityError('Unsafe Git blob observation file')
+                stream.write(json.dumps(observation, sort_keys=True) + '\n')
+    return document
 
 
 def document_at(api, repository, path, revision):
