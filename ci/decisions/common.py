@@ -112,7 +112,9 @@ def ledger(cfg, api=None):
         require(item.get('type') == 'blob' and item.get('mode') == '100644'
                 and re.fullmatch(r'automation/decisions/(security|releases)/[0-9a-f]{64}\.json', path),
                 'Malformed decision ledger path or mode')
-        proposal = authority.document_at(api, cfg['repository'], path, revision)
+        # The freshly read, complete tree already binds this regular path to
+        # its immutable blob. Avoid a redundant Contents lookup for every row.
+        proposal = authority.document_blob(api, cfg['repository'], item.get('sha'), item.get('size'))
         require(authority.proposal_path(proposal) == path, 'Decision content hash/path mismatch')
         records[canonical_hash(proposal)] = proposal
     return revision, records

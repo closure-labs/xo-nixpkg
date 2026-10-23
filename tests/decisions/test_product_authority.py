@@ -68,8 +68,13 @@ class PublicationAPI:
             return [{'type': 'required_status_checks', 'parameters': {'required_status_checks': [
                 {'context': 'Maintainer decision authority', 'integration_id': self.policy['appId']}]}}]
         if '/git/trees/' in endpoint:
-            return {'truncated': False, 'tree': [{'type': 'blob', 'mode': '100644', 'path': path}
-                                               for path in self.records]}
+            return {'truncated': False, 'tree': [
+                dict(type='blob', mode='100644', path=path,
+                     **{key: self.blob(value)[key] for key in ('sha', 'size')})
+                for path, value in self.records.items()]}
+        if '/git/blobs/' in endpoint:
+            return next(self.blob(value) for value in self.records.values()
+                        if endpoint.endswith('/' + self.blob(value)['sha']))
         if '/contents/' + self.policy['policyPath'] + '?' in endpoint:
             return self.blob(self.policy)
         if '/contents/' in endpoint:

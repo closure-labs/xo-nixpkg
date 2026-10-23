@@ -73,7 +73,13 @@ validate_candidate_paths() {
       ' <<<"$files" >/dev/null
       ;;
     flake-lock)
-      jq -e '[add[].filename] | sort | unique == ["flake.lock"]' \
+      jq -e '
+        add as $files |
+        ($files | length) > 0 and
+        all($files[];
+          (.filename == "flake.lock" or .filename == "devenv.lock") and
+          .status == "modified" and (.previous_filename? == null))
+      ' \
         <<<"$files" >/dev/null
       ;;
     libvhdi)

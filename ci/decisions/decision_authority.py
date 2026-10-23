@@ -9,6 +9,7 @@ import os
 from pathlib import Path
 import re
 import resource
+import stat
 import subprocess
 import operations
 import sys
@@ -191,35 +192,107 @@ def validate_context(repository, expected_bot):
         raise AuthorityError('A configured trusted GitHub App bot login is required')
 
 
-def document_at(api, repository, path, revision):
-    if not isinstance(revision, str) or not SHA.fullmatch(revision):
-        raise AuthorityError('Content lookup requires immutable commit SHA')
-    content = api(f'repos/{repository}/contents/{quote(path, safe="/")}?ref={revision}')
-    if (not isinstance(content, dict) or content.get('type') != 'file'
-            or content.get('encoding') not in ('base64', 'none')
-            or type(content.get('size')) is not int or not 0 < content['size'] <= MAX_PROPOSAL_BYTES
-            or not isinstance(content.get('sha'), str) or not SHA.fullmatch(content['sha'])):
-        raise AuthorityError('Decision proposal is not a bounded regular Git blob')
-    blob = content
-    if content['encoding'] == 'none':
-        # Contents omits inline data above 1 MiB. Resolve only the exact blob
-        # named by immutable-ref metadata; never follow a mutable download URL.
-        blob = api(f'repos/{repository}/git/blobs/{content["sha"]}')
-        if (not isinstance(blob, dict) or blob.get('sha') != content['sha']
-                or type(blob.get('size')) is not int or blob['size'] != content['size']):
-            raise AuthorityError('Git blob differs from immutable proposal metadata')
-    if blob.get('encoding') != 'base64' or not isinstance(blob.get('content'), str):
-        raise AuthorityError('Decision proposal requires encoded Git blob bytes')
+def blob_cache_path(repository, identity):
+    """Job-local raw Git bytes only; no mutable API or authority result cache."""
+    if (not isinstance(repository, str) or not REPOSITORY.fullmatch(repository)
+            or not isinstance(identity, str) or not SHA.fullmatch(identity)):
+        raise AuthorityError('Invalid Git blob cache identity')
+    scope = {key: os.environ.get(key, '') for key in
+             ('GITHUB_REPOSITORY', 'GITHUB_SHA', 'GITHUB_RUN_ID', 'GITHUB_RUN_ATTEMPT', 'GITHUB_JOB')}
+    temporary = os.environ.get('RUNNER_TEMP')
+    if not temporary or not all(scope.values()):
+        return None
+    if (not REPOSITORY.fullmatch(scope['GITHUB_REPOSITORY']) or not SHA.fullmatch(scope['GITHUB_SHA'])
+            or any(not re.fullmatch(r'[1-9][0-9]{0,19}', scope[key]) for key in ('GITHUB_RUN_ID', 'GITHUB_RUN_ATTEMPT'))
+            or not re.fullmatch(r'[A-Za-z_][A-Za-z0-9_-]{0,127}', scope['GITHUB_JOB'])):
+        raise AuthorityError('Invalid Git blob cache job scope')
+    root = Path(temporary)
+    if not root.is_absolute() or '..' in root.parts:
+        raise AuthorityError('Invalid Git blob cache root')
+    scope.update(repository=repository, verifier=hashlib.sha256(Path(__file__).read_bytes()).hexdigest())
+    key = hashlib.sha256(json.dumps(scope, sort_keys=True, separators=(',', ':')).encode()).hexdigest()
+    parent = root / 'decision-git-blobs' / key
+    for directory in (*reversed(root.parents), root, root / 'decision-git-blobs', parent):
+        if directory.is_symlink() or (directory.exists() and not directory.is_dir()):
+            raise AuthorityError('Unsafe Git blob cache parent')
+    return parent / identity
+
+
+def validate_blob_bytes(raw, identity, size):
+    if (len(raw) != size or hashlib.sha1(b'blob ' + str(size).encode('ascii') + b'\0' + raw).hexdigest() != identity):
+        raise AuthorityError('Git blob bytes differ from authenticated identity or size')
+    return raw
+
+
+def cached_blob(path, identity, size):
+    if path is None:
+        return None
+    try:
+        descriptor = os.open(path, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK)
+    except FileNotFoundError:
+        return None
+    except OSError as error:
+        raise AuthorityError('Unsafe Git blob cache member') from error
+    with os.fdopen(descriptor, 'rb') as stream:
+        metadata = os.fstat(stream.fileno())
+        if not stat.S_ISREG(metadata.st_mode) or metadata.st_size != size:
+            raise AuthorityError('Invalid Git blob cache file type or size')
+        return validate_blob_bytes(stream.read(size + 1), identity, size)
+
+
+def retain_blob(path, raw, identity, size):
+    if path is None:
+        return
+    # Publish an already complete file with an exclusive link. Concurrent
+    # callers verify the existing bytes rather than overwrite a damaged entry.
+    path.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
+    staging = None
+    try:
+        with tempfile.NamedTemporaryFile(dir=path.parent, delete=False) as stream:
+            staging = Path(stream.name)
+            stream.write(raw)
+        try:
+            os.link(staging, path)
+        except FileExistsError:
+            cached_blob(path, identity, size)
+    finally:
+        if staging is not None:
+            staging.unlink()
+
+
+def decode_blob(blob, identity, size):
+    if (not isinstance(blob, dict) or blob.get('sha') != identity
+            or type(blob.get('size')) is not int or blob['size'] != size
+            or blob.get('encoding') != 'base64' or not isinstance(blob.get('content'), str)):
+        raise AuthorityError('Git blob differs from authenticated metadata')
     try:
         encoded = blob['content'].replace('\n', '')
-        if len(encoded) != 4 * ((content['size'] + 2) // 3):
-            raise ValueError('Encoded blob exceeds or differs from declared byte size')
-        raw = base64.b64decode(encoded, validate=True)
-        if len(raw) != content['size']:
-            raise ValueError('Blob size mismatch')
-        identity = hashlib.sha1(b'blob ' + str(len(raw)).encode('ascii') + b'\0' + raw).hexdigest()
-        if identity != content['sha']:
-            raise ValueError('Git blob object SHA differs from authenticated metadata')
+        if len(encoded) != 4 * ((size + 2) // 3):
+            raise ValueError('Encoded blob size mismatch')
+        return validate_blob_bytes(base64.b64decode(encoded, validate=True), identity, size)
+    except (ValueError, TypeError) as error:
+        raise AuthorityError('Invalid encoded Git blob') from error
+
+
+def document_blob(api, repository, identity, size, inline=None):
+    """Read bytes named by a fresh immutable-ref/tree observation, then reparse."""
+    if (not isinstance(repository, str) or not REPOSITORY.fullmatch(repository)
+            or not isinstance(identity, str) or not SHA.fullmatch(identity)
+            or type(size) is not int or not 0 < size <= MAX_PROPOSAL_BYTES):
+        raise AuthorityError('Decision proposal is not a bounded regular Git blob')
+    path = blob_cache_path(repository, identity)
+    raw = cached_blob(path, identity, size)
+    reused = raw is not None
+    if inline is not None:
+        observed = decode_blob(inline, identity, size)
+        if raw is not None and raw != observed:
+            raise AuthorityError('Cached Git blob differs from current inline bytes')
+        raw = observed
+    if raw is None:
+        raw = decode_blob(api(f'repos/{repository}/git/blobs/{identity}'), identity, size)
+    if not reused:
+        retain_blob(path, raw, identity, size)
+    try:
         def unique(pairs):
             result = {}
             for key, value in pairs:
@@ -231,6 +304,21 @@ def document_at(api, repository, path, revision):
                           parse_constant=lambda value: (_ for _ in ()).throw(ValueError('Nonfinite proposal number')))
     except (ValueError, TypeError) as error:
         raise AuthorityError('Invalid proposal blob') from error
+
+
+def document_at(api, repository, path, revision):
+    if not isinstance(revision, str) or not SHA.fullmatch(revision):
+        raise AuthorityError('Content lookup requires immutable commit SHA')
+    content = api(f'repos/{repository}/contents/{quote(path, safe="/")}?ref={revision}')
+    if (not isinstance(content, dict) or content.get('type') != 'file'
+            or content.get('encoding') not in ('base64', 'none')
+            or type(content.get('size')) is not int or not 0 < content['size'] <= MAX_PROPOSAL_BYTES
+            or not isinstance(content.get('sha'), str) or not SHA.fullmatch(content['sha'])):
+        raise AuthorityError('Decision proposal is not a bounded regular Git blob')
+    # Metadata/access is read afresh, including on hits. The cache supplies only
+    # Git-object-hash-verified bytes; no API response or authorization is reused.
+    return document_blob(api, repository, content['sha'], content['size'],
+                         inline=content if content['encoding'] == 'base64' else None)
 
 
 def approver_members(api):
