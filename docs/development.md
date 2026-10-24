@@ -140,7 +140,7 @@ bootstrap validation with Actions build imports and reuse certification disabled
 Temporary bootstrap duplication is intentional. Default `ci:validate` still runs
 both phases; complete plans retain all nine preflight and ten runtime targets
 with corresponding timings. For a hosted complete audit, dispatch CI with
-`reuse_builds=false`; no local Nix evaluation or builds are needed.
+`reuse_builds=false` and `export_reuse_payload=false`; no local Nix evaluation or builds are needed.
 
 Validation and publication retain schema-v2 manifests plus separate schema-v1
 per-target timing receipts. Set `XO_NIXPKG_CI_EVIDENCE` for an explicit directory;

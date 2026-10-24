@@ -8,7 +8,7 @@ import subprocess
 import shutil
 import tempfile
 import unittest
-from unittest.mock import patch
+from unittest.mock import patch, Mock
 
 ROOT = Path(__file__).resolve().parents[1]
 NATIVE_RUN = subprocess.run
@@ -67,6 +67,133 @@ class PreflightTests(unittest.TestCase):
 
     def preflight(self):
         reuse.validate(self.candidate, self.controller, self.evidence, phase='preflight')
+
+    def export_fixture(self, event='workflow_dispatch'):
+        path = self.root / 'event.json'
+        path.write_text(json.dumps({'pull_request': {'head': {'repo': {'full_name': reuse.REPOSITORY}}}}))
+        os.environ.update(GITHUB_EVENT_NAME=event, GITHUB_REPOSITORY=reuse.REPOSITORY,
+                          GITHUB_REF='refs/heads/main', GITHUB_EVENT_PATH=str(path), XO_NIXPKG_BUILD_JOBS='2')
+        self.output = self.root / 'github-output'
+        os.environ['GITHUB_OUTPUT'] = str(self.output)
+        self.item = {'storePath': '/nix/store/' + '1' * 32 + '-xo', 'derivation': '/nix/store/' + '2' * 32 + '-xo.drv'}
+        self.nar_hash = 'sha256-' + 'A' * 43 + '='
+        self.identify = self.patch(patch.object(reuse, 'identity', return_value=self.item))
+        self.native.side_effect = lambda env, *args: json.dumps({self.item['storePath']: {'narHash': self.nar_hash}}) if args[0] == 'path-info' else ''
+        def build(arguments, **kwargs):
+            self.run_plan(arguments, **kwargs)
+            self.assertNotIn('XO_NIXPKG_EXPORT_REUSE_PAYLOAD', kwargs['env'])
+            target = Path(arguments[arguments.index('--manifest') + 1])
+            data = json.loads(target.read_text())
+            for result in data['results']:
+                if result['name'] == 'xo-latest':
+                    result['outputs'] = [self.item['storePath']]
+            reuse.write_json(target, data)
+        self.runner.side_effect = build
+        def export(directory, roots):
+            self.assertEqual(roots, [{'storePath': self.item['storePath'], 'narHash': self.nar_hash}])
+            directory.mkdir()
+            (directory / 'distribution-cache.tar.part-000').write_bytes(b'data')
+            return {'schema': 1, 'archiveSize': 4, 'archiveSha256': 'd' * 64,
+                    'parts': {'distribution-cache.tar.part-000': {'size': 4, 'sha256': 'd' * 64}}}
+        self.exporter = Mock(side_effect=export)
+        self.patch(patch.object(reuse, 'transport', return_value=Mock(export=self.exporter)))
+
+    def test_all_import_export_combinations_keep_validation_and_output_identities(self):
+        self.export_fixture()
+        identities = []
+        for imports in ('true', 'false'):
+            for exports in ('true', 'false'):
+                with self.subTest(imports=imports, exports=exports):
+                    os.environ.update(XO_NIXPKG_REUSE_BUILDS=imports, XO_NIXPKG_EXPORT_REUSE_PAYLOAD=exports)
+                    self.evidence = self.root / ('evidence-' + imports + '-' + exports)
+                    self.runner.reset_mock()
+                    self.identify.reset_mock()
+                    self.restore.reset_mock()
+                    self.exporter.reset_mock()
+                    self.preflight()
+                    reuse.validate(self.candidate, self.controller, self.evidence, phase='runtime', preflight=self.evidence)
+                    self.assertEqual(self.runner.call_count, 2)
+                    self.assertEqual(self.runner.call_args.args[0][-1], '2')
+                    self.restore.assert_called_once()  # Existing restore contract owns the independent import switch.
+                    self.identify.assert_called_once()
+                    self.assertEqual(self.exporter.call_count, int(exports == 'true'))
+                    self.assertEqual((self.evidence / 'reuse-receipt/receipt.json').exists(), exports == 'true')
+                    self.assertEqual((self.evidence / 'reuse-payload').exists(), exports == 'true')
+                    profile = json.loads((self.evidence / 'reuse-transport.json').read_text())
+                    self.assertEqual(profile['reason'], 'exported' if exports == 'true' else 'disabled')
+                    self.assertEqual(profile['payloadBytes'], 4 if exports == 'true' else 0)
+                    self.assertIsNone(profile['uploadedBytes'])
+                    self.assertIsNone(profile['uploadSeconds'])
+                    self.assertIsNone(profile['wireBytes'])
+                    identities.append(profile['outputs'])
+                    self.assertTrue(self.output.read_text().endswith('cache_eligible=' + exports + '\n'))
+        self.assertTrue(all(item == identities[0] for item in identities))
+
+    def test_default_exports_for_existing_eligible_events(self):
+        for event in ('pull_request', 'merge_group', 'workflow_dispatch'):
+            with self.subTest(event=event):
+                self.export_fixture(event)
+                self.evidence = self.root / event
+                self.preflight()
+                reuse.validate(self.candidate, self.controller, self.evidence, phase='runtime', preflight=self.evidence)
+                self.exporter.assert_called_once()
+                receipt = json.loads((self.evidence / 'reuse-receipt/receipt.json').read_text())
+                self.assertEqual(receipt['schema'], 1)
+                self.assertEqual(receipt['event'], event)
+                self.assertEqual(receipt['outputs']['xo-latest']['storePath'], self.item['storePath'])
+
+    def test_disabled_export_still_rejects_wrong_source_and_output_identity(self):
+        self.export_fixture()
+        os.environ['XO_NIXPKG_EXPORT_REUSE_PAYLOAD'] = 'false'
+        self.preflight()
+        for failure in ('source', 'output'):
+            with self.subTest(failure=failure):
+                if failure == 'source':
+                    # Keep verified preflight binding intact; mutate only the later source-binding read.
+                    original_git = self.git
+                    count = [0]
+                    def changed(root, *arguments):
+                        if root == self.candidate and arguments == ('rev-parse', 'HEAD'):
+                            count[0] += 1
+                            return ('a' if count[0] == 1 else 'e') * 40
+                        return original_git(root, *arguments)
+                    with patch.object(reuse, 'git', side_effect=changed), self.assertRaisesRegex(ValueError, 'Built checkout differs'):
+                        reuse.validate(self.candidate, self.controller, self.evidence, phase='runtime', preflight=self.evidence)
+                else:
+                    with patch.object(reuse, 'identity', return_value=dict(self.item, storePath='/nix/store/' + '3' * 32 + '-other')), self.assertRaisesRegex(ValueError, 'Built/evaluated output mismatch'):
+                        reuse.validate(self.candidate, self.controller, self.evidence, phase='runtime', preflight=self.evidence)
+                self.exporter.assert_not_called()
+                self.assertFalse((self.evidence / 'reuse-receipt/receipt.json').exists())
+
+    def test_invalid_export_boolean_fails_before_validation(self):
+        for setting in ('', 'TRUE', 'False', '1', 'yes'):
+            with self.subTest(setting=setting), patch.dict(os.environ, {'XO_NIXPKG_EXPORT_REUSE_PAYLOAD': setting}), self.assertRaisesRegex(ValueError, 'must be true or false'):
+                self.preflight()
+        self.runner.assert_not_called()
+        self.native.assert_not_called()
+
+    def test_audit_only_still_requires_verified_preflight(self):
+        self.export_fixture()
+        os.environ.update(XO_NIXPKG_REUSE_BUILDS='false', XO_NIXPKG_EXPORT_REUSE_PAYLOAD='false')
+        with self.assertRaises(ValueError):
+            reuse.validate(self.candidate, self.controller, self.evidence, phase='runtime')
+        self.runner.assert_not_called()
+        self.exporter.assert_not_called()
+        self.identify.assert_not_called()
+
+    def test_export_failure_never_marks_cache_eligible(self):
+        self.export_fixture()
+        self.preflight()
+        self.exporter.side_effect = subprocess.CalledProcessError(17, ['nix', 'copy'])
+        with self.assertRaises(subprocess.CalledProcessError) as failure:
+            reuse.validate(self.candidate, self.controller, self.evidence, phase='runtime', preflight=self.evidence)
+        self.assertEqual(failure.exception.returncode, 17)
+        profile = json.loads((self.evidence / 'reuse-transport.json').read_text())
+        self.assertEqual(profile['reason'], 'export-failed')
+        self.assertIsNone(profile['archiveBytes'])
+        self.assertIsNone(profile['payloadBytes'])
+        self.assertTrue(self.output.read_text().endswith('cache_eligible=false\n'))
+        self.assertFalse((self.evidence / 'reuse-receipt/receipt.json').exists())
 
     def test_shared_checks_and_history_precede_runtime_without_duplicate_selected_targets(self):
         self.preflight()
@@ -157,6 +284,17 @@ class PreflightTests(unittest.TestCase):
         self.assertIn('preflight', ci['jobs']['gate']['needs'])
         self.assertEqual(ci['jobs']['gate']['name'], 'CI gate')
         self.assertEqual(ci['jobs']['attest-builds']['needs'], 'validate')
+        self.assertEqual(ci['jobs']['attest-builds']['if'], "needs.validate.outputs.cache_eligible == 'true'")
+        self.assertEqual(ci['on']['workflow_dispatch']['inputs']['export_reuse_payload']['default'], True)
+        self.assertEqual(ci['on']['workflow_dispatch']['inputs']['export_reuse_payload']['type'], 'boolean')
+        for name in ('preflight', 'validate'):
+            expression = ci['jobs'][name]['env']['XO_NIXPKG_EXPORT_REUSE_PAYLOAD']
+            self.assertIn("github.event_name != 'workflow_dispatch' || inputs.export_reuse_payload", expression)
+            self.assertNotIn('reuse_builds', expression)
+        uploads = [step for step in ci['jobs']['validate']['steps'] if step.get('name') in
+                   ('Retain exact sandboxed output bytes', 'Retain independently signable output receipt')]
+        self.assertEqual(len(uploads), 2)
+        self.assertTrue(all(step['if'] == "steps.trusted.outputs.cache_eligible == 'true'" for step in uploads))
         bootstrap = next(step for step in ci['jobs']['validate']['steps'] if 'bootstrap without reuse certification' in step.get('name', ''))
         self.assertTrue(bootstrap['run'].endswith(' ci:bootstrap-validate'))
 

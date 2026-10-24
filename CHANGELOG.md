@@ -8,6 +8,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## Unreleased
 
+- Add default-enabled manual `export_reuse_payload` and strict runtime `XO_NIXPKG_EXPORT_REUSE_PAYLOAD` controls, independently of artifact imports. Audit-only runs still validate selected outputs and source identities while skipping reuse serialization and upload; exported receipts retain independent attestation. Retain a bounded export transport profile.
+
 - Give CI one required security/preflight owner and pass source-, controller-, plan-, run- and attempt-bound evidence to runtime validation. Share pure security fixtures through a private derivation while retaining all 19 audit targets, standalone security coverage, bootstrap validation and independent output attestation.
 
 - Retain successful native publication operation summaries so repeated delivery can prove zero closure materialization and destination write attempts.

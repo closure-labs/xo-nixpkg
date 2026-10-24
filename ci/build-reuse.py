@@ -414,7 +414,23 @@ def verify_preflight(directory, candidate, controller, plan, targets):
     return binding
 
 
+def export_profile(evidence, requested, reason, *, started=None, outputs=None, source=None, archive_bytes=0, payload_bytes=0):
+    require(reason in ('validation-incomplete', 'event-ineligible', 'repository-ineligible', 'workflow-mismatch',
+                       'fork', 'unprotected-manual', 'no-runtime', 'no-outputs', 'disabled', 'exported', 'export-failed'),
+            'Invalid export transport reason')
+    value = {'schema': 1, 'exportRequested': requested, 'exportSelected': reason in ('exported', 'export-failed'),
+             'reason': reason, 'exportSeconds': round(time.monotonic() - started, 3) if started is not None else 0,
+             'archiveBytes': archive_bytes, 'payloadBytes': payload_bytes, 'source': source,
+             'outputs': outputs or {}, 'uploadSeconds': None, 'uploadedBytes': None, 'wireBytes': None}
+    require(len(json.dumps(value, allow_nan=False).encode()) <= 64 * 1024, 'Export profile exceeds bound')
+    write_json(evidence / 'reuse-transport.json', value)
+    return value
+
+
 def validate(candidate, controller, evidence, phase='all', preflight=None):
+    export_setting = os.environ.get('XO_NIXPKG_EXPORT_REUSE_PAYLOAD', 'true')
+    require(export_setting in ('true', 'false'), 'XO_NIXPKG_EXPORT_REUSE_PAYLOAD must be true or false')
+    export_requested = export_setting == 'true'
     prepared = json.loads(os.environ['PREPARED_CI_WORKFLOW'])
     plan = prepared['jobs']['validate']['plan']
     if plan is not None:
@@ -431,6 +447,8 @@ def validate(candidate, controller, evidence, phase='all', preflight=None):
         require(preflight is not None, 'Runtime-only validation requires same-run preflight evidence')
         verify_preflight(preflight, candidate, controller, plan, preflight_targets)
     evidence.mkdir(parents=True, exist_ok=True)
+    if phase != 'preflight':
+        export_profile(evidence, export_requested, 'validation-incomplete')
     if phase != 'runtime':
         for name in ('preflight-binding.json', 'preflight.json', 'preflight-timings.json'):
             (evidence / name).unlink(missing_ok=True)
@@ -480,17 +498,25 @@ def validate(candidate, controller, evidence, phase='all', preflight=None):
             verify_preflight(evidence, candidate, controller, plan, preflight_targets)
             return
         event = os.environ.get('GITHUB_EVENT_NAME')
-        if event not in ('pull_request', 'merge_group', 'workflow_dispatch') or os.environ.get('GITHUB_REPOSITORY') != REPOSITORY:
+        if event not in ('pull_request', 'merge_group', 'workflow_dispatch'):
+            export_profile(evidence, export_requested, 'event-ineligible')
+            return
+        if os.environ.get('GITHUB_REPOSITORY') != REPOSITORY:
+            export_profile(evidence, export_requested, 'repository-ineligible')
             return
         if digest(candidate / WORKFLOW) != digest(controller / WORKFLOW):
+            export_profile(evidence, export_requested, 'workflow-mismatch')
             return
         event_data = json.loads(Path(os.environ['GITHUB_EVENT_PATH']).read_text())
         if event == 'pull_request' and event_data['pull_request']['head']['repo']['full_name'] != REPOSITORY:
+            export_profile(evidence, export_requested, 'fork')
             return
         if event == 'workflow_dispatch' and os.environ.get('GITHUB_REF') != 'refs/heads/main':
+            export_profile(evidence, export_requested, 'unprotected-manual')
             return
         runtime = evidence / 'runtime.json'
         if not runtime.exists():
+            export_profile(evidence, export_requested, 'no-runtime')
             return
         outputs = {}
         for result in read_json(runtime)['results']:
@@ -503,13 +529,22 @@ def validate(candidate, controller, evidence, phase='all', preflight=None):
             metadata = metadata[0] if isinstance(metadata, list) else metadata[item['storePath']]
             outputs[name] = dict(item, narHash=metadata['narHash'])
         if not outputs:
+            export_profile(evidence, export_requested, 'no-outputs')
             return
         source = git(candidate, 'rev-parse', 'HEAD')
         require(source == os.environ['GITHUB_SHA'], 'Built checkout differs from GitHub source identity')
+        if not export_requested:
+            export_profile(evidence, export_requested, 'disabled', outputs=outputs, source=source)
+            return
         roots = [{'storePath': value['storePath'], 'narHash': value['narHash']} for value in outputs.values()]
         payload = evidence / 'reuse-payload'
         started = time.monotonic()
-        manifest = transport().export(payload, roots)
+        try:
+            manifest = transport().export(payload, roots)
+        except BaseException:
+            export_profile(evidence, export_requested, 'export-failed', started=started, outputs=outputs, source=source,
+                           archive_bytes=None, payload_bytes=None)
+            raise
         receipt = {'schema': 1, 'repository': REPOSITORY, 'workflow': WORKFLOW,
                    'source': source, 'tree': git(candidate, 'rev-parse', 'HEAD^{tree}'),
                    'controller': git(controller, 'rev-parse', 'HEAD'),
@@ -519,6 +554,9 @@ def validate(candidate, controller, evidence, phase='all', preflight=None):
                    'outputs': outputs, 'transport': manifest, 'authorityClaim': False,
                    'exportSeconds': round(time.monotonic() - started, 3)}
         write_json(evidence / 'reuse-receipt/receipt.json', receipt)
+        export_profile(evidence, export_requested, 'exported', started=started, outputs=outputs, source=source,
+                       archive_bytes=manifest['archiveSize'],
+                       payload_bytes=sum(path.stat().st_size for path in payload.iterdir() if path.is_file()))
         if github_output:
             with open(github_output, 'a') as stream: stream.write('cache_eligible=true\n')
 

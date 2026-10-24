@@ -50,17 +50,19 @@ Actions artifact transport in this public repository is separate from the privat
 GHCR decision registry and from admitted public Cachix/release publication.
 
 For cache-service incidents or controller upgrades, manual CI dispatch accepts
-`reuse_builds=false` to build without importing Actions artifacts:
+`reuse_builds=false` to build without importing Actions artifacts. A complete
+audit also sets `export_reuse_payload=false`:
 
 ```bash
-gh workflow run ci.yml --repo closure-labs/xo-nixpkg --ref main -f reuse_builds=false
+gh workflow run ci.yml --repo closure-labs/xo-nixpkg --ref main -f reuse_builds=false -f export_reuse_payload=false
 ```
 
 The packaged restore leaf also accepts `XO_NIXPKG_REUSE_BUILDS=false`; other than
 the default `true`, only literal `false` is valid. This selects an explicit cache
 miss before artifact discovery or imports. All selected validation and runtime
 builds still run, and normal Nix substituters remain available. Fully validated
-matching-controller builds can still export newly authenticated output receipts.
+matching-controller builds still export newly authenticated output receipts when
+`export_reuse_payload` keeps its default `true`.
 A proposed workflow update uses the existing bootstrap path described above;
 its ordinary complete validation grants no reusable build certification.
 
@@ -165,3 +167,24 @@ OCI object to its original identity. These observations exclude setup tools,
 metadata reads, registry login and diagnostic artifact uploads, and do not
 measure network bytes or establish a production percentage saving. A failed
 run removes any stale success artifact and produces no successful result.
+
+
+The default-enabled manual `export_reuse_payload` input controls export separately
+from `reuse_builds`. For a complete audit, disable both as shown above. To warm
+future Actions reuse from freshly built outputs, disable imports and leave
+exports enabled. All four import/export combinations retain normal preflight,
+selected runtime validation, source binding and output identity checks.
+`XO_NIXPKG_EXPORT_REUSE_PAYLOAD` is a non-secret runtime contract accepting only
+`true` or `false`; it never enters candidate evaluation. Automatic event defaults
+and existing manual defaults are preserved. When no export is produced,
+`cache_eligible=false` prevents payload and receipt uploads. The independently
+credentialed attestation job still runs whenever an export receipt exists.
+
+`reuse-transport.json` records bounded export selection, reason, validated output
+identities, export duration, archive bytes and serialized payload bytes. Upload
+bytes/duration and wire bytes remain null in that native profile because the
+separate pinned artifact action owns uploads; compare original completed job
+metadata and artifact sizes separately. Receipt formats are unchanged. For
+matched export-on/off audits, keep the protected controller, selected plan,
+build concurrency and disabled imports identical; report raw measurements and
+verify matching validated output identities before making any comparison.
