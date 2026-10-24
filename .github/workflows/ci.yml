@@ -19,6 +19,10 @@ on:
         description: Import authenticated Actions build artifacts when available
         type: boolean
         default: true
+      export_reuse_payload:
+        description: Export reusable output payloads independently of artifact imports; disable for audit-only validation
+        type: boolean
+        default: true
 
 concurrency:
   group: ci-${{ github.event.pull_request.number || github.event.merge_group.head_ref || github.ref }}
@@ -80,6 +84,7 @@ jobs:
     env:
       XO_NIXPKG_BUILD_JOBS: ${{ github.event_name == 'workflow_dispatch' && inputs.build_jobs || '2' }}
       XO_NIXPKG_REUSE_BUILDS: ${{ (github.event_name != 'schedule' && (github.event_name != 'workflow_dispatch' || inputs.reuse_builds)) && 'true' || 'false' }}
+      XO_NIXPKG_EXPORT_REUSE_PAYLOAD: ${{ (github.event_name != 'workflow_dispatch' || inputs.export_reuse_payload) && 'true' || 'false' }}
       PREPARED_CI_WORKFLOW: ${{ needs.classify.outputs.workflow }}
     steps:
       - name: Audit runner traffic
@@ -139,6 +144,7 @@ jobs:
     env:
       XO_NIXPKG_BUILD_JOBS: ${{ github.event_name == 'workflow_dispatch' && inputs.build_jobs || '2' }}
       XO_NIXPKG_REUSE_BUILDS: ${{ (github.event_name != 'schedule' && (github.event_name != 'workflow_dispatch' || inputs.reuse_builds)) && 'true' || 'false' }}
+      XO_NIXPKG_EXPORT_REUSE_PAYLOAD: ${{ (github.event_name != 'workflow_dispatch' || inputs.export_reuse_payload) && 'true' || 'false' }}
       PREPARED_CI_WORKFLOW: ${{ needs.classify.outputs.workflow }}
     steps:
       - name: Audit runner traffic
@@ -189,6 +195,7 @@ jobs:
             ${{ runner.temp }}/xo-nixpkg-ci-evidence/preflight*.json
             ${{ runner.temp }}/xo-nixpkg-ci-evidence/runtime*.json
             ${{ runner.temp }}/xo-nixpkg-ci-evidence/reuse-restore.json
+            ${{ runner.temp }}/xo-nixpkg-ci-evidence/reuse-transport.json
           if-no-files-found: ignore
           retention-days: 30
       - name: Retain exact sandboxed output bytes
