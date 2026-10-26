@@ -1,0 +1,14 @@
+{
+  "schema": 1,
+  "repository": "closure-labs/xo-nixpkg",
+  "repositoryId": 1198726032,
+  "bot": {
+    "login": "cl-decider[bot]",
+    "id": 344936881
+  },
+  "workflows": [
+    ".github/workflows/ci.yml",
+    ".github/workflows/codeql.yml",
+    ".github/workflows/decision-events.yml"
+  ]
+}

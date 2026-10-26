@@ -1,0 +1,45 @@
+# SPDX-License-Identifier: Apache-2.0
+name: Admit trusted pull request CI
+on:
+  workflow_run: # zizmor: ignore[dangerous-triggers] Metadata only; protected main executes.
+    workflows: [CI, CodeQL Advanced, Collect maintainer decision events]
+    types: [requested, completed]
+  schedule:
+    - cron: '*/15 * * * *'
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: trusted-ci-admission
+  cancel-in-progress: false
+jobs:
+  admit:
+    if: >-
+      github.repository == 'closure-labs/xo-nixpkg' && github.ref == 'refs/heads/main' &&
+      (github.event_name != 'workflow_run' || github.event.workflow_run.conclusion == 'action_required')
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - name: Checkout protected controller
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: main
+          persist-credentials: false
+      - uses: ./.github/actions/setup-nix # zizmor: ignore[self-repository] -- explicitly checked-out protected controller.
+      - name: Mint CI approval token
+        id: admission
+        uses: actions/create-github-app-token@64ab729a6294000f5aa4a4bc0b73d1f32bc45510 # v3.3.0
+        with:
+          client-id: ${{ vars.DECIDER_CLIENT }}
+          private-key: ${{ secrets.DECIDER_KEY }}
+          owner: ${{ github.repository_owner }}
+          repositories: ${{ github.event.repository.name }}
+          permission-contents: read
+          permission-pull-requests: read
+          permission-actions: write
+          permission-members: read
+      - name: Authenticate current PR author and approve pending CI
+        env:
+          GH_TOKEN: ${{ steps.admission.outputs.token }}
+          CI_ADMISSION_RUN_ID: ${{ github.event.workflow_run.id }}
+        run: nix run .#devenv -- tasks run ci:admit-trusted

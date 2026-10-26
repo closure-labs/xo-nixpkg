@@ -57,6 +57,17 @@ let
   '';
 in
 rec {
+  ciAdmission = pkgs.writeShellApplication {
+    name = "xo-nixpkg-ci-admission";
+    runtimeInputs = [
+      pkgs.python3
+      boundedGh
+    ];
+    text = ''
+      export PYTHONPATH=${../ci/decisions}
+      exec python3 ${../ci/decisions/ci_admission.py} --policy ${../ci/ci-admission-policy.json}
+    '';
+  };
   cacheDoctor = pkgs.writeShellApplication {
     name = "xo-nixpkg-cache-doctor";
     runtimeInputs = [
