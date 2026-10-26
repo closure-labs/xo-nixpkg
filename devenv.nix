@@ -23,6 +23,7 @@ in
 
   tasks = {
     "cache:doctor".exec = "nix run .#cache-doctor";
+    "ci:admit-trusted".exec = "nix run .#ci-admission";
     "ci:classify".exec = "nix run .#classify-ci -- \"$GITHUB_OUTPUT\"";
     "ci:validate".exec = "nix run .#ci";
     "ci:bootstrap-validate".exec =

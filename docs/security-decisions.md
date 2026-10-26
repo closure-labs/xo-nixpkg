@@ -140,3 +140,31 @@ failures. Expired Actions artifacts fall back to digest-bound packets referenced
 by merged decisions or pending bot proposals; consumers verify producer identity,
 attestations and every file. The independently admitted `xo-nixpkg-products`
 package carries downstream handoffs after publication.
+
+## Automatic CI admission for trusted authors
+
+The `Admit trusted pull request CI` workflow approves pending GitHub Actions
+execution for both draft and ready PRs authored by `cl-decider[bot]` (pinned
+numeric account ID) or a currently active member of the pinned closure-labs
+Super Admins team with repository maintain/admin permission. The initiating and
+rerun actors must also satisfy that identity policy. An unrelated actor cannot
+borrow a trusted author's PR to obtain automatic execution approval.
+
+The protected-main controller reads `ci-admission-policy.json`, authenticates
+the repository, allowlisted CI workflow, current open PR head and source
+repository, then rereads identity and run/PR bindings immediately before the
+run-approval endpoint. It never checks out candidate code, downloads candidate
+artifacts, posts PR reviews, dispatches privileged candidate workflows or
+requests a merge. Draft-to-ready transitions do not require a review to run CI.
+Workflow events handle pending runs; a fifteen-minute scheduled reconciliation
+also covers missed events and runs whose approval state appeared later.
+
+Other contributors retain GitHub's existing external-contributor workflow
+approval requirement. Missing identity visibility, revoked membership or
+permissions, moved heads, changed run attempts and transport failures fail
+closed. Ambiguous approval writes are not retried without fresh readback and
+identity checks. Human exact-head merge and publication authority are unchanged.
+
+GitHub's [run approval API](https://docs.github.com/en/rest/actions/workflow-runs#approve-a-workflow-run-for-a-fork-pull-request)
+approves CI execution only. The App token has Actions write, contents and PR
+read, and organization members read; it has no PR-review or contents write grant.
