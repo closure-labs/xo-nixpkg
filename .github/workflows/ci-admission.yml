@@ -26,6 +26,8 @@ jobs:
           ref: main
           persist-credentials: false
       - uses: ./.github/actions/setup-nix # zizmor: ignore[self-repository] -- explicitly checked-out protected controller.
+        with:
+          github-token: ${{ github.token }}
       - name: Mint CI approval token
         id: admission
         uses: actions/create-github-app-token@64ab729a6294000f5aa4a4bc0b73d1f32bc45510 # v3.3.0

@@ -37,6 +37,19 @@ class ProposalSize(unittest.TestCase):
         self.assertEqual(result['proposalHash'], mod.canonical_hash(PROPOSAL))
         self.assertEqual(entry['path'], mod.authority.proposal_path(PROPOSAL))
 
+    def test_closed_or_merged_proposal_is_diagnosed_before_remote_writes(self):
+        for merged in (False, True):
+            with self.subTest(merged=merged), \
+                    patch.object(mod.authority, 'collection', return_value=[{
+                        'number': 176, 'state': 'closed', 'merged': merged}]) as read, \
+                    patch.object(mod, 'api_write') as write, \
+                    patch.object(mod, 'queue_proposal') as queue:
+                with self.assertRaisesRegex(ValueError, 'refusing to reopen or overwrite'):
+                    mod.propose({'repository': REPO, 'botLogin': BOT}, PROPOSAL)
+                self.assertIn('state=all', read.call_args.args[1])
+                write.assert_not_called()
+                queue.assert_not_called()
+
     def test_one_byte_over_limit_fails_before_any_remote_access_or_write(self):
         compact = json.dumps(PROPOSAL, sort_keys=True, separators=(',', ':')) + '\n'
         with patch.object(mod.authority, 'MAX_PROPOSAL_BYTES', len(compact.encode()) - 1), \

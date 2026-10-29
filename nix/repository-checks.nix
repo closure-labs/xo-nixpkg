@@ -123,6 +123,9 @@ let
             ${pkgs.lib.getExe applications.updateXoRelease}
           grep -F -- '${pkgs.lib.getExe applications.updateXo} --rolling' \
             ${pkgs.lib.getExe applications.updateXoRolling}
+          grep -F '${pkgs.diffutils}/bin' ${pkgs.lib.getExe applications.updateXo}
+          grep -F 'XO_NIXPKG_REVIEW_PROTOCOL=${../ci/decisions/review_protocol.py}' \
+            ${pkgs.lib.getExe applications.trustedUpdate}
           grep -F 'rolling-candidate' ${pkgs.lib.getExe applications.prewarmRolling}
           grep -F 'cachix push "$XO_NIXPKG_CACHIX_CACHE_NAME"' source/ci/publish.sh
           ! rg 'cachix|AUTH_TOKEN' source/ci/prewarm-rolling.sh
@@ -156,6 +159,7 @@ let
           gnused
           jq
           nix
+          python3
         ])
         ''
           bash source/tests/update-xo.sh
@@ -164,6 +168,8 @@ let
           bash source/tests/prewarm-rolling.sh
           bash source/tests/update-libvhdi.sh
           bash source/tests/update-noop.sh
+          XO_NIXPKG_UPDATE_XO_WRAPPER=${pkgs.lib.getExe applications.updateXo} \
+            bash source/tests/update-noop.sh
         '';
 
     automation-fixtures =

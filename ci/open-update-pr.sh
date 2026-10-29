@@ -141,12 +141,12 @@ push_update_branch() {
 }
 
 (($# > 0)) || { echo 'usage: open-update-pr PATH...' >&2; exit 2; }
-# The existing weekly workflow supplies its historical flake.lock argument.
+# Accept the explicit lock pair and the historical flake.lock selector.
 # Keep the native environment lock in that same candidate, including changes
 # where only native modules moved. Other updater path contracts stay explicit.
 if [[ $UPDATE_BRANCH == automation/weekly-flake-input-refresh ]]; then
-  [[ $# == 1 && $1 == flake.lock ]] || {
-    echo 'Weekly input updates require exactly the flake.lock selector' >&2
+  [[ ( $# == 1 && $1 == flake.lock ) || ( $# == 2 && $1 == flake.lock && $2 == devenv.lock ) ]] || {
+    echo 'Weekly input updates require flake.lock and optionally devenv.lock' >&2
     exit 2
   }
   set -- flake.lock devenv.lock

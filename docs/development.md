@@ -83,7 +83,7 @@ for running commands on ordinary hosted runners.
 valkey-server --bind 127.0.0.1
 ```
 
-The XO updater enters the pure `.#updater` shell automatically when needed.
+The XO updater runs as a packaged Nix application with its own declared runtime tools.
 
 CI output reuse, scanner database sharing, compression measurements and the
 bounded concurrency pilot are documented in [Build performance](ci-build-performance.md).
@@ -172,13 +172,23 @@ performance limits.
 
 ## Updating xen-orchestra-ce
 
-Use the release updater to refresh both official package outputs. Discovery
-searches commits that changed upstream's root `CHANGELOG.md`, accepts only
-unscoped `feat: release VERSION` markers, assigns the newest match to `latest`,
-and assigns the newest non-excluded predecessor to `stable`. Known-bad stable
-candidates are recorded in `excludedStableVersions` in the XO source lock;
-currently `6.8` is excluded. Scoped `feat(lite):` commits and XO Lite tags belong
-to a separate upstream product and are ignored.
+Use the release updater to refresh both official package outputs. Discovery pins
+upstream master to one immutable SHA and reads its root `CHANGELOG.md` latest
+and stable badges. It then scans root changelog commits at that same snapshot,
+accepting only unscoped `feat: release [XO ]VERSION` subjects with an optional
+squash-merge PR suffix. Scoped package releases, technical releases and XO Lite
+releases do not qualify. Upstream uses conventional commit lint; its package
+bump tool emits scoped package commits and explicitly avoids tags.
+
+Each channel must also match the first released heading and latest badge at its
+own immutable release commit. These two changelog contexts determine canonical
+versions. Numeric subject typos produce an explicit diagnostic, rather than
+becoming package versions: upstream PR #10689 says `9.10.0`, while both contexts
+identify `6.10.0`. There is no SHA-specific exception. Missing, contradictory or
+duplicate channel metadata and ambiguous release cuts stop discovery. The
+`excludedStableVersions` policy remains a guard: disagreement with upstream's
+explicit stable badge requires review instead of silently selecting another
+stable version. Both latest and stable downgrades are refused.
 
 ```bash
 nix run .#update-xo-release
@@ -190,10 +200,14 @@ nix run .#ci
 The script atomically updates only the affected channel entries in
 `nix/sources/xen-orchestra.json`, their matching immutable flake inputs, and
 their lock nodes. Existing Yarn dependency hashes are reused when their lock
-files did not change. Commit discovery streams paginated GitHub responses
-through temporary files, so long upstream histories cannot exceed the process
-argument limit. CI recognizes this generated pin/flake/lock cohort and builds
-only the changed channels.
+files did not change. Discovery reads bounded paginated responses without
+placing JSON on the command line. API and changelog reads use bounded retries,
+request deadlines and a 16 MiB response cap; five pages are scanned by default
+(`XO_NIXPKG_RELEASE_SCAN_PAGES` accepts 1–20). Rolling date discovery shares the
+same commit metadata transport and verifies the response SHA against the exact
+resolved revision. A discovery or source-validation failure precedes pin writes;
+unchanged channels require no source prefetch or package build. CI recognizes
+this generated pin/flake/lock cohort and builds only the changed channels.
 
 Each newly detected release gets a version-specific pull request with a review
 request. An approval on the current head commit from a maintainer with write,
@@ -207,12 +221,11 @@ To refresh `rolling` to upstream HEAD for troubleshooting, run:
 nix run .#update-xo-rolling
 ```
 
-This realizes the exact `rolling-candidate` closure and uploads it to the
-existing `xen-orchestra-ce` Cachix before opening a draft pull request. A
-realization or upload failure still opens the draft, records it as broken, and
-fails the automation run so the candidate remains diagnosable. Pull-request CI
-then starts from a clean runner and substitutes the prewarmed closure. The
-`update-xo-upstream` app remains as a compatibility alias.
+The rolling workflow realizes the exact `rolling-candidate` closure locally
+before opening its candidate pull request. Realization failure retains a draft
+candidate, records it as broken, and fails the run. Candidate preparation does
+not distribute packages; publication remains behind the native authority gate.
+The `update-xo-upstream` app remains as a compatibility alias.
 
 ## Updating libvhdi
 
