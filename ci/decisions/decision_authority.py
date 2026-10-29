@@ -427,6 +427,23 @@ def approval(api, repository, number, head):
         if (not isinstance(review, dict) or type(review.get('id')) is not int or review['id'] < 1
                 or not isinstance(review.get('user'), dict)):
             raise AuthorityError('Invalid authenticated PR review record')
+        if review.get('state') == 'COMMENTED':
+            # Only authenticated Comment reviews, not issue/inline comments,
+            # support the same explicit exact-head protocol as Finite.
+            body = review.get('body')
+            if body is None:
+                body = ''
+            if not isinstance(body, str):
+                raise AuthorityError('Invalid authenticated review body')
+            command = body.strip()
+            if review.get('commit_id') != head:
+                continue
+            if command == '/decider approve ' + head:
+                review = {**review, 'state': 'APPROVED', 'approvalMethod': 'comment-review'}
+            elif command == '/decider withdraw ' + head:
+                review = {**review, 'state': 'DISMISSED', 'approvalMethod': 'comment-review'}
+            else:
+                continue
         if review.get('state') not in ('APPROVED', 'CHANGES_REQUESTED', 'DISMISSED'):
             continue
         user = review['user']

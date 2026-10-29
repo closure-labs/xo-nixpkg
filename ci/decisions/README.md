@@ -94,3 +94,30 @@ No live service is needed to run the fixture suite:
 ```console
 python3 -m unittest discover -s tests/decisions -q
 ```
+
+## Review events and exact-head commands
+
+The notification-only collector reacts to new, edited, and dismissed GitHub PR
+reviews for the lifetime of the PR; there is no initial approval polling window.
+Its completion wakes protected-main code, which discovers current native PR
+heads without App credentials and serializes authority workers per PR/target.
+Each worker repeats live authorization and discards results if the head, review
+snapshot, or queue target changed during evaluation. The required check remains
+owned by the configured CL Decider App; the Actions jobs are not substitutes.
+
+As in Finite, an eligible human may submit a **Comment review** whose entire body
+is `/decider approve <40-character-current-head-SHA>` or
+`/decider withdraw <40-character-current-head-SHA>`. The review's commit must also
+be that exact head. This is the pull request **Review changes → Comment** flow,
+not a top-level Conversation comment or an inline diff comment. The same current
+Super Admin membership and maintain/admin access checks apply. Ordinary prose,
+bot comments, and commands naming another head do not grant authority. A newer
+valid withdrawal or native dismissal supersedes that person's approval;
+changes-requested reviews retain their veto. Editing/removing a command causes a
+fresh evaluation of the remaining native reviews, not an unconditional approval.
+
+Proposal production uses compact JSON and rejects documents exceeding the
+existing 16 MiB immutable-blob limit before publishing. This changes formatting,
+not canonical proposal identity or authority policy. An existing oversized
+proposal must be regenerated/compacted on its branch and reviewed again at the
+new head; rerunning the authority check alone cannot repair it.

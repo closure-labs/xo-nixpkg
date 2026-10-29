@@ -6,4 +6,5 @@ if [[ -n ${REGISTRY_TOKEN:-} ]]; then
   printf '%s' "$REGISTRY_TOKEN" | oras login ghcr.io --username "$GITHUB_ACTOR" --password-stdin
   trap 'oras logout ghcr.io >/dev/null 2>&1 || true' EXIT
 fi
-xo-nixpkg-decision-check --config ci/decision-policy.json --collector-run "$COLLECTOR_RUN"
+xo-nixpkg-decision-check --config ci/decision-policy.json --collector-run "$COLLECTOR_RUN" \
+  --pull-request "${TARGET_PR:?}" --expected-head "${EXPECTED_HEAD:?}" --target-sha "${TARGET_SHA:?}"

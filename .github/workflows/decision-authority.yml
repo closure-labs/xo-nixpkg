@@ -8,12 +8,49 @@ permissions:
   contents: read
   actions: read
   packages: read
-concurrency:
-  group: authority-${{ github.event.workflow_run.id }}
-  cancel-in-progress: false
 jobs:
-  authority:
+  discover:
     if: github.event.workflow_run.conclusion == 'success'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    permissions:
+      contents: read
+      actions: read
+      pull-requests: read
+    outputs:
+      matrix: ${{ steps.targets.outputs.matrix }}
+      has-targets: ${{ steps.targets.outputs.has-targets }}
+    steps:
+      - name: Checkout protected controller
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: main
+          persist-credentials: false
+      - name: Discover current targets without authority credentials
+        id: targets
+        env:
+          GH_TOKEN: ${{ github.token }}
+          COLLECTOR_RUN: ${{ github.event.workflow_run.id }}
+        run: |
+          python3 - <<'PYTHON'
+          import json, os, subprocess
+          result = subprocess.check_output([
+              'python3', 'ci/decisions/check.py', '--config', 'ci/decision-policy.json',
+              '--collector-run', os.environ['COLLECTOR_RUN'], '--resolve-targets'], text=True, timeout=240)
+          matrix = json.loads(result)
+          with open(os.environ['GITHUB_OUTPUT'], 'a') as output:
+              output.write('matrix=' + json.dumps(matrix, separators=(',', ':')) + '\n')
+              output.write('has-targets=' + str(bool(matrix['include'])).lower() + '\n')
+          PYTHON
+  authority:
+    needs: discover
+    if: needs.discover.outputs.has-targets == 'true'
+    strategy:
+      fail-fast: false
+      matrix: ${{ fromJSON(needs.discover.outputs.matrix) }}
+    concurrency:
+      group: authority-${{ github.repository_id }}-${{ matrix.number }}-${{ matrix.target }}
+      cancel-in-progress: false
     runs-on: ubuntu-24.04
     timeout-minutes: 30
     steps:
@@ -48,12 +85,15 @@ jobs:
           GH_TOKEN: ${{ steps.authority.outputs.token }}
           REGISTRY_TOKEN: ${{ github.token }}
           COLLECTOR_RUN: ${{ github.event.workflow_run.id }}
+          TARGET_PR: ${{ matrix.number }}
+          EXPECTED_HEAD: ${{ matrix.head }}
+          TARGET_SHA: ${{ matrix.target }}
         run: nix run .#devenv -- tasks run --mode single --option 'packages:pkgs!' '' security:authority
       - name: Retain immutable decision byte reuse observations
         if: always()
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
-          name: xo-decision-byte-reuse-${{ github.job }}
+          name: xo-decision-byte-reuse-${{ matrix.number }}-${{ matrix.target }}
           path: ${{ runner.temp }}/decision-git-blobs/*/observations.jsonl
           if-no-files-found: ignore
           retention-days: 30
