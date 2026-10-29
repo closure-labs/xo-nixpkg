@@ -167,6 +167,11 @@ def queue_proposal(cfg, number):
 def propose(cfg, proposal):
     """Create one immutable bot branch/PR without checking out or executing candidate code."""
     repository = cfg['repository']
+    # Whitespace is not part of canonical proposal identity. Keep producer bytes
+    # within the verifier's existing cap before creating any remote Git objects.
+    content = json.dumps(proposal, sort_keys=True, separators=(',', ':'), allow_nan=False) + '\n'
+    require(0 < len(content.encode('utf-8')) <= authority.MAX_PROPOSAL_BYTES,
+            'Decision proposal exceeds the bounded Git blob limit; no proposal was published')
     digest = canonical_hash(proposal)
     path = authority.proposal_path(proposal)
     branch = 'automation/decision-' + digest
@@ -186,7 +191,7 @@ def propose(cfg, proposal):
     commit = authority.github_api(f'repos/{repository}/git/commits/{base}')
     tree = api_write(f'repos/{repository}/git/trees', {'base_tree': commit['tree']['sha'],
                     'tree': [{'path': path, 'mode': '100644', 'type': 'blob',
-                              'content': json.dumps(proposal, sort_keys=True, indent=2) + '\n'}]})
+                              'content': content}]})
     commit = api_write(f'repos/{repository}/git/commits', {'message': 'chore: propose ' + proposal['kind'] + ' ' + digest[:12],
                        'tree': tree['sha'], 'parents': [base]})
     # Existing divergent refs fail; never force-update an unattended branch.
