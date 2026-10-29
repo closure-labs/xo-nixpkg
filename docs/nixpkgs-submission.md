@@ -8,6 +8,15 @@ This guide covers submission prep for packages tracked from this repository.
 - `xen-orchestra-ce`: maintained in this repo (`default.nix`)
 - `libvhdi`: maintained in this repo at `nix/libvhdi.nix` from a locked official release asset.
 
+## Upstream FUSE compatibility blocker
+
+XO currently needs the private [FUSE 2 compatibility leaf](../nix/fuse2-compat/README.md)
+for its upstream `fuse-native` dependency. Its packaging follows the former
+Nixpkgs expression, but FUSE 2 is end-of-life and was removed from Nixpkgs;
+this local compatibility exception does not imply eligibility for upstream
+submission. Resolve the upstream binding migration or agree an explicit
+maintenance approach before proposing XO to Nixpkgs. Libvhdi remains on FUSE 3.
+
 ## Prerequisites
 
 1. Package evaluates/builds locally:

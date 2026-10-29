@@ -169,7 +169,7 @@
   ],
   "pathRules": [
     {
-      "pattern": "^(?:ci/security-fixtures\\.sh|nix/security-fixtures\\.nix|tests/test_preflight\\.py)$",
+      "pattern": "^(?:ci/security-fixtures\\.sh|nix/security-fixtures\\.nix|tests/test_preflight\\.py|tests/test_fuse_compat\\.py)$",
       "validation": [
         "repository-policy"
       ],
@@ -472,7 +472,7 @@
       "publication": []
     },
     {
-      "pattern": "^(default\\.nix|nix/(fetch-normalized-yarn-deps|prefetch-yarn-deps|yarn-platform-tools|runtime-node)\\.nix|nix/(retry-yarn-fetch|normalize-yarn-cache)\\.sh|nix/patches/)",
+      "pattern": "^(default\\.nix|nix/(fetch-normalized-yarn-deps|prefetch-yarn-deps|yarn-platform-tools|runtime-node)\\.nix|nix/(retry-yarn-fetch|normalize-yarn-cache)\\.sh|nix/patches/|nix/fuse2-compat/)",
       "validation": [
         "xo-latest",
         "xo-stable",
