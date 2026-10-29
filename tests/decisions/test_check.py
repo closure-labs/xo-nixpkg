@@ -27,8 +27,11 @@ class GitHub(fixtures.GitHub):
                           'type': 'blob', 'mode': '100644', 'sha': 'd' * 40}]}
         self.queue_tree = self.head_tree
         self.queue_sha = MERGE
+        self.queue_refs = []
 
     def __call__(self, endpoint):
+        if '/git/matching-refs/heads/gh-readonly-queue/' in endpoint:
+            return self.queue_refs
         if '/actions/runs/' in endpoint:
             return self.collector
         if endpoint.endswith('?state=open&base=main&per_page=100&page=1'):
@@ -148,6 +151,135 @@ class Checks(unittest.TestCase):
         for path in ('.gitleaks.toml', 'gitleaks.toml', '.gitleaksignore'):
             self.assertTrue(mod.governed(path), path)
         self.assertFalse(mod.governed('docs/README.md'))
+
+    def test_discovery_pins_live_head_not_old_event_head(self):
+        api = GitHub()
+        api.collector.update(event='pull_request_review', head_sha='f' * 40,
+                             created_at='2020-01-01T00:00:00Z')
+        self.assertEqual(mod.resolve_targets(REPO, 1, api),
+                         {'include': [{'number': 7, 'head': HEAD, 'target': HEAD}]})
+
+    def test_worker_rejects_unrelated_target(self):
+        for expected in ((8, HEAD, HEAD), (7, HEAD, MERGE), (True, HEAD, HEAD)):
+            with self.subTest(expected=expected), self.assertRaises(mod.authority.AuthorityError):
+                mod.run_checks(REPO, 1, BOT, 123, GitHub(), expected=expected)
+
+    def test_obsolete_discovery_does_not_publish(self):
+        post = mock.Mock()
+        result = mod.run_checks(REPO, 1, BOT, 123, GitHub(), post, expected=(7, 'f' * 40, 'f' * 40))
+        self.assertEqual(result['checks'][0]['status'], 'obsolete')
+        post.assert_not_called()
+
+    def test_review_edit_dismissal_and_head_races_do_not_publish(self):
+        for change in ('dismiss', 'edit', 'head', 'close', 'queue'):
+            with self.subTest(change=change):
+                api, post = GitHub(), mock.Mock()
+                if change == 'edit':
+                    api.reviews[0].update(state='COMMENTED', body='/decider approve ' + HEAD)
+                if change == 'queue':
+                    api.collector.update(event='merge_group', head_branch='gh-readonly-queue/main/pr-7-abcdef0', head_sha=MERGE)
+                def evaluate(*args):
+                    if change == 'dismiss':
+                        api.reviews[0]['state'] = 'DISMISSED'
+                    elif change == 'edit':
+                        api.reviews[0]['body'] = '/decider withdraw ' + HEAD
+                    elif change == 'head':
+                        api.pr['head']['sha'] = 'f' * 40
+                    elif change == 'close':
+                        api.pr['state'] = 'closed'
+                    else:
+                        api.queue_sha = HEAD
+                    return {'status': 'authorized', 'head': HEAD}
+                with mock.patch.object(mod, 'check_pr', side_effect=evaluate):
+                    if change == 'queue':
+                        with self.assertRaises(mod.authority.AuthorityError):
+                            mod.run_checks(REPO, 1, BOT, 123, api, post)
+                    else:
+                        result = mod.run_checks(REPO, 1, BOT, 123, api, post)
+                        self.assertEqual(result['checks'][0]['status'], 'obsolete')
+                post.assert_not_called()
+
+    def test_late_review_command_rechecks_without_poll_window(self):
+        api = GitHub()
+        api.collector.update(event='pull_request_review', created_at='2020-01-01T00:00:00Z')
+        api.files = [{'filename': 'ci/policy.py', 'status': 'modified'}]
+        api.reviews[0].update(state='COMMENTED', body='/decider approve ' + HEAD)
+        post = mock.Mock(return_value={'app': {'id': 123}})
+        self.assertEqual(mod.run_checks(REPO, 1, BOT, 123, api, post,
+                                       expected=(7, HEAD, HEAD))['checks'][0]['status'], 'authorized')
+        self.assertEqual(post.call_args.args[1]['conclusion'], 'success')
+        api.reviews[0]['body'] = '/decider withdraw ' + HEAD
+        mod.run_checks(REPO, 2, BOT, 123, api, post, expected=(7, HEAD, HEAD))
+        self.assertEqual(post.call_args.args[1]['conclusion'], 'failure')
+
+    def test_workflow_serializes_each_native_target_without_canceling_active_checks(self):
+        text = (ROOT / '.github/workflows/decision-authority.yml').read_text()
+        self.assertIn('group: authority-${{ github.repository_id }}-${{ matrix.number }}-${{ matrix.target }}', text)
+        self.assertIn('cancel-in-progress: false', text)
+        self.assertIn('ref: main', text)
+        self.assertIn('--resolve-targets', text)
+        self.assertNotIn('issue_comment:', text)
+
+    def test_late_review_rechecks_current_queue_and_head(self):
+        api = GitHub()
+        api.collector['event'] = 'pull_request_review'
+        api.queue_refs = [{'ref': 'refs/heads/gh-readonly-queue/main/pr-7-abcdef0',
+                           'object': {'type': 'commit', 'sha': MERGE}}]
+        matrix = mod.resolve_targets(REPO, 1, api)['include']
+        self.assertEqual({row['target'] for row in matrix}, {HEAD, MERGE})
+        api.files = [{'filename': 'ci/policy.py', 'status': 'modified'}]
+        api.head_tree = api.queue_tree = {'truncated': False, 'tree': []}
+        api.reviews = []
+        post = mock.Mock(return_value={'app': {'id': 123}})
+        mod.run_checks(REPO, 1, BOT, 123, api, post, expected=(7, HEAD, MERGE))
+        self.assertEqual(post.call_count, 1)
+        self.assertEqual(post.call_args.args[1]['head_sha'], MERGE)
+        self.assertEqual(post.call_args.args[1]['conclusion'], 'failure')
+
+    def test_untrusted_or_replaced_queue_ref_cannot_publish(self):
+        api = GitHub()
+        api.queue_refs = [{'ref': 'refs/heads/gh-readonly-queue/main/pr-8-abcdef0',
+                           'object': {'type': 'commit', 'sha': MERGE}}]
+        with self.assertRaises(mod.authority.AuthorityError):
+            mod.resolve_targets(REPO, 1, api)
+        api.queue_refs = [{'ref': 'refs/heads/gh-readonly-queue/main/pr-7-abcdef0',
+                           'object': {'type': 'commit', 'sha': MERGE}}]
+        post = mock.Mock()
+        def replace(*args):
+            api.queue_refs = []
+            return {'status': 'authorized', 'head': HEAD}
+        with mock.patch.object(mod, 'check_pr', side_effect=replace):
+            with self.assertRaises(mod.authority.AuthorityError):
+                mod.run_checks(REPO, 1, BOT, 123, api, post, expected=(7, HEAD, MERGE))
+        post.assert_not_called()
+
+    def test_snapshot_read_errors_publish_failure_not_stale_success(self):
+        for reads in ([mod.authority.AuthorityError('Unavailable reviews')],
+                      ['initial', mod.authority.AuthorityError('Unavailable reviews')]):
+            with self.subTest(reads=reads):
+                api = GitHub()
+                api.files = [{'filename': 'ci/policy.py', 'status': 'modified'}]
+                post = mock.Mock(return_value={'app': {'id': 123}})
+                with mock.patch.object(mod, 'review_fingerprint', side_effect=reads):
+                    mod.run_checks(REPO, 1, BOT, 123, api, post, expected=(7, HEAD, HEAD))
+                self.assertEqual(post.call_args.args[1]['conclusion'], 'failure')
+
+    def test_final_pr_read_failure_invalidates_pinned_target(self):
+        api, post = GitHub(), mock.Mock(return_value={'app': {'id': 123}})
+        def evaluate(*args):
+            original = api.__class__.__call__
+            def fail_latest(instance, endpoint):
+                if endpoint == f'repos/{REPO}/pulls/7':
+                    raise mod.authority.AuthorityError('PR revalidation unavailable')
+                return original(instance, endpoint)
+            patcher = mock.patch.object(api.__class__, '__call__', fail_latest)
+            patcher.start()
+            self.addCleanup(patcher.stop)
+            return {'status': 'authorized', 'head': HEAD}
+        with mock.patch.object(mod, 'check_pr', side_effect=evaluate):
+            mod.run_checks(REPO, 1, BOT, 123, api, post, expected=(7, HEAD, HEAD))
+        self.assertEqual(post.call_args.args[1]['conclusion'], 'failure')
+        self.assertEqual(post.call_args.args[1]['head_sha'], HEAD)
 
 
 if __name__ == '__main__':

@@ -116,6 +116,22 @@ def check_pr(repository, number, expected_bot, target_sha=None, github=None):
             'governedPaths': sensitive, 'status': 'authorized' if sensitive else 'not-required'}
 
 
+def queue_targets(api, repository, number):
+    refs = api(f'repos/{repository}/git/matching-refs/heads/gh-readonly-queue/main/pr-{number}-')
+    if not isinstance(refs, list) or len(refs) > 16:
+        raise authority.AuthorityError('Invalid bounded current queue inventory')
+    targets = []
+    for ref in refs:
+        name = ref.get('ref', '').removeprefix('refs/heads/')
+        match = QUEUE.fullmatch(name)
+        sha = ref.get('object', {}).get('sha')
+        if (not match or int(match[1]) != number or not isinstance(sha, str)
+                or not authority.SHA.fullmatch(sha) or ref.get('object', {}).get('type') != 'commit'):
+            raise authority.AuthorityError('Invalid current queue ref')
+        targets.append(sha)
+    return sorted(set(targets))
+
+
 def collector_targets(run, repository, github=None):
     api = github or authority.github_api
     if (not isinstance(run, dict) or run.get('path') != COLLECTOR
@@ -145,20 +161,85 @@ def collector_targets(run, repository, github=None):
         live = api(f'repos/{repository}/pulls/{pull["number"]}')
         if live.get('state') == 'open' and live.get('base', {}).get('ref') == 'main':
             targets.append((pull['number'], None))
-    return sorted(set(targets))
+            targets.extend((pull['number'], sha) for sha in queue_targets(api, repository, pull['number']))
+    return sorted(set(targets), key=lambda item: (item[0], item[1] or ''))
 
 
-def run_checks(repository, run_id, expected_bot, app_id, github=None, api_post=None):
+def resolve_targets(repository, run_id, github=None):
+    """Resolve bounded worker identities from authenticated native metadata."""
+    if (not isinstance(repository, str) or not authority.REPOSITORY.fullmatch(repository)
+            or type(run_id) is not int or run_id < 1):
+        raise authority.AuthorityError('Invalid collector discovery context')
+    api = github or authority.github_api
+    run = api(f'repos/{repository}/actions/runs/{run_id}')
+    targets = []
+    for number, target in collector_targets(run, repository, api):
+        pull = api(f'repos/{repository}/pulls/{number}')
+        head = pull.get('head', {}).get('sha')
+        if pull.get('state') != 'open' or pull.get('base', {}).get('ref') != 'main':
+            continue
+        if (pull.get('number') != number or pull.get('base', {}).get('repo', {}).get('full_name') != repository
+                or not isinstance(head, str) or not authority.SHA.fullmatch(head)):
+            raise authority.AuthorityError('Discovery lacks an immutable PR head')
+        targets.append({'number': number, 'head': head, 'target': target or head})
+    if len(targets) > 64:
+        raise authority.AuthorityError('Authority worker inventory exceeds bounded matrix')
+    return {'include': targets}
+
+
+def review_fingerprint(api, repository, number, head):
+    """Hash relevant native review state; the digest is observation, not authority."""
+    rows = []
+    for review in authority.collection(api, f'repos/{repository}/pulls/{number}/reviews'):
+        if (not isinstance(review, dict) or type(review.get('id')) is not int or review['id'] < 1
+                or not isinstance(review.get('user'), dict)):
+            raise authority.AuthorityError('Invalid review snapshot')
+        state, user = review.get('state'), review['user']
+        command = None
+        if state == 'COMMENTED':
+            body = review.get('body') or ''
+            if not isinstance(body, str):
+                raise authority.AuthorityError('Invalid review snapshot body')
+            command = body.strip()
+            if command not in ('/decider approve ' + head, '/decider withdraw ' + head):
+                continue
+        elif state not in ('APPROVED', 'CHANGES_REQUESTED', 'DISMISSED'):
+            continue
+        if user.get('type') == 'Bot':
+            continue
+        rows.append({'id': review['id'], 'state': state, 'commit': review.get('commit_id'),
+                     'user': {key: user.get(key) for key in ('id', 'login', 'type')}, 'command': command})
+    if len({row['id'] for row in rows}) != len(rows):
+        raise authority.AuthorityError('Duplicate review snapshot ID')
+    return canonical_hash({'head': head, 'reviews': sorted(rows, key=lambda row: row['id'])})
+
+
+def run_checks(repository, run_id, expected_bot, app_id, github=None, api_post=None, *, expected=None):
     authority.validate_context(repository, expected_bot)
     if type(run_id) is not int or run_id < 1 or type(app_id) is not int or app_id < 1:
         raise authority.AuthorityError('Invalid collector run or review App ID')
     api = github or authority.github_api
     run = api(f'repos/{repository}/actions/runs/{run_id}')
     outcomes = []
-    for number, target in collector_targets(run, repository, api):
+    targets = collector_targets(run, repository, api)
+    if expected is not None:
+        number, head, target = expected
+        if (type(number) is not int or number < 1 or not isinstance(head, str)
+                or not authority.SHA.fullmatch(head) or not isinstance(target, str)
+                or not authority.SHA.fullmatch(target)
+                or (number, target if target != head or run['event'] == 'merge_group' else None) not in targets):
+            raise authority.AuthorityError('Worker differs from authenticated collector targets')
+        targets = [(number, target if target != head or run['event'] == 'merge_group' else None)]
+    for number, target in targets:
         pull = api(f'repos/{repository}/pulls/{number}')
-        sha = target or pull.get('head', {}).get('sha', '')
+        head = pull.get('head', {}).get('sha', '')
+        sha = target or head
+        if expected is not None and head != expected[1]:
+            outcomes.append({'pullRequest': number, 'target': expected[2], 'status': 'obsolete'})
+            continue
+        fingerprint = None
         try:
+            fingerprint = review_fingerprint(api, repository, number, head)
             result = check_pr(repository, number, expected_bot, target, api)
             summary = ('Eligible human approval verified for governed changes.' if result['status'] == 'authorized'
                        else 'This PR does not change governed security or delivery controls.')
@@ -166,6 +247,33 @@ def run_checks(repository, run_id, expected_bot, app_id, github=None, api_post=N
         except (authority.AuthorityError, ValueError, KeyError, TypeError) as error:
             result = {'pullRequest': number, 'target': sha, 'status': 'review-required', 'reason': str(error)}
             summary, conclusion = 'Maintainer decision required: ' + str(error), 'failure'
+        # A run started before a review edit/dismissal or push must not overwrite
+        # the new decision. Workers are serialized per PR and immutable target.
+        try:
+            latest = api(f'repos/{repository}/pulls/{number}')
+        except (authority.AuthorityError, ValueError, KeyError, TypeError) as error:
+            # A failed fresh read cannot leave an earlier success authoritative.
+            # Failure is safe only on the immutable target already pinned above.
+            result = {'pullRequest': number, 'target': sha, 'status': 'review-required', 'reason': str(error)}
+            summary, conclusion = 'Maintainer decision required: ' + str(error), 'failure'
+            latest = pull
+        if (latest.get('state') != 'open' or latest.get('base', {}).get('ref') != 'main'
+                or latest.get('head', {}).get('sha') != head
+                or result.get('head', head) != head):
+            outcomes.append({'pullRequest': number, 'target': sha, 'status': 'obsolete'})
+            continue
+        if fingerprint is not None:
+            try:
+                changed = review_fingerprint(api, repository, number, head) != fingerprint
+            except (authority.AuthorityError, ValueError, KeyError, TypeError) as error:
+                result = {'pullRequest': number, 'target': sha, 'status': 'review-required', 'reason': str(error)}
+                summary, conclusion = 'Maintainer decision required: ' + str(error), 'failure'
+            else:
+                if changed:
+                    outcomes.append({'pullRequest': number, 'target': sha, 'status': 'obsolete'})
+                    continue
+        if target is not None and (number, target) not in collector_targets(run, repository, api):
+            raise authority.AuthorityError('Queue target changed before authority publication')
         post_check(repository, sha, conclusion, summary, app_id, api_post)
         outcomes.append(result)
     return {'schema': 1, 'collectorRun': run_id, 'checks': outcomes}
@@ -174,12 +282,27 @@ def run_checks(repository, run_id, expected_bot, app_id, github=None, api_post=N
 def main():
     cli = parser(__doc__)
     cli.add_argument('--collector-run', type=int, required=True)
+    cli.add_argument('--resolve-targets', action='store_true')
+    cli.add_argument('--pull-request', type=int)
+    cli.add_argument('--expected-head')
+    cli.add_argument('--target-sha')
     args = cli.parse_args()
-    cfg = config(args.config, live=True)
+    worker = (args.pull_request, args.expected_head, args.target_sha)
+    if any(value is not None for value in worker) and not all(value is not None for value in worker):
+        cli.error('Worker requires PR, expected head and target SHA together')
+    if args.resolve_targets and any(value is not None for value in worker):
+        cli.error('Target discovery cannot publish worker checks')
+    # Discovery has no App credentials and cannot publish authority. Its policy
+    # and code come only from the explicitly checked-out protected main branch.
+    cfg = config(args.config, live=not args.resolve_targets)
+    if args.resolve_targets:
+        emit(resolve_targets(cfg['repository'], args.collector_run), args.output)
+        return
     # Packet validation runs only against this authenticated checked policy.
     import reconciliation
     reconciliation.CHECK_CONFIG = cfg
-    emit(run_checks(cfg['repository'], args.collector_run, cfg['botLogin'], cfg['appId']), args.output)
+    emit(run_checks(cfg['repository'], args.collector_run, cfg['botLogin'], cfg['appId'],
+                    expected=worker if args.pull_request is not None else None), args.output)
 
 
 if __name__ == '__main__':
