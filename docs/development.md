@@ -375,3 +375,15 @@ Cache permission diagnostics identify their HTTP client explicitly so Cachix's
 edge service does not reject Python's default user-agent. A Cloudflare non-JSON
 403 reports `cache-request-blocked`, rather than implying the stored token was
 rejected. Credential and API response bodies remain withheld.
+
+### Bounded proposal JSON formatting
+
+Decision proposals retain one JSON value per line while omitting unnecessary
+structural indentation. The canonical finding-key lines keep the exact spelling
+required by the existing secret-inventory policy. This is whitespace-only: the
+canonical proposal identity, actual UTF-8 16 MiB publication bound, reader bound,
+and scanner policy are unchanged. Individual string values are not truncated.
+
+This prevents future proposals from becoming multi-megabyte single-line scanner
+inputs. It does not rewrite or exempt already-published compact history, repair
+its scanner findings, or remove the need for exact-head approval on a new commit.
