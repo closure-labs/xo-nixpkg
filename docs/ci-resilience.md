@@ -242,3 +242,23 @@ Comparable fixture results show zero duplicate packet payload fetches, zero
 closure transfers on a verified publication retry, one raw generation for two
 identical job inputs, and one database preparation for three advisory reports.
 These are operation counts, not production percentage savings claims.
+
+## Bounded full-history secret scanning
+
+Both native security-lint and protected preflight enumerate all refs, tags and
+HEADs (including linked worktrees), then scan every reachable commit exactly
+once in eight-commit batches. Gitleaks retains its existing patch, filtering,
+rename/binary handling, configured rules and redaction; no paths or historical
+commits are excluded. Two workers share a 20-minute total budget, with a
+10-minute per-batch deadline, always capped by the remaining total. The protected
+launcher allows 21 minutes including cleanup; the 30-minute native history job
+retains ten minutes for setup and fixtures (the preflight job permits 60 minutes).
+Inventory overflow, changed refs, incomplete
+coverage, findings and scanner failures all block the gate. Only counts,
+immutable-inventory digest and aggregate timings are printed, never findings.
+
+This partitions repeated full-history work; it does not cache a clean result or
+claim production speedups. Bounded cloud measurements with Gitleaks 8.30.1 found
+an isolated 16.8 MB proposal commit completed in 7.34 seconds, while the hosted
+whole-history scan exceeded its previous 600-second limit. The individual
+proposal alone was therefore not proven to explain that timeout.

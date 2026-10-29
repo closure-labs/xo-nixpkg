@@ -298,6 +298,10 @@ rec {
   securityLint = mkRepositoryApplication {
     name = "xo-nixpkg-security-lint";
     script = ../ci/security-lint.sh;
+    prelude = ''
+      export XO_NIXPKG_HISTORY_SCAN_SOURCE=${../ci/history-scan.py}
+      export PYTHONPATH=${decisions}/lib/decisions
+    '';
     runtimeInputs = with pkgs; [
       actionlint
       zizmor
@@ -453,6 +457,7 @@ rec {
     ];
     prelude = ''
       export XO_NIXPKG_BUILD_REUSE_SOURCE=${../ci/build-reuse.py}
+      export XO_NIXPKG_HISTORY_SCAN_SOURCE=${../ci/history-scan.py}
       export XO_NIXPKG_TRUSTED_NIX=${pkgs.lib.getExe pkgs.nix}
       export XO_NIXPKG_PLAN_RUNNER=${pkgs.lib.getExe planRunner}
       export XO_NIXPKG_TRUSTED_PLAN_NIX=${pkgs.lib.getExe trustedCandidateNix}

@@ -36,6 +36,7 @@ class PreflightTests(unittest.TestCase):
                             'GITHUB_SHA': 'a' * 40, 'GITHUB_RUN_ID': '123', 'GITHUB_RUN_ATTEMPT': '2',
                             'XO_NIXPKG_TRUSTED_PLAN_NIX': '/nix/store/fixture/bin/xo-nixpkg-candidate-nix',
                             'XO_NIXPKG_PLAN_RUNNER': '/nix/store/fixture/bin/plan-runner',
+                            'XO_NIXPKG_HISTORY_SCAN_SOURCE': str(ROOT / 'ci/history-scan.py'),
                             'GH_TOKEN': 'must-not-enter-candidate-environment'}
         self.patch(patch.dict(os.environ, self.environment, clear=True))
         self.patch(patch.object(reuse, 'git', side_effect=self.git))
@@ -198,7 +199,9 @@ class PreflightTests(unittest.TestCase):
     def test_shared_checks_and_history_precede_runtime_without_duplicate_selected_targets(self):
         self.preflight()
         self.scan.assert_called_once()
-        self.assertEqual(self.scan.call_args.args[0], ['gitleaks', 'git', '--redact', '--no-banner'])
+        self.assertEqual(self.scan.call_args.args[0], [reuse.sys.executable, str(ROOT / 'ci/history-scan.py')])
+        self.assertEqual(self.scan.call_args.kwargs['timeout'], 1260)
+        self.assertEqual(self.scan.call_args.kwargs['env']['PYTHONPATH'], str(Path(reuse.operations.__file__).parent))
         self.assertNotIn('GH_TOKEN', self.scan.call_args.kwargs['env'])
         self.assertEqual(self.native.call_args_list[0].args[-1], 'git+file://' + str(self.candidate) + '#lib.ciSecurityFixtures.x86_64-linux')
         self.restore.assert_not_called()
