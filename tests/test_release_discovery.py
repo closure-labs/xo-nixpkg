@@ -67,6 +67,35 @@ class ReleaseDiscovery(unittest.TestCase):
             with self.subTest(snapshot=snapshot), self.assertRaises(ValueError):
                 self.select(snapshot=snapshot)
 
+    def test_unrelated_historical_layouts_do_not_block_current_channels(self):
+        historical = (
+            ('6.8.0', '<img id="latest" />\n## **6.8.0**\n'),
+            ('6.5.1', '## **6.5.1**\n' + context('6.5.0')),
+            ('6.2.2', '## ** 6.2.2 **\n<img id="latest" />\n'),
+        )
+        for version, text in historical:
+            with self.subTest(version=version):
+                self.contexts['c' * 40] = text
+                cut = commit('c' * 40, 'feat: release ' + version)
+                for commits in ([cut, *self.commits], [*self.commits, cut]):
+                    self.assertEqual(self.select(commits=commits)[0]['sha'], LATEST)
+
+    def test_current_candidate_layout_errors_still_fail_closed(self):
+        for subject, text in (
+            ('6.10.0', '<img id="latest" />\n## **6.8.0**\n'),
+            ('9.10.0', '<img id="latest" />\n## **6.10.0**\n'),
+            ('9.10.0', '## ** 6.10.0 **\n<img id="latest" />\n'),
+        ):
+            with self.subTest(subject=subject, text=text):
+                self.contexts['c' * 40] = text
+                with self.assertRaises(ValueError):
+                    self.select(commits=[*self.commits, commit('c' * 40, 'feat: release ' + subject)])
+
+    def test_duplicate_with_subject_typo_after_both_channels_is_rejected(self):
+        self.contexts['c' * 40] = context('6.10.0')
+        with self.assertRaisesRegex(ValueError, 'Ambiguous duplicate'):
+            self.select(commits=[*self.commits, commit('c' * 40, 'feat: release 9.10.0')])
+
     def test_excluded_stable_policy_normalizes_trailing_zero(self):
         with self.assertRaisesRegex(ValueError, 'excluded stable'):
             mod.select(SNAPSHOT, self.commits, self.contexts.__getitem__, ['6.9.1.0'])

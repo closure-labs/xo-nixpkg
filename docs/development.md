@@ -185,7 +185,12 @@ own immutable release commit. These two changelog contexts determine canonical
 versions. Numeric subject typos produce an explicit diagnostic, rather than
 becoming package versions: upstream PR #10689 says `9.10.0`, while both contexts
 identify `6.10.0`. There is no SHA-specific exception. Missing, contradictory or
-duplicate channel metadata and ambiguous release cuts stop discovery. The
+duplicate channel metadata and ambiguous release cuts in the fetched history
+batch stop discovery; this is not an exhaustive search of unbounded history.
+Cuts whose subject version and first released heading both name unrelated
+versions are skipped before applying current channel-layout validation, so old
+changelog formats do not block discovery. Current-channel candidates remain
+strictly validated even when the subject version is a typo. The
 `excludedStableVersions` policy remains a guard: disagreement with upstream's
 explicit stable badge requires review instead of silently selecting another
 stable version. Both latest and stable downgrades are refused.

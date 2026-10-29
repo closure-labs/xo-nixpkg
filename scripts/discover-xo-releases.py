@@ -16,6 +16,7 @@ import sys
 SHA = re.compile(r'[a-f0-9]{40}')
 MARKER = re.compile(r'^feat: release\s+(?:XO\s+)?(?P<version>[0-9]+(?:\.[0-9]+)+)(?: \(#[0-9]+\))?$')
 HEADING = re.compile(r'^## \*\*([0-9]+(?:\.[0-9]+)+)\*\*', re.M)
+CANDIDATE_HEADING = re.compile(r'^##[ \t]+\*\*[ \t]*([0-9]+(?:\.[0-9]+)+)[ \t]*\*\*', re.M)
 BADGE = re.compile(r'<img\b[^>]*\bid=["\'](latest|stable)["\'][^>]*>')
 ROOT = 'https://api.github.com/repos/vatesfr/xen-orchestra'
 MAX_BYTES = 16 * 1024**2
@@ -51,6 +52,7 @@ def select(changelog, commits, load_context, excluded=()):
     if any(version_key(channels['stable']) == version_key(value) for value in excluded):
         raise ValueError('Upstream stable channel conflicts with excluded stable version policy')
     selected, seen = {}, set()
+    channel_keys = {version_key(version) for version in channels.values()}
     for commit in commits:
         if not isinstance(commit, dict) or not SHA.fullmatch(str(commit.get('sha', ''))):
             raise ValueError('Invalid immutable upstream commit identity')
@@ -66,6 +68,13 @@ def select(changelog, commits, load_context, excluded=()):
             continue
         seen.add(commit['sha'])
         context = load_context(commit['sha'])
+        # Historical cuts have older changelog layouts. Only validate the
+        # current channels strictly, but inspect every cut in the fetched batch
+        # for duplicate identities (including subjects with a version typo).
+        candidate = CANDIDATE_HEADING.search(context)
+        if (version_key(marker['version']) not in channel_keys
+                and (candidate is None or version_key(candidate[1]) not in channel_keys)):
+            continue
         local = channel_versions(context, required=('latest',))
         first = HEADING.search(context)
         if first is None or version_key(first[1]) != version_key(local['latest']):
