@@ -35,7 +35,8 @@ class ReuseFixture(unittest.TestCase):
         workflow.parent.mkdir(parents=True)
         workflow.write_text('trusted immutable controller workflow\n')
         self.receipt = {
-            'schema': 1, 'repository': reuse.REPOSITORY, 'tree': TREE,
+            'schema': 2, 'repository': reuse.REPOSITORY, 'tree': TREE,
+            'repositorySecretPolicy': {'policyId': 'github-native-secret-observation-v1', 'policySha256': 'f' * 64},
             'system': 'x86_64-linux', 'source': SOURCE, 'controller': CONTROLLER,
             'runId': 101, 'runAttempt': 2, 'workflow': reuse.WORKFLOW,
             'event': 'pull_request', 'ref': 'refs/pull/97/merge',
@@ -66,6 +67,7 @@ class ReuseFixture(unittest.TestCase):
                            'size_in_bytes': 2000}]
         self.runs = [self.run]
         self.addCleanup(patch.stopall)
+        patch.object(reuse, 'repository_policy_binding', return_value=copy.deepcopy(self.receipt['repositorySecretPolicy'])).start()
         patch.object(reuse, 'trusted_cache_policy', return_value=copy.deepcopy(CACHE_POLICY)).start()
 
     def api(self, path):
@@ -101,7 +103,7 @@ class ProducerTests(ReuseFixture):
 
     def test_receipt_source_and_platform_substitutions_rejected(self):
         self.provenance_mocks()
-        for key, value in [('schema', 2), ('repository', 'attacker/xo-nixpkg'),
+        for key, value in [('schema', 1), ('repository', 'attacker/xo-nixpkg'),
                            ('tree', 'e' * 40), ('system', 'aarch64-linux'),
                            ('source', 'refs/heads/main'), ('controller', '../main'),
                            ('runId', True), ('runAttempt', 0),
@@ -111,6 +113,13 @@ class ProducerTests(ReuseFixture):
                 receipt = dict(self.receipt, **{key: value})
                 with self.assertRaises(ValueError):
                     reuse.producer(receipt, self.controller, TREE)
+
+    def test_old_policy_receipt_cannot_be_reused(self):
+        self.provenance_mocks()
+        for binding in [None, {'policyId': 'old-policy', 'policySha256': '0' * 64}]:
+            changed = dict(self.receipt, repositorySecretPolicy=binding)
+            with self.assertRaisesRegex(ValueError, 'Reuse policy mismatch'):
+                reuse.producer(changed, self.controller, TREE)
 
     def test_api_run_attempt_event_fork_and_workflow_substitutions_rejected(self):
         self.provenance_mocks()
