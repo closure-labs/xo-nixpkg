@@ -28,7 +28,7 @@ jobs:
       - uses: ./.github/actions/setup-nix # zizmor: ignore[self-repository] -- local setup follows the explicitly checked-out trusted revision.
         with:
           github-token: ${{ github.token }}
-      - name: Validate workflow security and secrets history
+      - name: Full history audit contract v2
         run: nix run .#devenv -- tasks run --mode single --option 'packages:pkgs!' '' ci:security-lint
   policy:
     name: Audit effective repository protection
