@@ -169,8 +169,30 @@
   ],
   "pathRules": [
     {
+      "pattern": "^ci/native-secret-(?:policy\\.json|controller\\.py|observation\\.py)$",
+      "validation": [
+        "repository-policy",
+        "application-composition",
+        "automation-fixtures",
+        "automation-runtime"
+      ],
+      "publication": [
+        "automation-runtime"
+      ]
+    },
+    {
+      "pattern": "^tests/test_native_secret.*\\.py$",
+      "validation": [
+        "repository-policy",
+        "automation-fixtures"
+      ],
+      "publication": []
+    },
+    {
       "pattern": "^(?:ci/sync-dependabot-lock\\.py|tests/test_(?:dependabot_nix_sync|update_devenv_modules)\\.py)$",
-      "validation": ["repository-policy"],
+      "validation": [
+        "repository-policy"
+      ],
       "publication": []
     },
     {

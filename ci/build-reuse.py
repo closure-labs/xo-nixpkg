@@ -165,8 +165,9 @@ def blob(repository, revision, path):
 
 def producer(receipt, controller, tree):
     """Validate historical provenance; a receipt never supplies its own authority."""
-    require(isinstance(receipt, dict) and receipt.get('schema') == 1
+    require(isinstance(receipt, dict) and receipt.get('schema') == 2
             and receipt.get('repository') == REPOSITORY, 'Invalid reuse receipt identity')
+    require(receipt.get('repositorySecretPolicy') == repository_policy_binding(controller), 'Reuse policy mismatch')
     require(receipt.get('tree') == tree and receipt.get('system') == 'x86_64-linux', 'Reuse tree/platform mismatch')
     for key in ('source', 'controller'):
         require(isinstance(receipt.get(key), str) and SHA.fullmatch(receipt[key]), 'Invalid reuse revision')
@@ -365,7 +366,7 @@ def validate_plan(plan):
         names.add(item['name']); attributes.add(item['attribute'])
 
 
-def history_scan_scope(candidate, controller):
+def repository_scope(candidate, controller):
     """Return public coverage provenance only: mode and validated commit IDs.
 
     Never include event bodies, credentials, or scanner findings in this receipt.
@@ -388,16 +389,25 @@ def history_scan_scope(candidate, controller):
     return {'mode': 'introduced', 'base': base, 'head': head}
 
 
+def repository_policy_binding(controller):
+    policy = read_json(controller / 'ci/native-secret-policy.json')
+    require(policy.get('policyId') == 'github-native-secret-observation-v1'
+            and policy.get('activation') == 'protected-main', 'Current native policy required')
+    return {'policyId': policy['policyId'], 'policySha256': hashlib.sha256(
+        json.dumps(policy, sort_keys=True, separators=(',', ':')).encode()).hexdigest()}
+
+
 def preflight_identity(candidate, controller, plan):
     source = git(candidate, 'rev-parse', 'HEAD')
     require(source == os.environ['GITHUB_SHA'], 'Preflight checkout differs from GitHub source identity')
-    identity = {'schema': 1, 'repository': REPOSITORY, 'workflow': WORKFLOW,
+    identity = {'schema': 2, 'repository': REPOSITORY, 'workflow': WORKFLOW,
                 'source': source, 'tree': git(candidate, 'rev-parse', 'HEAD^{tree}'),
                 'controller': git(controller, 'rev-parse', 'HEAD'),
                 'workflowSha256': digest(controller / WORKFLOW), 'launcherSha256': digest(Path(__file__)),
                 'planSha256': hashlib.sha256(json.dumps(plan, sort_keys=True, separators=(',', ':')).encode()).hexdigest(),
                 'runId': int(os.environ['GITHUB_RUN_ID']), 'runAttempt': int(os.environ['GITHUB_RUN_ATTEMPT']),
-                'authorityClaim': False, 'historyScanScope': history_scan_scope(candidate, controller)}
+                'authorityClaim': False, 'repositoryScope': repository_scope(candidate, controller),
+                'repositorySecretPolicy': repository_policy_binding(controller)}
     require(all(SHA.fullmatch(identity[key]) for key in ('source', 'tree', 'controller'))
             and identity['runId'] > 0 and identity['runAttempt'] > 0, 'Invalid preflight source or invocation')
     return identity
@@ -407,9 +417,9 @@ def verify_preflight(directory, candidate, controller, plan, targets):
     """Only same-execution successful preflight data can replace this phase."""
     binding = read_json(directory / 'preflight-binding.json')
     expected = preflight_identity(candidate, controller, plan)
-    require(set(binding) == set(expected) | {'files', 'securityFixtures', 'historyScan'}
+    require(set(binding) == set(expected) | {'files', 'securityFixtures'}
             and all(binding[key] == value for key, value in expected.items())
-            and binding['securityFixtures'] == 'success' and binding['historyScan'] == 'success',
+            and binding['securityFixtures'] == 'success',
             'Preflight identity or required security coverage differs')
     names = {'preflight.json', 'preflight-timings.json'} if targets else set()
     require(isinstance(binding['files'], dict) and set(binding['files']) == names, 'Incomplete preflight evidence inventory')
@@ -487,17 +497,7 @@ def validate(candidate, controller, evidence, phase='all', preflight=None):
         environment['FLAKE_PLAN_RUNNER_NIX'] = wrapper
         reference = 'git+file://' + str(candidate)
         if phase == 'preflight':
-            require(git(candidate, 'rev-parse', '--is-shallow-repository') == 'false',
-                    'History security scan requires a complete Git checkout')
-            scope = history_scan_scope(candidate, controller)
-            scan_args = ['--mode', scope['mode']]
-            if scope['mode'] == 'introduced':
-                scan_args += ['--base-sha', scope['base'], '--head-sha', scope['head']]
-            operations.run([sys.executable, os.environ['XO_NIXPKG_HISTORY_SCAN_SOURCE'], *scan_args], cwd=candidate,
-                           env=dict(environment, PYTHONPATH=str(Path(operations.__file__).parent),
-                                    XO_NIXPKG_SECRET_SCANNER=os.environ['XO_NIXPKG_SECRET_SCANNER'],
-                                    XO_NIXPKG_SECRET_SCANNER_IDENTITY=os.environ['XO_NIXPKG_SECRET_SCANNER_IDENTITY']),
-                           check=True, timeout=1260)
+            repository_scope(candidate, controller)
             nix(environment, 'build', '--no-link', '--no-write-lock-file',
                 reference + '#lib.ciSecurityFixtures.x86_64-linux')
         if phase != 'runtime':
@@ -524,7 +524,7 @@ def validate(candidate, controller, evidence, phase='all', preflight=None):
                      ('preflight.json', 'preflight-timings.json')} if preflight_targets else {}
             write_json(evidence / 'preflight-binding.json', dict(
                 preflight_identity(candidate, controller, plan), files=files,
-                securityFixtures='success', historyScan='success'))
+                securityFixtures='success'))
             verify_preflight(evidence, candidate, controller, plan, preflight_targets)
             return
         event = os.environ.get('GITHUB_EVENT_NAME')
@@ -575,7 +575,8 @@ def validate(candidate, controller, evidence, phase='all', preflight=None):
             export_profile(evidence, export_requested, 'export-failed', started=started, outputs=outputs, source=source,
                            archive_bytes=None, payload_bytes=None)
             raise
-        receipt = {'schema': 1, 'repository': REPOSITORY, 'workflow': WORKFLOW,
+        receipt = {'schema': 2, 'repository': REPOSITORY, 'workflow': WORKFLOW,
+                   'repositorySecretPolicy': repository_policy_binding(controller),
                    'source': source, 'tree': git(candidate, 'rev-parse', 'HEAD^{tree}'),
                    'controller': git(controller, 'rev-parse', 'HEAD'),
                    'workflowSha256': digest(controller / WORKFLOW), 'launcherSha256': digest(Path(__file__)),
