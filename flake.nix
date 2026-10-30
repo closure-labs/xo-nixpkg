@@ -140,6 +140,7 @@ rec {
           xen-orchestra-ce-rolling = rolling;
           xen-orchestra-ce-latest-upstream = rolling;
           automation-runtime = automationRuntime;
+          ci-admission = applications.ciAdmission;
           security-applicability = applications.securityApplicability;
           security-scan = applications.securityScan;
           security-review-all = applications.securityReviewAll;

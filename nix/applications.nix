@@ -62,11 +62,12 @@ rec {
   ciAdmission = pkgs.writeShellApplication {
     name = "xo-nixpkg-ci-admission";
     runtimeInputs = [
-      pkgs.python3
+      (pkgs.python3.withPackages (p: [ p.pyyaml ]))
       boundedGh
     ];
     text = ''
       export PYTHONPATH=${../ci/decisions}
+      export XO_NIXPKG_LOCK_SYNC=${../ci/sync-dependabot-lock.py}
       exec python3 ${../ci/decisions/ci_admission.py} --policy ${../ci/ci-admission-policy.json}
     '';
   };

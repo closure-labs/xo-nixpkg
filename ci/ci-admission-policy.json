@@ -6,9 +6,21 @@
     "login": "cl-decider[bot]",
     "id": 344936881
   },
+  "dependabot": {
+    "login": "dependabot[bot]",
+    "id": 49699333,
+    "families": [
+      "github-actions-pins",
+      "nixpkgs-paired-lock"
+    ],
+    "sameRepositoryOnly": true,
+    "requiresCurrentHeadHumanMergeApproval": true,
+    "execution": "verified-read-only"
+  },
   "workflows": [
     ".github/workflows/ci.yml",
     ".github/workflows/codeql.yml",
-    ".github/workflows/decision-events.yml"
+    ".github/workflows/decision-events.yml",
+    ".github/workflows/repository-secret-scan.yml"
   ]
 }

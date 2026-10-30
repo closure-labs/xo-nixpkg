@@ -12,7 +12,7 @@ pkgs.runCommandLocal "xo-nixpkg-security-fixtures"
       yq-go
       actionlint
       zizmor
-      python3
+      (python3.withPackages (p: [ p.pyyaml ]))
     ];
   }
   ''

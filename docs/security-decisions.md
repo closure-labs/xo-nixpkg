@@ -165,6 +165,11 @@ permissions, moved heads, changed run attempts and transport failures fail
 closed. Ambiguous approval writes are not retried without fresh readback and
 identity checks. Human exact-head merge and publication authority are unchanged.
 
+Official same-repository Dependabot Actions updates have a separate narrow
+[admission contract](dependabot-admission.md): complete immutable Actions-pin or paired-lock verification and read-only job
+validation admit execution without prior review. Exact-head human review remains
+mandatory for merge. This does not broaden other author or release policies.
+
 GitHub's [run approval API](https://docs.github.com/en/rest/actions/workflow-runs#approve-a-workflow-run-for-a-fork-pull-request)
 approves CI execution only. The App token has Actions write, contents and PR
 read, and organization members read; it has no PR-review or contents write grant.
