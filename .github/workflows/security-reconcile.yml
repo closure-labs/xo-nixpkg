@@ -58,7 +58,8 @@ jobs:
         env:
           GH_TOKEN: ${{ steps.proposer.outputs.token }}
           REGISTRY_TOKEN: ${{ github.token }}
-          QUALIFICATION_RUN: ${{ inputs.qualification_run }}
+          QUALIFICATION_RUN: ${{ inputs.qualification_run || (github.event_name == 'workflow_run' && github.event.workflow_run.name == 'Qualify immutable products' && github.event.workflow_run.id) || '' }}
+          QUALIFICATION_ATTEMPT: ${{ github.event_name == 'workflow_run' && github.event.workflow_run.name == 'Qualify immutable products' && github.event.workflow_run.run_attempt || '' }}
         run: nix run .#devenv -- tasks run --mode single --option 'packages:pkgs!' '' security:resume
       - name: Retain immutable decision byte reuse observations
         if: always()

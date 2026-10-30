@@ -189,10 +189,13 @@ def propose(cfg, proposal):
     digest = canonical_hash(proposal)
     path = authority.proposal_path(proposal)
     branch = 'automation/decision-' + digest
-    pulls = authority.collection(authority.github_api, f'repos/{repository}/pulls?state=open&base=main&head={repository.split("/")[0]}:{branch}')
+    pulls = authority.collection(authority.github_api, f'repos/{repository}/pulls?state=all&base=main&head={repository.split("/")[0]}:{branch}')
     require(len(pulls) <= 1, 'Ambiguous existing proposal PR')
     if pulls:
         pull = pulls[0]
+        require(pull.get('state') == 'open',
+                'Canonical proposal PR is closed or merged; refusing to reopen or overwrite it. '
+                'Inspect the existing PR and submit a separately reviewed proposal with a new rationale if needed')
         require(pull.get('user', {}).get('login') == cfg['botLogin']
                 and pull.get('head', {}).get('repo', {}).get('full_name') == repository
                 and authority.document_at(authority.github_api, repository, path, pull['head']['sha']) == proposal,

@@ -66,7 +66,7 @@ jobs:
           UPDATE_BRANCH: automation/weekly-flake-input-refresh
           UPDATE_TITLE: "flake.lock: refresh nixpkgs"
           UPDATE_BODY: Automated weekly refresh of the Nixpkgs flake input.
-          XO_NIXPKG_UPDATE_PATHS: flake.lock
+          XO_NIXPKG_UPDATE_PATHS: flake.lock devenv.lock
         run: nix run .#devenv -- tasks run --mode single --option 'packages:pkgs!' '' update:open-pr
 
       - name: Fail after retaining a broken candidate

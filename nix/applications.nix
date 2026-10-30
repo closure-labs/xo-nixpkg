@@ -45,12 +45,14 @@ let
 
   updateRuntimeInputs = with pkgs; [
     coreutils
+    diffutils
     curl
     gawk
     git
     gnused
     jq
     nix
+    python3
   ];
   cachePrelude = ''
     export XO_NIXPKG_CACHIX_CACHE_NAME=${pkgs.lib.escapeShellArg binaryCache.name}
@@ -578,7 +580,11 @@ rec {
       coreutils
       gh
       jq
+      python3
     ];
+    prelude = ''
+      export XO_NIXPKG_REVIEW_PROTOCOL=${../ci/decisions/review_protocol.py}
+    '';
   };
 
   queueAutomation = mkRepositoryApplication {

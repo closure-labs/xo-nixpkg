@@ -63,6 +63,14 @@ printf '%s\n' docs-lock >"$temporary/current/docs/yarn.lock"
 cp "$temporary/current/docs/yarn.lock" "$temporary/candidate/docs/yarn.lock"
 printf '## **9.2.1** (2026-09-02)\n' >"$temporary/candidate/CHANGELOG.md"
 write_initial_state
+mkdir -p "$temporary/release-context"
+write_context() {
+  printf '## **%s** (2026-10-29)\n<img id="latest" />\n' "$2" >"$temporary/release-context/$1.md"
+}
+write_context "$latest_rev" 9.2.1
+write_context "$excluded_stable_rev" 9.2
+write_context "$old_latest_rev" 9.1.0
+printf '## **9.2.1**\n<img id="latest" />\n## **9.1.0**\n<img id="stable" />\n' >"$temporary/channels.md"
 
 cat >"$temporary/commits.json" <<JSON
 [
@@ -80,6 +88,8 @@ run_update() {
   XO_NIXPKG_SOURCE_ROOT="$root" \
   XO_NIXPKG_XO_PIN_FILE="$temporary/xo.json" \
   XO_NIXPKG_FLAKE_FILE="$temporary/flake.nix" \
+  XO_NIXPKG_RELEASE_CHANNELS_FILE="$temporary/channels.md" \
+  XO_NIXPKG_RELEASE_CHANGELOG_DIR="$temporary/release-context" \
   XO_NIXPKG_COMMITS_JSON="${XO_NIXPKG_COMMITS_JSON:-$temporary/commits.json}" \
   XO_NIXPKG_PREFETCH_JSON="${XO_NIXPKG_PREFETCH_JSON:-$temporary/prefetch.json}" \
   XO_NIXPKG_CURRENT_SOURCE="$temporary/current" \
@@ -144,6 +154,8 @@ chmod +x "$temporary/bin/curl"
 PATH="$temporary/bin:$PATH" \
 LARGE_PAGE_ONE="$temporary/page-1.json" \
 LARGE_PAGE_TWO="$temporary/page-2.json" \
+XO_NIXPKG_RELEASE_CHANNELS_FILE="$temporary/channels.md" \
+XO_NIXPKG_RELEASE_CHANGELOG_DIR="$temporary/release-context" \
 XO_NIXPKG_SOURCE_ROOT="$root" \
 XO_NIXPKG_XO_PIN_FILE="$temporary/xo.json" \
 XO_NIXPKG_FLAKE_FILE="$temporary/flake.nix" \
@@ -170,10 +182,42 @@ fi
 # synthetic so a real upstream release cannot silently invalidate CI.
 write_initial_state
 printf '## **9.2.2** (2026-09-03)\n' >"$temporary/candidate/CHANGELOG.md"
+before_failure=$(sha256sum "$temporary/xo.json" "$temporary/flake.nix")
 if run_update --release >/dev/null 2>&1; then
   echo 'Mismatched XO release marker and changelog were accepted' >&2
   exit 1
 fi
+[[ $(sha256sum "$temporary/xo.json" "$temporary/flake.nix") == "$before_failure" ]]
+
+# Numeric subject typos are resolved by two immutable changelog contexts,
+# without a SHA allowlist. The tarball validation remains an independent check.
+write_typo_state() {
+  write_initial_state
+  jq '.channels.latest.version = "6.9.1" | .channels.stable.version = "6.9.0"' \
+    "$temporary/xo.json" >"$temporary/typo-state.json"
+  mv "$temporary/typo-state.json" "$temporary/xo.json"
+}
+write_typo_state
+printf '## **6.10.0**\n<img id="latest" />\n## **6.9.1**\n<img id="stable" />\n' >"$temporary/channels.md"
+write_context "$latest_rev" 6.10.0
+write_context "$old_latest_rev" 6.9.1
+printf '## **6.10.0** (2026-10-29)\n' >"$temporary/candidate/CHANGELOG.md"
+jq '[.[1], .[3]] | .[0].commit.message = "feat: release 9.10.0 (#10689)" |
+  .[1].commit.message = "feat: release 6.9.1 (#10533)"' \
+  "$temporary/commits.json" >"$temporary/subject-typo.json"
+XO_NIXPKG_COMMITS_JSON="$temporary/subject-typo.json" run_update --release >"$temporary/typo.log" 2>&1
+jq -e '.channels.latest.version == "6.10.0"' "$temporary/xo.json" >/dev/null
+grep -F 'disagrees with canonical 6.10.0' "$temporary/typo.log" >/dev/null
+write_typo_state
+printf '## **6.10.1** (2026-10-30)\n' >"$temporary/candidate/CHANGELOG.md"
+if XO_NIXPKG_COMMITS_JSON="$temporary/subject-typo.json" run_update --release >"$temporary/typo.log" 2>&1; then
+  echo 'Canonical release context bypassed tarball changelog validation' >&2
+  exit 1
+fi
+grep -F 'Release marker 6.10.0 does not match root changelog version 6.10.1' "$temporary/typo.log" >/dev/null
+write_context "$latest_rev" 9.2.1
+write_context "$old_latest_rev" 9.1.0
+printf '## **9.2.1**\n<img id="latest" />\n## **9.1.0**\n<img id="stable" />\n' >"$temporary/channels.md"
 
 # A discovered release older than the current latest cannot downgrade channels.
 write_initial_state

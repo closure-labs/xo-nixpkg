@@ -101,6 +101,21 @@ elif name == 'xo-nixpkg-decision-publication' and not fixture['admitted']:
     def dispatches(calls):
         return [call for call in calls if call[:3] == ['gh', 'workflow', 'run']]
 
+    def test_explicit_trigger_identity_avoids_latest_success_discovery(self):
+        result, calls = self.run_scheduler(QUALIFICATION_RUN='123', QUALIFICATION_ATTEMPT='2')
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertFalse(any('status=success' in str(call) for call in calls))
+        self.assertTrue(any('/actions/runs/123' in str(call) for call in calls))
+
+    def test_changed_or_malformed_trigger_attempt_fails_before_effects(self):
+        for attempt in ('1', '3', '2;false'):
+            with self.subTest(attempt=attempt):
+                self.calls.unlink(missing_ok=True)
+                result, calls = self.run_scheduler(QUALIFICATION_RUN='123', QUALIFICATION_ATTEMPT=attempt)
+                self.assertNotEqual(result.returncode, 0)
+                self.assertFalse(any(call[:3] == ['gh', 'run', 'download'] for call in calls))
+                self.assertEqual(self.dispatches(calls), [])
+
     def test_default_selects_one_successful_product_and_preserves_both_decisions(self):
         result, calls = self.run_scheduler()
         self.assertEqual(result.returncode, 0, result.stderr)

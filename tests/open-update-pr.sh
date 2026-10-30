@@ -199,6 +199,12 @@ run_fixture "$weekly_repository" 0 "$temporary/weekly-push" "$weekly_gh_log" \
   unused '' '{}' '' automation/weekly-flake-input-refresh flake.lock
 [[ $(git -C "$weekly_repository" diff-tree --no-commit-id --name-only -r HEAD) == devenv.lock ]]
 grep -F 'Includes the native Devenv lockfile' "$weekly_gh_log" >/dev/null
+# The current workflow passes both locks explicitly; retain the same path bound.
+printf 'newer native change\n' >"$weekly_repository/devenv.lock"
+run_fixture "$weekly_repository" 0 "$temporary/weekly-pair-push" "$weekly_gh_log" \
+  unused '' '{}' '' automation/weekly-flake-input-refresh flake.lock devenv.lock
+[[ $(git -C "$weekly_repository" diff-tree --no-commit-id --name-only -r HEAD) == devenv.lock ]]
+
 
 # An unrelated updater still commits only its explicitly supplied path.
 other_repository=$temporary/other-selector
