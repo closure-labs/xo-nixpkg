@@ -406,7 +406,7 @@ class AutomaticBoundaries(Integration):
             self.source.add_file(str(path.relative_to(ROOT)), path.read_text())
 
     def test_real_ci_codeql_and_collector_admit_without_human_review(self):
-        for workflow in ('ci.yml', 'codeql.yml', 'decision-events.yml'):
+        for workflow in ('ci.yml', 'codeql.yml', 'decision-events.yml', 'repository-secret-scan.yml'):
             self.setUp(); self.real_workflow(workflow); self.humans.reviews = []
             with self.subTest(workflow=workflow):
                 self.assertEqual(self.admit(), 'approved')
@@ -418,6 +418,7 @@ class AutomaticBoundaries(Integration):
         mutations = [safe.replace('contents: read', 'contents: write'),
                      safe.replace('contents: read', 'id-token: write'),
                      safe.replace('echo safe', "echo ${{ secrets['KEY'] }}"),
+                     safe.replace('echo safe', "echo ${{ toJSON(Secrets) }}"),
                      safe.replace('ubuntu-24.04', 'self-hosted'),
                      safe.replace('    steps:', '    uses: owner/repo/.github/workflows/run.yml@' + OLD + '\n    steps:'),
                      safe.replace('    runs-on:', '    permissions:\n      contents: write\n    runs-on:'),
@@ -444,7 +445,7 @@ class AutomaticBoundaries(Integration):
             self.source.add_file(name, json.dumps(old), json.dumps(new if synchronized or name == 'flake.lock' else old))
 
     def test_complete_synchronized_nix_pair_admits_all_readonly_workflows(self):
-        for workflow in ('ci.yml', 'codeql.yml', 'decision-events.yml'):
+        for workflow in ('ci.yml', 'codeql.yml', 'decision-events.yml', 'repository-secret-scan.yml'):
             self.setUp(); self.native(); self.real_workflow(workflow); self.humans.reviews = []
             with self.subTest(workflow=workflow):
                 self.assertEqual(self.admit(), 'approved')

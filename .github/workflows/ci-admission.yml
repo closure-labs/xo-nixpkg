@@ -2,7 +2,7 @@
 name: Admit trusted pull request CI
 on:
   workflow_run: # zizmor: ignore[dangerous-triggers] Metadata only; protected main executes.
-    workflows: [CI, CodeQL Advanced, Collect maintainer decision events, Verify maintainer decision authority]
+    workflows: [CI, CodeQL Advanced, Scan repository secrets, Collect maintainer decision events, Verify maintainer decision authority]
     types: [completed]
   schedule:
     - cron: '*/15 * * * *'

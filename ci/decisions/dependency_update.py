@@ -322,6 +322,13 @@ def paired_lock(api, context):
 NON_PR = "github.event_name != 'pull_request' && github.event_name != 'pull_request_review'"
 
 
+def has_secrets(value):
+    # Match context access, including bracket/whole-context expressions, rather
+    # than harmless display names such as 'Scan repository secrets'.
+    return re.search(r'\bsecrets\s*(?:\.|\[)|\$\{\{(?:(?!\}\}).)*\bsecrets\b',
+                     str(value), re.I | re.S) is not None
+
+
 def read_only_run(api, context, run):
     """Prove the admitted immutable workflow cannot execute privileged jobs.
 
@@ -337,7 +344,7 @@ def read_only_run(api, context, run):
         if not isinstance(value, dict) or any(v not in ('read', 'none') for v in value.values()):
             raise ValueError('Dependabot execution requires explicit read-only permissions')
     permissions(document.get('permissions'))
-    if re.search(r'\bsecrets\b', str({k: v for k, v in document.items() if k != 'jobs'})):
+    if has_secrets({k: v for k, v in document.items() if k != 'jobs'}):
         raise ValueError('Dependabot execution cannot reference secrets')
     seen = set()
     local_count = 0
@@ -371,7 +378,7 @@ def read_only_run(api, context, run):
                 else:
                     raw = immutable_text(api, context, action_path)
                 action_spans(raw, action_path)
-                if re.search(r'\bsecrets\b', raw):
+                if has_secrets(raw):
                     raise ValueError('Local action cannot reference secrets')
                 action = yaml.load(raw, Loader=yaml.BaseLoader)
                 if action.get('runs', {}).get('using') != 'composite':
@@ -385,7 +392,7 @@ def read_only_run(api, context, run):
         if condition in (NON_PR, NON_PR + " && needs.validate.outputs.cache_eligible == 'true'"):
             continue  # always false for both permitted native PR event types
         permissions(job.get('permissions', document['permissions']))
-        if re.search(r'\bsecrets\b', str(job)) or 'uses' in job or job.get('runs-on') not in ('ubuntu-24.04', 'ubuntu-slim'):
+        if has_secrets(job) or 'uses' in job or job.get('runs-on') not in ('ubuntu-24.04', 'ubuntu-slim'):
             raise ValueError('Admitted jobs require isolated hosted runners and no secrets/reusable workflows')
         steps(job.get('steps'))
     return True
