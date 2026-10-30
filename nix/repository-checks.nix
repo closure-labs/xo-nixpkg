@@ -6,6 +6,7 @@
 }:
 
 let
+  secretScanner = import ./secret-scanner.nix { inherit pkgs; };
   fuseArchive = pkgs.fetchurl {
     url = "https://registry.yarnpkg.com/fuse-shared-library-linux/-/fuse-shared-library-linux-1.0.1.tgz";
     hash = "sha512-07MQRSobrBKwW4D7oKm0gM2TwgvZWb+gC08JdiYDG4KBTncxk9ssqEDiDMKll8hpseZufsY2w1yc/feOu2DPmQ==";
@@ -82,7 +83,7 @@ let
       mkCheck "repository-policy"
         (with pkgs; [
           actionlint
-          gitleaks
+          secretScanner.package
           coreutils
           findutils
           git

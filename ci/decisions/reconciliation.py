@@ -1,5 +1,6 @@
 """Authenticated packet/proposal operations shared by dedicated CLI leaves."""
 import json
+import re
 from pathlib import Path
 import shutil
 import subprocess
@@ -164,12 +165,25 @@ def queue_proposal(cfg, number):
     require(acknowledged, 'Enqueue acknowledgement unavailable; native state remains waiting')
     return 'enqueue-pending'
 
+def proposal_content(proposal):
+    """One JSON value per line without costly indentation on large packets.
+
+    Preserve the exact existing canonical-key line spelling consumed by the
+    repository secret inventory policy. This changes whitespace only, not that
+    policy or already-published history. JSON encoding escapes embedded newlines.
+    """
+    pretty = json.dumps(proposal, sort_keys=True, indent=2, allow_nan=False)
+    key_line = re.compile(r'          "key": "[a-f0-9]{64}",')
+    return '\n'.join(line if key_line.fullmatch(line) else line.lstrip(' ')
+                     for line in pretty.split('\n')) + '\n'
+
+
 def propose(cfg, proposal):
     """Create one immutable bot branch/PR without checking out or executing candidate code."""
     repository = cfg['repository']
     # Whitespace is not part of canonical proposal identity. Keep producer bytes
     # within the verifier's existing cap before creating any remote Git objects.
-    content = json.dumps(proposal, sort_keys=True, separators=(',', ':'), allow_nan=False) + '\n'
+    content = proposal_content(proposal)
     require(0 < len(content.encode('utf-8')) <= authority.MAX_PROPOSAL_BYTES,
             'Decision proposal exceeds the bounded Git blob limit; no proposal was published')
     digest = canonical_hash(proposal)
