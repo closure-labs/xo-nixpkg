@@ -167,7 +167,13 @@ def producer(receipt, controller, tree):
     """Validate historical provenance; a receipt never supplies its own authority."""
     require(isinstance(receipt, dict) and receipt.get('schema') == 2
             and receipt.get('repository') == REPOSITORY, 'Invalid reuse receipt identity')
-    require(receipt.get('repositorySecretPolicy') == repository_policy_binding(controller), 'Reuse policy mismatch')
+    binding = receipt.get('repositorySecretPolicy')
+    require(isinstance(binding, dict) and set(binding) == {'policyId', 'policySha256'}
+            and isinstance(binding['policyId'], str)
+            and re.fullmatch(r'[a-z][a-z0-9-]{0,127}', binding['policyId'])
+            and isinstance(binding['policySha256'], str)
+            and re.fullmatch(r'[0-9a-f]{64}', binding['policySha256']),
+            'Invalid reuse policy binding')
     require(receipt.get('tree') == tree and receipt.get('system') == 'x86_64-linux', 'Reuse tree/platform mismatch')
     for key in ('source', 'controller'):
         require(isinstance(receipt.get(key), str) and SHA.fullmatch(receipt[key]), 'Invalid reuse revision')
@@ -233,6 +239,8 @@ def producer(receipt, controller, tree):
 def compatible_producer(receipt, controller):
     # Apply only after historical provenance, signature and output validation.
     # Legitimate protected-controller upgrades make old bytes ineligible.
+    if receipt['repositorySecretPolicy'] != repository_policy_binding(controller):
+        raise UnavailableProducer('Authenticated historical repository policy differs from current policy')
     if receipt['workflowSha256'] != digest(controller / WORKFLOW) or receipt['launcherSha256'] != digest(Path(__file__)):
         raise UnavailableProducer('Authenticated historical controller differs from current trusted controller')
 
