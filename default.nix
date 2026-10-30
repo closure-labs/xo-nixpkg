@@ -13,7 +13,7 @@
   makeWrapper,
   libpng,
   zlib,
-  fuse,
+  fuse2,
   channel,
   docsYarnHash,
   source,
@@ -127,6 +127,8 @@ let
     yarn = yarn';
   };
 in
+assert lib.assertMsg (lib.versions.major fuse2.version == "2")
+  "XO upstream fuse-native requires the explicit FUSE 2 compatibility dependency";
 stdenv.mkDerivation (
   finalAttrs:
   let
@@ -172,8 +174,9 @@ stdenv.mkDerivation (
     ];
 
     buildInputs = [
-      # libfuse2 for fuse-native/@vates/fuse-vhd.
-      fuse
+      # Upstream fuse-native 2.2.6 requires the FUSE 2 ABI; never pkgs.fuse
+      # (which now denotes FUSE 3). This dependency is scoped to XO only.
+      fuse2
       zlib
       libpng
       stdenv.cc.cc.lib
@@ -196,7 +199,7 @@ stdenv.mkDerivation (
       npm_config_nodedir = "${runtimeNode.nodejs}";
       npm_config_node_gyp = "${node-gyp}/bin/node-gyp";
       npm_config_python = "${python3}/bin/python3";
-      LD_LIBRARY_PATH = lib.makeLibraryPath [ fuse ];
+      LD_LIBRARY_PATH = lib.makeLibraryPath [ fuse2 ];
     }
     // lib.optionalAttrs (platformTools ? esbuild) {
       ESBUILD_BINARY_PATH = "${platformTools.esbuild}/bin/esbuild";
@@ -269,15 +272,15 @@ stdenv.mkDerivation (
 
           replace(
             "const FUSE = path.join(__dirname, " + q + "libfuse" + q + ")",
-            "const FUSE = " + q + "${lib.getBin fuse}" + q
+            "const FUSE = " + q + "${lib.getBin fuse2}" + q
           )
           replace(
             "const lib = path.join(FUSE, " + q + "lib/libfuse.so" + q + ")",
-            "const lib = " + q + "${lib.getLib fuse}/lib/libfuse.so" + q
+            "const lib = " + q + "${lib.getLib fuse2}/lib/libfuse.so" + q
           )
           replace(
             "const include = path.join(FUSE, " + q + "include" + q + ")",
-            "const include = " + q + "${fuse.dev}/include/fuse" + q
+            "const include = " + q + "${lib.getDev fuse2}/include/fuse" + q
           )
 
           source = source.replace(
@@ -400,8 +403,8 @@ stdenv.mkDerivation (
 
       makeWrapper ${runtimeNode.nodejs}/bin/node $out/bin/xo-server \
         --chdir $out/libexec/xen-orchestra \
-        --prefix LD_LIBRARY_PATH : ${lib.makeLibraryPath [ fuse ]} \
-        --prefix PATH : ${lib.makeBinPath [ (lib.getBin fuse) ]} \
+        --prefix LD_LIBRARY_PATH : ${lib.makeLibraryPath [ fuse2 ]} \
+        --prefix PATH : ${lib.makeBinPath [ (lib.getBin fuse2) ]} \
         --add-flags "packages/xo-server/dist/cli.mjs"
 
       runHook postInstall

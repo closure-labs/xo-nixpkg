@@ -169,7 +169,7 @@
   ],
   "pathRules": [
     {
-      "pattern": "^(?:ci/security-fixtures\\.sh|nix/security-fixtures\\.nix|tests/test_(?:preflight|history_scan|audit_freshness|scanner_fixtures|scanner_evidence)\\.py)$",
+      "pattern": "^(?:ci/security-fixtures\\.sh|nix/security-fixtures\\.nix|tests/test_(?:preflight|history_scan|audit_freshness|scanner_fixtures|scanner_evidence|fuse_compat)\\.py)$",
       "validation": [
         "repository-policy"
       ],
@@ -484,7 +484,7 @@
       "publication": []
     },
     {
-      "pattern": "^(default\\.nix|nix/(fetch-normalized-yarn-deps|prefetch-yarn-deps|yarn-platform-tools|runtime-node)\\.nix|nix/(retry-yarn-fetch|normalize-yarn-cache)\\.sh|nix/patches/)",
+      "pattern": "^(default\\.nix|nix/(fetch-normalized-yarn-deps|prefetch-yarn-deps|yarn-platform-tools|runtime-node)\\.nix|nix/(retry-yarn-fetch|normalize-yarn-cache)\\.sh|nix/patches/|nix/fuse2-compat/)",
       "validation": [
         "xo-latest",
         "xo-stable",
