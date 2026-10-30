@@ -15,6 +15,14 @@ def run(*args):
     return subprocess.check_output(args, text=True).strip()
 
 
+def native_binding():
+    path = os.environ.get('XO_NATIVE_SECRET_CONTROLLER_SOURCE', str(Path(__file__).with_name('native-secret-controller.py')))
+    spec = importlib.util.spec_from_file_location('native_secret_policy', path)
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module.policy_binding()
+
+
 def main():
     output = Path(os.environ.get('XO_NIXPKG_EVIDENCE', 'security-evidence'))
     if output.exists():
@@ -26,7 +34,7 @@ def main():
                     '--controller', str(Path.cwd()), '--output', str(output / 'build-reuse.json')], check=True)
     for name in ('GH_TOKEN', 'GITHUB_TOKEN', 'CACHIX_AUTH_TOKEN', 'SECAUDIT_PEM',
                  'REGISTRY_TOKEN', 'DECIDER_KEY', 'XO_AUTHORITY_TOKEN',
-                 'ACTIONS_ID_TOKEN_REQUEST_TOKEN', 'ACTIONS_RUNTIME_TOKEN'):
+                 'ACTIONS_ID_TOKEN_REQUEST_TOKEN', 'ACTIONS_RUNTIME_TOKEN', 'NATIVE_SECRET_OBSERVER_TOKEN'):
         os.environ.pop(name, None)
     revision = run('git', 'rev-parse', 'HEAD')
     started = datetime.datetime.now(datetime.timezone.utc)
@@ -71,11 +79,12 @@ def main():
                           'runId': int(os.environ.get('GITHUB_RUN_ID', '0')),
                           'runAttempt': int(os.environ.get('GITHUB_RUN_ATTEMPT', '0'))},
              'scannedAt': started.isoformat(), 'expiresAt': (started + datetime.timedelta(hours=48)).isoformat(), 'profiles': profiles}
+    scans['repositorySecretPolicy'] = native_binding()
     scans['productProducer'] = dict(scans['producer'], revision=revision)
     assets = {str(path.relative_to(output)): hashlib.sha256(path.read_bytes()).hexdigest()
               for path in sorted(output.rglob('*')) if path.is_file() and path.name not in {'product.json', 'scans.json'} and not path.name.startswith('handoff-')}
     product = {'schema': 1, 'repository': 'closure-labs/xo-nixpkg', 'revision': revision,
-               'products': products, 'assets': assets, 'roots': roots}
+               'products': products, 'assets': assets, 'roots': roots, 'repositorySecretPolicy': native_binding()}
     # Scan timestamps and databases change on rescan, so release product identity
     # contains only immutable inventory and closure assertions.
     product['assets'] = {name.replace('/', '--'): digest for name, digest in assets.items()

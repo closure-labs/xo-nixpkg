@@ -431,3 +431,5 @@ and scanner policy are unchanged. Individual string values are not truncated.
 This prevents future proposals from becoming multi-megabyte single-line scanner
 inputs. It does not rewrite or exempt already-published compact history, repair
 its scanner findings, or remove the need for exact-head approval on a new commit.
+
+Repository secret policy migration: see [native-secret-migration-proposal.md](native-secret-migration-proposal.md). The draft separates pure PR checks from protected-main native observation and requires staged bootstrap; it makes no exact-head/full-history completion claim.

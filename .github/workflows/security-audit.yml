@@ -1,5 +1,5 @@
 # SPDX-License-Identifier: Apache-2.0
-name: Audit repository security
+name: Audit repository protection
 on:
   push:
     branches: [main]
@@ -12,24 +12,6 @@ concurrency:
   group: security-audit-${{ github.event.pull_request.number || github.ref }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 jobs:
-  audit:
-    name: Repository security audit
-    runs-on: ubuntu-24.04
-    timeout-minutes: 30
-    steps:
-      - name: Audit runner traffic
-        uses: step-security/harden-runner@dc2769abcc0fcfbadfc1df54081c1608579ef6b2 # v2
-        with:
-          egress-policy: audit
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          fetch-depth: 0
-          persist-credentials: false
-      - uses: ./.github/actions/setup-nix # zizmor: ignore[self-repository] -- local setup follows the explicitly checked-out trusted revision.
-        with:
-          github-token: ${{ github.token }}
-      - name: Full history audit contract v2
-        run: nix run .#devenv -- tasks run --mode single --option 'packages:pkgs!' '' ci:security-lint
   policy:
     name: Audit effective repository protection
     if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'

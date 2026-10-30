@@ -6,7 +6,6 @@
 }:
 
 let
-  secretScanner = import ./secret-scanner.nix { inherit pkgs; };
   boundedGh = pkgs.writeShellApplication {
     name = "gh";
     runtimeInputs = [ pkgs.python3 ];
@@ -214,6 +213,9 @@ rec {
       securityDatabase
     ];
     prelude = ''
+      export XO_NATIVE_SECRET_CONTROLLER_SOURCE=${../ci/native-secret-controller.py}
+      export XO_NATIVE_SECRET_CONTRACT_SOURCE=${../ci/native-secret-observation.py}
+      export XO_NATIVE_SECRET_POLICY_PATH=${../ci/native-secret-policy.json}
       export XO_NIXPKG_REFRESHER=${../ci/refresh-products.py}
       export PYTHONPATH=${decisions}/lib/decisions
       export XO_NIXPKG_DISTRIBUTION_CACHE_SOURCE=${../ci/distribution-cache.py}
@@ -302,32 +304,15 @@ rec {
     name = "xo-nixpkg-security-lint";
     script = ../ci/security-lint.sh;
     prelude = ''
-      export XO_NIXPKG_HISTORY_SCAN_SOURCE=${../ci/history-scan.py}
-      export XO_NIXPKG_SECRET_SCANNER=${secretScanner.package}/bin/gitleaks
-      export XO_NIXPKG_SECRET_SCANNER_IDENTITY=${secretScanner.identity}
       export PYTHONPATH=${decisions}/lib/decisions
     '';
     runtimeInputs = with pkgs; [
       actionlint
       zizmor
-      secretScanner.package
       python3
       nix
       git
     ];
-  };
-  secretScanEvidence = mkRepositoryApplication {
-    name = "xo-nixpkg-secret-scan-evidence";
-    script = ../ci/secret-scan-evidence.sh;
-    runtimeInputs = [ pkgs.python3 pkgs.git pkgs.nix secretScanner.package ];
-    prelude = ''
-      export XO_NIXPKG_HISTORY_SCAN_SOURCE=${../ci/history-scan.py}
-      export XO_NIXPKG_SECRET_SCANNER=${secretScanner.package}/bin/gitleaks
-      export XO_NIXPKG_SECRET_SCANNER_IDENTITY=${secretScanner.identity}
-      export XO_NIXPKG_SCANNER_FIXTURE_SOURCE=${../ci/scanner-fixtures.py}
-      export XO_NIXPKG_SCANNER_EVIDENCE_SOURCE=${../ci/secret-scan-evidence.py}
-      export PYTHONPATH=${decisions}/lib/decisions
-    '';
   };
   decisionReconcile = mkRepositoryApplication {
     name = "xo-nixpkg-decision-reconcile-candidate";
@@ -388,6 +373,9 @@ rec {
       buildReuse
     ];
     prelude = ''
+      export XO_NATIVE_SECRET_CONTROLLER_SOURCE=${../ci/native-secret-controller.py}
+      export XO_NATIVE_SECRET_CONTRACT_SOURCE=${../ci/native-secret-observation.py}
+      export XO_NATIVE_SECRET_POLICY_PATH=${../ci/native-secret-policy.json}
       export XO_NIXPKG_QUALIFIER=${../ci/qualify-products.py}
       export PYTHONPATH=${decisions}/lib/decisions
       export XO_NIXPKG_DISTRIBUTION_CACHE_SOURCE=${../ci/distribution-cache.py}
@@ -403,6 +391,9 @@ rec {
       pkgs.python3
     ];
     prelude = ''
+      export XO_NATIVE_SECRET_CONTROLLER_SOURCE=${../ci/native-secret-controller.py}
+      export XO_NATIVE_SECRET_CONTRACT_SOURCE=${../ci/native-secret-observation.py}
+      export XO_NATIVE_SECRET_POLICY_PATH=${../ci/native-secret-policy.json}
       export XO_NIXPKG_AUDIT_FRESHNESS_SOURCE=${../ci/audit-freshness.py}
       export PYTHONPATH=${decisions}/lib/decisions
     '';
@@ -480,13 +471,9 @@ rec {
       nix
       planRunner
       trustedCandidateNix
-      secretScanner.package
     ];
     prelude = ''
       export XO_NIXPKG_BUILD_REUSE_SOURCE=${../ci/build-reuse.py}
-      export XO_NIXPKG_HISTORY_SCAN_SOURCE=${../ci/history-scan.py}
-      export XO_NIXPKG_SECRET_SCANNER=${secretScanner.package}/bin/gitleaks
-      export XO_NIXPKG_SECRET_SCANNER_IDENTITY=${secretScanner.identity}
       export XO_NIXPKG_TRUSTED_NIX=${pkgs.lib.getExe pkgs.nix}
       export XO_NIXPKG_PLAN_RUNNER=${pkgs.lib.getExe planRunner}
       export XO_NIXPKG_TRUSTED_PLAN_NIX=${pkgs.lib.getExe trustedCandidateNix}

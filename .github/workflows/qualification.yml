@@ -67,6 +67,21 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: nix run .#devenv -- tasks run --mode single --option 'packages:pkgs!' '' security:qualify
+      - name: Mint repository-scoped native observer (read only)
+        id: native_observer
+        uses: actions/create-github-app-token@64ab729a6294000f5aa4a4bc0b73d1f32bc45510 # v3.3.0
+        with:
+          client-id: ${{ vars.DECIDER_CLIENT }}
+          private-key: ${{ secrets.DECIDER_KEY }}
+          owner: closure-labs
+          repositories: xo-nixpkg
+          permission-administration: read
+          permission-secret-scanning-alerts: read
+      - name: Require current native posture and hidden-secret observation before attestation
+        env:
+          NATIVE_SECRET_OBSERVER_TOKEN: ${{ steps.native_observer.outputs.token }}
+          REPOSITORY_READ_TOKEN: ${{ github.token }}
+        run: python3 ci/native-secret-controller.py qualification --output "$RUNNER_TEMP/native-qualification-observation.json"
       - name: Attest candidate, observations and independent handoffs
         uses: actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6 # v4
         with:
