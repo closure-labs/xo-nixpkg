@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 # SPDX-License-Identifier: Apache-2.0
 """Exhaustively scan a frozen full-history inventory with bounded work units."""
+import argparse
 import concurrent.futures
 from contextvars import copy_context
 import hashlib
@@ -88,6 +89,36 @@ def inventory(root, environment):
     return snapshot, sorted(commits)
 
 
+def introduced_inventory(root, environment, base_sha, head_sha):
+    """Freeze every head-reachable commit absent from the exact protected base."""
+    if (not isinstance(base_sha, str) or not SHA.fullmatch(base_sha)
+            or not isinstance(head_sha, str) or not SHA.fullmatch(head_sha)):
+        raise ValueError('Exact immutable base and head commit IDs are required')
+    if git_lines(root, ['rev-parse', '--is-shallow-repository'], environment) != ['false']:
+        raise ValueError('Introduced-commit scan requires a complete Git checkout')
+    for identity in (base_sha, head_sha):
+        if git_lines(root, ['cat-file', '-t', identity], environment) != ['commit']:
+            raise ValueError('Scan endpoints must be existing commit objects')
+    if git_lines(root, ['rev-parse', '--verify', 'HEAD'], environment) != [head_sha]:
+        raise ValueError('Scan head does not match checked-out evaluation commit')
+    snapshot = refs(root, environment)
+    if any(row.partition(' ')[2].startswith('refs/replace/') for row in snapshot):
+        raise ValueError('Replacement history is unsupported')
+    graft_paths = git_lines(root, ['rev-parse', '--git-path', 'info/grafts'], environment)
+    if len(graft_paths) != 1:
+        raise ValueError('Could not validate history graft state')
+    graft = Path(graft_paths[0])
+    if not graft.is_absolute():
+        graft = Path(root) / graft
+    if graft.exists():
+        raise ValueError('Grafted history is unsupported')
+    commits = git_lines(root, ['rev-list', '--full-history', head_sha, '^' + base_sha], environment)
+    if (len(commits) > MAX_COMMITS or len(set(commits)) != len(commits)
+            or any(not SHA.fullmatch(commit) for commit in commits)):
+        raise ValueError('Invalid introduced commit inventory')
+    return snapshot, sorted(commits)
+
+
 def file_digest(path, maximum=None):
     if not path.is_file():
         raise ValueError('Scan identity file is not regular')
@@ -142,8 +173,26 @@ def production_scanner(environment):
     return scanner, metadata
 
 
-def scan(root, environment=None, scanner='gitleaks', scanner_identity=None):
+def scan(root, environment=None, scanner='gitleaks', scanner_identity=None,
+         mode='full', base_sha=None, head_sha=None):
     environment = dict(os.environ if environment is None else environment)
+    if mode not in ('full', 'introduced') or (mode == 'full' and (base_sha is not None or head_sha is not None)):
+        raise ValueError('Invalid history scan mode or endpoint combination')
+    if mode == 'introduced':
+        # Endpoints and history must come from this checkout, not caller-provided
+        # alternate object stores, shallow boundaries, grafts or Git config.
+        forbidden = ('GIT_DIR', 'GIT_COMMON_DIR', 'GIT_WORK_TREE', 'GIT_INDEX_FILE',
+                     'GIT_OBJECT_DIRECTORY', 'GIT_ALTERNATE_OBJECT_DIRECTORIES',
+                     'GIT_CONFIG',
+                     'GIT_CONFIG_COUNT', 'GIT_CONFIG_PARAMETERS', 'GIT_GRAFT_FILE',
+                     'GIT_REPLACE_REF_BASE', 'GIT_SHALLOW_FILE')
+        if any(environment.get(key) not in (None, '', '/dev/null')
+               for key in ('GIT_CONFIG_GLOBAL', 'GIT_CONFIG_SYSTEM')):
+            raise ValueError('External Git configuration override is unsupported')
+        if any(environment.get(key) for key in forbidden) or any(
+                key.startswith(('GIT_CONFIG_KEY_', 'GIT_CONFIG_VALUE_')) for key in environment):
+            raise ValueError('External Git history or configuration override is unsupported')
+        environment['GIT_NO_REPLACE_OBJECTS'] = '1'
     started = time.monotonic()
     with operations.budget(TOTAL_TIMEOUT):
         scanner_path = shutil.which(scanner, path=environment.get('PATH'))
@@ -167,7 +216,8 @@ def scan(root, environment=None, scanner='gitleaks', scanner_identity=None):
         git_version = git_lines(root, ['--version'], environment)
         if len(git_version) != 1 or not re.fullmatch(r'git version [0-9A-Za-z.+-]{1,80}', git_version[0]):
             raise ValueError('Invalid Git version identity')
-        snapshot, commits = inventory(root, environment)
+        snapshot, commits = (inventory(root, environment) if mode == 'full' else
+                             introduced_inventory(root, environment, base_sha, head_sha))
         batches = [commits[i:i + BATCH_SIZE] for i in range(0, len(commits), BATCH_SIZE)]
         # Prove partition completeness before invoking scanners.
         if [c for batch in batches for c in batch] != commits:
@@ -177,7 +227,14 @@ def scan(root, environment=None, scanner='gitleaks', scanner_identity=None):
             begin = time.monotonic()
             # Identical Git patch/filter defaults, but no traversal from the
             # explicit commits: ancestors are present exactly once elsewhere.
-            options = '--no-walk=unsorted --full-history --diff-filter=tuxdb ' + ' '.join(batch)
+            options = '--no-walk=unsorted --full-history --diff-filter=tuxdb '
+            if mode == 'introduced':
+                # First-parent merge patches expose resolution additions. This is
+                # NOT first-parent traversal: every side-branch commit is also
+                # enumerated. Other-parent diffs can reintroduce protected-base
+                # content that is outside the introduced-commit contract.
+                options += '--diff-merges=first-parent '
+            options += ' '.join(batch)
             def blocked(reason):
                 print(json.dumps({'schema': 1, 'stage': 'history-batch', 'status': 'blocked',
                                   'batch': index, 'commits': len(batch), 'reason': reason,
@@ -222,11 +279,17 @@ def scan(root, environment=None, scanner='gitleaks', scanner_identity=None):
                 or sum(count for count, _ in results.values()) != len(commits)
                 or refs(root, environment) != snapshot):
             raise ValueError('Incomplete or changed history scan coverage')
+        if mode == 'introduced':
+            final_snapshot, final_commits = introduced_inventory(root, environment, base_sha, head_sha)
+            if final_snapshot != snapshot or final_commits != commits:
+                raise ValueError('Introduced history inputs changed during scan')
         if (policy_identity(root) != policy or file_digest(Path(__file__)) != helper_hash
                 or (scanner_path and file_digest(Path(scanner_path)) != scanner_hash)):
             raise ValueError('Scan identity changed during execution')
         receipt = {'schema': 1, 'authorityClaim': False, 'reuseEligible': False,
-                   'coverage': 'complete-frozen-all-refs-and-worktree-heads',
+                   'coverage': ('complete-frozen-all-refs-and-worktree-heads' if mode == 'full' else
+                                'all-head-reachable-commits-not-reachable-from-protected-base'),
+                   'mode': mode, 'baseSha': base_sha, 'headSha': head_sha,
                    'commitIds': commits,
                    'refs': [{'object': row.partition(' ')[0],
                              'nameSha256': hashlib.sha256(row.partition(' ')[2].encode(
@@ -237,8 +300,10 @@ def scan(root, environment=None, scanner='gitleaks', scanner_identity=None):
                                'productionPinned': scanner_identity is not None},
                    'policySha256': policy, 'helperSha256': helper_hash,
                    'gitVersion': git_version[0],
-                   'semantics': {'enumeration': 'rev-list --full-history --stdin',
-                                 'patch': '--no-walk=unsorted --full-history --diff-filter=tuxdb',
+                   'semantics': {'enumeration': ('rev-list --full-history --stdin' if mode == 'full' else
+                                                  'rev-list --full-history head ^base'),
+                                 'patch': '--no-walk=unsorted --full-history --diff-filter=tuxdb' +
+                                          (' --diff-merges=first-parent' if mode == 'introduced' else ''),
                                  'scanner': 'git --redact --no-banner',
                                  'incrementalReuse': False}}
         if len(json.dumps(receipt, sort_keys=True).encode()) > MAX_RECEIPT_BYTES:
@@ -246,17 +311,23 @@ def scan(root, environment=None, scanner='gitleaks', scanner_identity=None):
         return {'schema': 1, 'status': 'success', 'authorityClaim': False, 'reuseEligible': False, 'receipt': receipt, 'commits': len(commits), 'batches': len(batches),
                 'inventorySha256': hashlib.sha256(('\n'.join(commits) + '\n').encode()).hexdigest(),
                 'seconds': round(time.monotonic() - started, 3),
-                'maximumBatchSeconds': max(elapsed for _, elapsed in results.values())}
+                'maximumBatchSeconds': max((elapsed for _, elapsed in results.values()), default=0)}
 
 
-def main():
+def main(argv=None):
+    parser = argparse.ArgumentParser()
+    parser.add_argument('--mode', choices=('full', 'introduced'), default='full')
+    parser.add_argument('--base-sha')
+    parser.add_argument('--head-sha')
+    args = parser.parse_args(argv)
     try:
         scanner, identity = production_scanner(os.environ)
-        print(json.dumps(scan(Path.cwd(), scanner=scanner, scanner_identity=identity), sort_keys=True))
+        print(json.dumps(scan(Path.cwd(), scanner=scanner, scanner_identity=identity,
+                                   mode=args.mode, base_sha=args.base_sha, head_sha=args.head_sha), sort_keys=True))
         return 0
     except (ValueError, OSError, UnicodeError, subprocess.SubprocessError):
         print(json.dumps({'schema': 1, 'status': 'blocked', 'authorityClaim': False, 'reuseEligible': False,
-                          'reason': 'Full history scan failed, timed out, or has incomplete coverage'}))
+                          'reason': 'Requested history scan failed, timed out, or has incomplete coverage'}))
         return 1
 
 

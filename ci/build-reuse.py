@@ -365,6 +365,26 @@ def validate_plan(plan):
         names.add(item['name']); attributes.add(item['attribute'])
 
 
+def secret_scan_scope(candidate, controller):
+    """Bind incremental coverage to trusted event inputs, not candidate metadata."""
+    event = os.environ.get('GITHUB_EVENT_NAME')
+    if event not in ('pull_request', 'merge_group'):
+        require(event in ('schedule', 'workflow_dispatch'), 'Unsupported secret scan event')
+        return {'mode': 'full'}
+    data = read_json(Path(os.environ['GITHUB_EVENT_PATH']))
+    if event == 'pull_request':
+        base = data['pull_request']['base']['sha']
+    else:
+        base = data['merge_group']['base_sha']
+    head = os.environ['GITHUB_SHA']
+    require(isinstance(base, str) and SHA.fullmatch(base) and SHA.fullmatch(head),
+            'Invalid secret scan event identities')
+    require(git(controller, 'rev-parse', 'HEAD') == base
+            and git(candidate, 'rev-parse', 'HEAD') == head,
+            'Secret scan checkout differs from event identities')
+    return {'mode': 'introduced', 'base': base, 'head': head}
+
+
 def preflight_identity(candidate, controller, plan):
     source = git(candidate, 'rev-parse', 'HEAD')
     require(source == os.environ['GITHUB_SHA'], 'Preflight checkout differs from GitHub source identity')
@@ -374,7 +394,7 @@ def preflight_identity(candidate, controller, plan):
                 'workflowSha256': digest(controller / WORKFLOW), 'launcherSha256': digest(Path(__file__)),
                 'planSha256': hashlib.sha256(json.dumps(plan, sort_keys=True, separators=(',', ':')).encode()).hexdigest(),
                 'runId': int(os.environ['GITHUB_RUN_ID']), 'runAttempt': int(os.environ['GITHUB_RUN_ATTEMPT']),
-                'authorityClaim': False}
+                'authorityClaim': False, 'secretScanScope': secret_scan_scope(candidate, controller)}
     require(all(SHA.fullmatch(identity[key]) for key in ('source', 'tree', 'controller'))
             and identity['runId'] > 0 and identity['runAttempt'] > 0, 'Invalid preflight source or invocation')
     return identity
@@ -466,7 +486,11 @@ def validate(candidate, controller, evidence, phase='all', preflight=None):
         if phase == 'preflight':
             require(git(candidate, 'rev-parse', '--is-shallow-repository') == 'false',
                     'History security scan requires a complete Git checkout')
-            operations.run([sys.executable, os.environ['XO_NIXPKG_HISTORY_SCAN_SOURCE']], cwd=candidate,
+            scope = secret_scan_scope(candidate, controller)
+            scan_args = ['--mode', scope['mode']]
+            if scope['mode'] == 'introduced':
+                scan_args += ['--base-sha', scope['base'], '--head-sha', scope['head']]
+            operations.run([sys.executable, os.environ['XO_NIXPKG_HISTORY_SCAN_SOURCE'], *scan_args], cwd=candidate,
                            env=dict(environment, PYTHONPATH=str(Path(operations.__file__).parent),
                                     XO_NIXPKG_SECRET_SCANNER=os.environ['XO_NIXPKG_SECRET_SCANNER'],
                                     XO_NIXPKG_SECRET_SCANNER_IDENTITY=os.environ['XO_NIXPKG_SECRET_SCANNER_IDENTITY']),

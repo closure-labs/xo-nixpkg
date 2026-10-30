@@ -52,6 +52,25 @@ class ScannerEvidence(unittest.TestCase):
         self.assertEqual([call.args[2] for call in stage.call_args_list], [90, 1260, 600])
         self.assertEqual(json.loads((self.root / 'out/scanner-evidence.json').read_text()), result)
 
+    def test_introduced_scope_is_explicit_and_not_full_audit_claim(self):
+        outcomes = [dict(stage=name, status='success')
+                    for name in ('engine-fixtures', 'introduced-history', 'security-fixtures')]
+        with patch.object(mod, 'clean_checkout'), patch.object(mod, 'stage', side_effect=outcomes) as stage:
+            result = mod.run(self.root, self.root / 'out', self.env,
+                             'introduced', 'a' * 40, 'b' * 40)
+        history = stage.call_args_list[1].args
+        self.assertEqual(history[0], 'introduced-history')
+        self.assertEqual(history[1][-6:],
+                         ['--mode', 'introduced', '--base-sha', 'a' * 40, '--head-sha', 'b' * 40])
+        self.assertEqual(result['status'], 'success')
+        self.assertNotIn('complete-history', json.dumps(result))
+
+    def test_scope_requires_exact_inputs(self):
+        for mode, base, head in [('introduced', None, None), ('introduced', 'main', 'b' * 40),
+                                  ('full', 'a' * 40, 'b' * 40), ('unknown', None, None)]:
+            with self.subTest(mode=mode, base=base), self.assertRaises(ValueError):
+                mod.run(self.root, self.root / 'out', self.env, mode, base, head)
+
     def test_dirty_checkout_fails_before_stages(self):
         with patch.object(mod, 'clean_checkout', side_effect=ValueError('dirty')), \
              patch.object(mod, 'stage') as stage, self.assertRaises(ValueError):

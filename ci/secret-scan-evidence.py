@@ -7,6 +7,7 @@ import math
 import os
 from pathlib import Path
 import resource
+import re
 import subprocess
 import sys
 import tempfile
@@ -90,7 +91,7 @@ def stage(name, command, limit, root, env, directory, json_output):
             result = operations.run(command, cwd=root, env=env, timeout=limit,
                                     stdout=output if json_output else subprocess.DEVNULL,
                                     stderr=subprocess.DEVNULL, preexec_fn=bounds)
-            if result.returncode != 0 and name == 'complete-history' and json_output:
+            if result.returncode != 0 and name in ('complete-history', 'introduced-history') and json_output:
                 records = history_failures(output)
                 if records:
                     write_json(directory / 'history-failures.json', {
@@ -127,7 +128,19 @@ def clean_checkout(root, env):
             raise ValueError('Scanner bootstrap requires a clean immutable checkout')
 
 
-def run(root, directory, inherited):
+def run(root, directory, inherited, mode='full', base_sha=None, head_sha=None):
+    if mode not in ('full', 'introduced'):
+        raise ValueError('Invalid scan scope')
+    scan_args = ['--mode', mode]
+    history_stage = 'complete-history'
+    if mode == 'introduced':
+        if not all(isinstance(value, str) and re.fullmatch(r'[0-9a-f]{40}', value)
+                   for value in (base_sha, head_sha)):
+            raise ValueError('Exact scan inputs required')
+        scan_args += ['--base-sha', base_sha, '--head-sha', head_sha]
+        history_stage = 'introduced-history'
+    elif base_sha or head_sha:
+        raise ValueError('Full scan does not accept incremental identities')
     directory.mkdir(parents=True, exist_ok=True)
     if directory.is_symlink() or any(directory.iterdir()):
         raise ValueError('Evidence directory must be empty and not a symlink')
@@ -137,7 +150,7 @@ def run(root, directory, inherited):
         commands = [
             (STAGES[0], [sys.executable, inherited['XO_NIXPKG_SCANNER_FIXTURE_SOURCE'],
                          '--scanner', env['XO_NIXPKG_SECRET_SCANNER'], '--config', str(root / '.gitleaks.toml')], 90, True),
-            (STAGES[1], [sys.executable, inherited['XO_NIXPKG_HISTORY_SCAN_SOURCE']], 1260, True),
+            (history_stage, [sys.executable, inherited['XO_NIXPKG_HISTORY_SCAN_SOURCE'], *scan_args], 1260, True),
             (STAGES[2], ['nix', 'build', '--no-link', '--no-write-lock-file', '--no-accept-flake-config',
                          '--option', 'sandbox', 'true', '--option', 'builders', '',
                          'git+file://' + str(root) + '#lib.ciSecurityFixtures.x86_64-linux'], 600, False),
@@ -156,9 +169,12 @@ def run(root, directory, inherited):
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--output', type=Path, required=True)
+    parser.add_argument('--mode', choices=('full', 'introduced'), default='full')
+    parser.add_argument('--base-sha')
+    parser.add_argument('--head-sha')
     args = parser.parse_args()
     try:
-        report = run(Path.cwd().resolve(), args.output, os.environ)
+        report = run(Path.cwd().resolve(), args.output, os.environ, args.mode, args.base_sha, args.head_sha)
     except (KeyError, OSError, ValueError, subprocess.SubprocessError):
         report = {'schema': 1, 'status': 'blocked', 'authorityClaim': False, 'reuseEligible': False,
                   'reason': 'scanner-evidence-unavailable'}

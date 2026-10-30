@@ -201,7 +201,7 @@ class HistoryScan(unittest.TestCase):
     def test_main_requires_pinned_metadata_before_scanning(self):
         with patch.dict(os.environ, {}, clear=True), patch.object(mod, 'scan') as scan, \
                 contextlib.redirect_stdout(io.StringIO()) as output:
-            self.assertEqual(mod.main(), 1)
+            self.assertEqual(mod.main([]), 1)
         scan.assert_not_called()
         self.assertEqual(json.loads(output.getvalue())['status'], 'blocked')
 
@@ -292,6 +292,186 @@ class HistoryScan(unittest.TestCase):
         self.git('commit', '-qm', 'rename and binary')
         with patch.object(mod, 'BATCH_SIZE', 1):
             self.assertEqual(mod.scan(self.root)['status'], 'success')
+
+
+
+class IntroducedHistoryScan(HistoryScan):
+    def introduced_run(self, calls, patches=None, mutate=None):
+        original = mod.operations.run
+        def execute(args, **kwargs):
+            if args[0] != 'fixture-scanner':
+                return original(args, **kwargs)
+            options = args[-1].removeprefix('--log-opts=').split()
+            self.assertIn('--diff-merges=first-parent', options)
+            self.assertNotIn('--first-parent', options)
+            self.assertNotIn('--no-merges', options)
+            calls.extend(x for x in options if mod.SHA.fullmatch(x))
+            if patches is not None:
+                patches.append(self.git('log', '-p', '-U0', *options))
+            if mutate is not None:
+                mutate()
+            return subprocess.CompletedProcess(args, 0)
+        return execute
+
+    def scan_introduced(self, base, head, calls, **kwargs):
+        with patch.object(mod.operations, 'run', side_effect=self.introduced_run(calls, **kwargs)):
+            return mod.scan(self.root, scanner='fixture-scanner', mode='introduced',
+                            base_sha=base, head_sha=head)
+
+    def test_deleted_secret_in_intermediate_commit_is_scanned(self):
+        base = self.git('rev-parse', 'HEAD')
+        added = self.commit('secret.txt', 'introduced-credential\n')
+        self.git('rm', 'secret.txt')
+        self.git('commit', '-qm', 'remove')
+        head = self.git('rev-parse', 'HEAD')
+        calls, patches = [], []
+        result = self.scan_introduced(base, head, calls, patches=patches)
+        self.assertEqual(set(calls), {added, head})
+        self.assertIn('+introduced-credential', '\n'.join(patches))
+        self.assertEqual(result['receipt']['baseSha'], base)
+        self.assertEqual(result['receipt']['headSha'], head)
+        self.assertFalse(result['reuseEligible'])
+
+    def test_side_branch_and_merge_resolution_additions_covered(self):
+        base = self.git('rev-parse', 'HEAD')
+        self.git('checkout', '-qb', 'side')
+        side = self.commit('side.txt', 'side-credential\n')
+        self.git('checkout', '-q', 'main')
+        main = self.commit('main.txt', 'ordinary\n')
+        self.git('merge', '--no-ff', '--no-commit', 'side')
+        (self.root / 'resolution.txt').write_text('merge-only-credential\n')
+        self.git('add', '.')
+        self.git('commit', '-qm', 'merge resolution')
+        head = self.git('rev-parse', 'HEAD')
+        calls, patches = [], []
+        self.scan_introduced(base, head, calls, patches=patches)
+        self.assertEqual(set(calls), {side, main, head})
+        self.assertIn('+side-credential', '\n'.join(patches))
+        self.assertIn('+merge-only-credential', '\n'.join(patches))
+
+    def test_synthetic_merge_does_not_reintroduce_protected_base(self):
+        initial = self.git('rev-parse', 'HEAD')
+        self.git('checkout', '-qb', 'feature')
+        feature = self.commit('feature.txt', 'new feature\n')
+        self.git('checkout', '-q', 'main')
+        base = self.commit('old.txt', 'protected-old-content\n')
+        self.git('merge', '--no-ff', '-qm', 'synthetic', 'feature')
+        head = self.git('rev-parse', 'HEAD')
+        calls, patches = [], []
+        self.scan_introduced(base, head, calls, patches=patches)
+        self.assertEqual(set(calls), {feature, head})
+        self.assertNotIn('+protected-old-content', '\n'.join(patches))
+        self.assertNotIn(initial, calls)
+
+    def test_no_op_returns_zero_commit_receipt(self):
+        head = self.git('rev-parse', 'HEAD')
+        calls = []
+        result = self.scan_introduced(head, head, calls)
+        self.assertEqual(calls, [])
+        self.assertEqual(result['commits'], 0)
+        self.assertEqual(result['maximumBatchSeconds'], 0)
+
+    def test_missing_noncommit_and_nonsha_endpoints_rejected(self):
+        head = self.git('rev-parse', 'HEAD')
+        blob = self.git('rev-parse', 'HEAD:clean.txt')
+        for endpoint in ('0' * 40, blob, 'main', '--all', None):
+            with self.subTest(endpoint=endpoint), self.assertRaises(ValueError):
+                self.scan_introduced(endpoint, head, [])
+
+    def test_checkout_head_mismatch_rejected(self):
+        base = self.git('rev-parse', 'HEAD')
+        self.commit('new.txt', 'safe\n')
+        with self.assertRaises(ValueError):
+            self.scan_introduced(base, base, [])
+
+    def test_mutated_head_or_base_ref_rejected(self):
+        base = self.git('rev-parse', 'HEAD')
+        self.git('branch', 'protected', base)
+        head = self.commit('new.txt', 'safe\n')
+        with self.assertRaises(ValueError):
+            self.scan_introduced(base, head, [], mutate=lambda: self.git('update-ref', 'refs/heads/protected', head))
+        with self.assertRaises(ValueError):
+            self.scan_introduced(base, head, [], mutate=lambda: self.git('checkout', '--detach', '-q', base))
+
+    def test_shallow_and_replace_history_rejected(self):
+        head = self.git('rev-parse', 'HEAD')
+        (self.root / '.git/shallow').write_text(head + '\n')
+        with self.assertRaises(ValueError):
+            self.scan_introduced(head, head, [])
+        (self.root / '.git/shallow').unlink()
+        new = self.commit('new.txt', 'safe\n')
+        self.git('replace', new, head)
+        with self.assertRaises(ValueError):
+            self.scan_introduced(head, new, [])
+
+    @unittest.skipUnless(shutil.which('gitleaks'), 'native Gitleaks is unavailable')
+    def test_native_introduced_merge_only_secret_is_rejected(self):
+        self.commit('.gitleaks.toml', '[extend]\nuseDefault = true\n[[rules]]\nid="fixture"\ndescription="fixture"\nregex="TEST_SECRET_[A-Z]{12}"\n')
+        base = self.git('rev-parse', 'HEAD')
+        self.git('checkout', '-qb', 'side')
+        self.commit('side.txt', 'safe side\n')
+        self.git('checkout', '-q', 'main')
+        self.commit('main.txt', 'safe main\n')
+        self.git('merge', '--no-ff', '--no-commit', 'side')
+        (self.root / 'resolution.txt').write_text('TEST_SECRET_ABCDEFGHIJKL\n')
+        self.git('add', '.')
+        self.git('commit', '-qm', 'merge')
+        head = self.git('rev-parse', 'HEAD')
+        with self.assertRaises(ValueError):
+            mod.scan(self.root, mode='introduced', base_sha=base, head_sha=head)
+
+    @unittest.skipUnless(shutil.which('gitleaks'), 'native Gitleaks is unavailable')
+    def test_native_introduced_deleted_secret_is_rejected(self):
+        self.commit('.gitleaks.toml', '[extend]\nuseDefault = true\n[[rules]]\nid="fixture"\ndescription="fixture"\nregex="TEST_SECRET_[A-Z]{12}"\n')
+        base = self.git('rev-parse', 'HEAD')
+        self.commit('secret.txt', 'TEST_SECRET_ABCDEFGHIJKL\n')
+        self.git('rm', 'secret.txt')
+        self.git('commit', '-qm', 'delete')
+        head = self.git('rev-parse', 'HEAD')
+        with self.assertRaises(ValueError):
+            mod.scan(self.root, mode='introduced', base_sha=base, head_sha=head)
+
+    def test_grafted_history_rejected(self):
+        head = self.git('rev-parse', 'HEAD')
+        (self.root / '.git/info/grafts').write_text(head + '\n')
+        with self.assertRaises(ValueError):
+            self.scan_introduced(head, head, [])
+
+
+    def test_external_git_history_overrides_rejected(self):
+        head = self.git('rev-parse', 'HEAD')
+        for name in ('GIT_DIR', 'GIT_GRAFT_FILE', 'GIT_SHALLOW_FILE', 'GIT_CONFIG_COUNT',
+                     'GIT_OBJECT_DIRECTORY', 'GIT_CONFIG_KEY_0', 'GIT_REPLACE_REF_BASE'):
+            with self.subTest(name=name), self.assertRaises(ValueError):
+                mod.scan(self.root, environment=dict(os.environ, **{name: 'override'}),
+                         scanner='fixture-scanner', mode='introduced', base_sha=head, head_sha=head)
+
+    def test_empty_side_commits_are_included(self):
+        base = self.git('rev-parse', 'HEAD')
+        self.git('checkout', '-qb', 'side')
+        self.git('commit', '--allow-empty', '-qm', 'empty')
+        side = self.git('rev-parse', 'HEAD')
+        self.git('checkout', '-q', 'main')
+        self.git('merge', '--no-ff', '-qm', 'empty side merge', 'side')
+        head = self.git('rev-parse', 'HEAD')
+        calls = []
+        self.scan_introduced(base, head, calls)
+        self.assertEqual(set(calls), {side, head})
+
+
+    def test_sanitized_git_configuration_environment_is_supported(self):
+        head = self.git('rev-parse', 'HEAD')
+        environment = {'PATH': os.environ.get('PATH', ''), 'HOME': str(self.root),
+                       'GIT_CONFIG_GLOBAL': '/dev/null', 'GIT_CONFIG_SYSTEM': '/dev/null',
+                       'GIT_CONFIG_NOSYSTEM': '1', 'GIT_TERMINAL_PROMPT': '0'}
+        result = mod.scan(self.root, environment=environment, scanner='fixture-scanner',
+                          mode='introduced', base_sha=head, head_sha=head)
+        self.assertEqual(result['status'], 'success')
+        for name in ('GIT_CONFIG_GLOBAL', 'GIT_CONFIG_SYSTEM'):
+            with self.subTest(name=name), self.assertRaises(ValueError):
+                mod.scan(self.root, environment=dict(environment, **{name: '/tmp/config'}),
+                         scanner='fixture-scanner', mode='introduced', base_sha=head, head_sha=head)
+
 
 
 if __name__ == '__main__':

@@ -169,7 +169,7 @@
   ],
   "pathRules": [
     {
-      "pattern": "^(?:ci/security-fixtures\\.sh|nix/security-fixtures\\.nix|tests/test_(?:preflight|history_scan|scanner_fixtures|scanner_evidence)\\.py)$",
+      "pattern": "^(?:ci/security-fixtures\\.sh|nix/security-fixtures\\.nix|tests/test_(?:preflight|history_scan|audit_freshness|scanner_fixtures|scanner_evidence)\\.py)$",
       "validation": [
         "repository-policy"
       ],
@@ -590,7 +590,7 @@
       "publication": []
     },
     {
-      "pattern": "^(?:ci/audit\\-policy\\.py|ci/audit\\-policy\\.sh|ci/bounded\\-gh\\.sh|ci/build\\-reuse\\.py|ci/history\\-scan\\.py|ci/build\\-reuse\\.sh|ci/cache\\-doctor\\.py|ci/ci\\-verdict\\.sh|ci/consumer\\-probe\\.py|ci/consumer\\-probe\\.sh|ci/decision\\-authority\\.sh|ci/decision\\-collect\\.sh|ci/decision\\-reconcile\\.sh|ci/distribution\\-cache\\.py|ci/fetch\\-evidence\\.sh|ci/fetch\\-retained\\.py|ci/inspect\\-qualification\\.py|ci/inspect\\-qualification\\.sh|ci/publication\\-controller\\.py|ci/publication\\-controller\\.sh|ci/publication\\-gate\\.sh|ci/qualify\\-products\\.py|ci/qualify\\-products\\.sh|ci/queue\\-preflight\\.sh|ci/reconcile\\-retained\\.sh|ci/refresh\\-products\\.py|ci/refresh\\-products\\.sh|ci/repository\\-audit\\.sh|ci/restore\\-products\\.py|ci/restore\\-products\\.sh|ci/rolling\\-failure\\.sh|ci/security\\-database\\.py|ci/security\\-inventory\\.py|ci/security\\-inventory\\.sh|ci/security\\-lint\\.sh|ci/security\\-native\\-scan\\.sh|ci/security\\-normalize\\.py|ci/verify\\-rescan\\-evidence\\.py|ci/security\\-review\\-all\\.sh|ci/advisory\\-inputs\\.py|ci/advisory\\-union\\.py)$",
+      "pattern": "^(?:ci/audit\\-freshness\\.py|ci/audit\\-policy\\.py|ci/audit\\-policy\\.sh|ci/bounded\\-gh\\.sh|ci/build\\-reuse\\.py|ci/history\\-scan\\.py|ci/build\\-reuse\\.sh|ci/cache\\-doctor\\.py|ci/ci\\-verdict\\.sh|ci/consumer\\-probe\\.py|ci/consumer\\-probe\\.sh|ci/decision\\-authority\\.sh|ci/decision\\-collect\\.sh|ci/decision\\-reconcile\\.sh|ci/distribution\\-cache\\.py|ci/fetch\\-evidence\\.sh|ci/fetch\\-retained\\.py|ci/inspect\\-qualification\\.py|ci/inspect\\-qualification\\.sh|ci/publication\\-controller\\.py|ci/publication\\-controller\\.sh|ci/publication\\-gate\\.sh|ci/qualify\\-products\\.py|ci/qualify\\-products\\.sh|ci/queue\\-preflight\\.sh|ci/reconcile\\-retained\\.sh|ci/refresh\\-products\\.py|ci/refresh\\-products\\.sh|ci/repository\\-audit\\.sh|ci/restore\\-products\\.py|ci/restore\\-products\\.sh|ci/rolling\\-failure\\.sh|ci/security\\-database\\.py|ci/security\\-inventory\\.py|ci/security\\-inventory\\.sh|ci/security\\-lint\\.sh|ci/security\\-native\\-scan\\.sh|ci/security\\-normalize\\.py|ci/verify\\-rescan\\-evidence\\.py|ci/security\\-review\\-all\\.sh|ci/advisory\\-inputs\\.py|ci/advisory\\-union\\.py)$",
       "validation": [
         "repository-policy",
         "ci-runtime-fixtures",
