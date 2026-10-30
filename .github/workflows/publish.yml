@@ -59,6 +59,16 @@ jobs:
         uses: ./.github/actions/setup-nix # zizmor: ignore[self-repository] -- setup follows the explicitly checked-out source; repair jobs use a trusted base revision.
         with:
           github-token: ${{ github.token }}
+      - name: Mint repository-scoped native observer (read only)
+        id: native_observer
+        uses: actions/create-github-app-token@64ab729a6294000f5aa4a4bc0b73d1f32bc45510 # v3.3.0
+        with:
+          client-id: ${{ vars.DECIDER_CLIENT }}
+          private-key: ${{ secrets.DECIDER_KEY }}
+          owner: closure-labs
+          repositories: xo-nixpkg
+          permission-administration: read
+          permission-secret-scanning-alerts: read
       - name: Mint repository-scoped publication authority token
         id: publisher
         uses: actions/create-github-app-token@64ab729a6294000f5aa4a4bc0b73d1f32bc45510 # v3.3.0
@@ -74,12 +84,14 @@ jobs:
           permission-members: read
       - name: Download and verify qualified evidence
         env:
+          NATIVE_SECRET_OBSERVER_TOKEN: ${{ steps.native_observer.outputs.token }}
           GH_TOKEN: ${{ steps.publisher.outputs.token }}
           REGISTRY_TOKEN: ${{ github.token }}
           XO_NIXPKG_PUBLICATION_METADATA_ONLY: 'true'
         run: nix run .#devenv -- tasks run --mode single --option 'packages:pkgs!' '' release:fetch
       - name: Recheck admission and publish exact closures
         env:
+          NATIVE_SECRET_OBSERVER_TOKEN: ${{ steps.native_observer.outputs.token }}
           CACHIX_AUTH_TOKEN: ${{ secrets.CACHIX_AUTH_TOKEN }}
           GH_TOKEN: ${{ steps.publisher.outputs.token }}
           REGISTRY_TOKEN: ${{ github.token }}

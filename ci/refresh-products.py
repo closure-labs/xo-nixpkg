@@ -16,14 +16,24 @@ def command(*args):
     return subprocess.check_output(args, text=True).strip()
 
 
+def native_binding():
+    path = os.environ.get('XO_NATIVE_SECRET_CONTROLLER_SOURCE', str(Path(__file__).with_name('native-secret-controller.py')))
+    spec = importlib.util.spec_from_file_location('native_secret_policy', path)
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module.policy_binding()
+
+
 def main():
     source = Path(os.environ['XO_NIXPKG_RESCAN_SOURCE'])
     output = Path(os.environ.get('XO_NIXPKG_EVIDENCE', 'security-evidence'))
     product = json.loads((source / 'product.json').read_text())
+    if product.get('repositorySecretPolicy') != native_binding():
+        raise ValueError('New policy requires fresh product qualification, not a legacy rescan')
     # Fetch wrapper authenticated the immutable product before credentials were removed.
     for key in ('GH_TOKEN', 'GITHUB_TOKEN', 'CACHIX_AUTH_TOKEN', 'REGISTRY_TOKEN',
                 'SECAUDIT_PEM', 'DECIDER_KEY', 'XO_AUTHORITY_TOKEN',
-                'ACTIONS_ID_TOKEN_REQUEST_TOKEN', 'ACTIONS_RUNTIME_TOKEN'):
+                'ACTIONS_ID_TOKEN_REQUEST_TOKEN', 'ACTIONS_RUNTIME_TOKEN', 'NATIVE_SECRET_OBSERVER_TOKEN'):
         os.environ.pop(key, None)
     previous_scan = json.loads((source / 'scans.json').read_text())
     spec = importlib.util.spec_from_file_location('distribution_cache', os.environ['XO_NIXPKG_DISTRIBUTION_CACHE_SOURCE'])
@@ -78,6 +88,7 @@ def main():
             'profiles': profiles, 'transport': previous_scan['transport'],
             'productProducer': previous_scan.get('productProducer', dict(previous_scan['producer'],
                 revision=previous_scan['producer'].get('revision', product['revision'])))}
+    scan['repositorySecretPolicy'] = native_binding()
     (output / 'scans.json').write_text(json.dumps(scan, sort_keys=True, indent=2) + '\n')
     for profile in product['products']:
         handoff = {'schema': 1, 'repository': product['repository'], 'revision': product['revision'],

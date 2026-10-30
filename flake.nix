@@ -13,11 +13,11 @@ rec {
   inputs = {
     nixpkgs.url = "github:NixOS/nixpkgs/nixos-unstable";
     xo-latest = {
-      url = "github:vatesfr/xen-orchestra/5999d53e0b6172820567a1caee67da798e5a673f";
+      url = "github:vatesfr/xen-orchestra/b477167b41f2ac401e7d8c852c139566b9fe756e";
       flake = false;
     };
     xo-stable = {
-      url = "github:vatesfr/xen-orchestra/a2bd181d3528a61a45bbd4fe99686875fe8eebf8";
+      url = "github:vatesfr/xen-orchestra/5999d53e0b6172820567a1caee67da798e5a673f";
       flake = false;
     };
     xo-rolling = {
@@ -217,7 +217,6 @@ rec {
           queue-preflight = mkApp applications.queuePreflight "Check merge queue runtime credential";
           rolling-failure = mkApp applications.rollingFailure "Report a preserved failed rolling candidate";
           fetch-evidence = mkApp applications.fetchEvidence "Fetch an authenticated immutable qualification packet";
-          secret-scan-evidence = mkApp applications.secretScanEvidence "Run bounded read-only scanner bootstrap evidence without authority";
           security-lint = mkApp applications.securityLint "Validate workflow security and evidence contracts";
           qualify-products = mkApp applications.qualifyProducts "Build complete four-profile runtime security evidence";
           build-reuse = mkApp applications.buildReuse "Build sandboxed candidates and restore authenticated exact CI outputs";

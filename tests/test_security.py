@@ -574,6 +574,22 @@ class HandoffPublicationTests(unittest.TestCase):
 
 
 class RefreshTests(unittest.TestCase):
+    def test_refresh_rejects_legacy_policy_before_scanning(self):
+        import os
+        from unittest.mock import patch
+        refresh = module('refresh-products')
+        for binding in (None, {'policyId': 'legacy', 'policySha256': 'c' * 64}):
+            with tempfile.TemporaryDirectory() as temporary:
+                source = Path(temporary)
+                (source / 'product.json').write_text(json.dumps({'repositorySecretPolicy': binding}))
+                with patch.dict(os.environ, {'XO_NIXPKG_RESCAN_SOURCE': str(source)}), \
+                        patch.object(refresh.subprocess, 'run') as run, \
+                        patch.object(refresh, 'command') as command:
+                    with self.assertRaisesRegex(ValueError, 'fresh product qualification'):
+                        refresh.main()
+                    run.assert_not_called()
+                    command.assert_not_called()
+
     def test_refresh_preserves_approved_product_and_rebinds_current_producer(self):
         import hashlib
         import os
@@ -587,6 +603,7 @@ class RefreshTests(unittest.TestCase):
             (native / 'runtime.cdx.json').write_bytes(sbom)
             (source / 'xo-latest--runtime.cdx.json').write_bytes(sbom)
             product = {'schema': 1, 'repository': 'closure-labs/xo-nixpkg', 'revision': 'a' * 40,
+                       'repositorySecretPolicy': refresh.native_binding(),
                        'products': {'xo-latest': {'storePath': '/nix/store/immutable', 'narHash': 'sha256-fixture'}},
                        'assets': {'xo-latest--runtime.cdx.json': hashlib.sha256(sbom).hexdigest()}}
             original = json.dumps(product, indent=3).encode()

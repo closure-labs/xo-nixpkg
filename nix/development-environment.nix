@@ -1,7 +1,6 @@
 { pkgs }:
 
 let
-  secretScanner = import ./secret-scanner.nix { inherit pkgs; };
   yarn = pkgs.yarn.override { nodejs = pkgs.nodejs_22; };
 in
 rec {
@@ -11,7 +10,6 @@ rec {
     pkgs.curl
     pkgs.deadnix
     pkgs.git
-    secretScanner.package
     pkgs.grype
     pkgs.gh
     pkgs.oras

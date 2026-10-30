@@ -29,6 +29,7 @@ class PreflightTests(unittest.TestCase):
             (root / reuse.WORKFLOW).write_text('protected fixture workflow')
         (self.controller / 'ci').mkdir()
         (self.controller / 'ci/classifier.json').write_text(json.dumps({'preflightTargets': ['repository-policy']}))
+        (self.controller / 'ci/native-secret-policy.json').write_bytes((ROOT / 'ci/native-secret-policy.json').read_bytes())
         self.cheap = {'name': 'repository-policy', 'attribute': 'checks.x86_64-linux.repository-policy'}
         self.runtime = {'name': 'xo-latest', 'attribute': 'checks.x86_64-linux.xo-latest'}
         self.plan = {'schemaVersion': 2, 'name': 'fixture', 'targets': [self.cheap, self.runtime]}
@@ -36,9 +37,6 @@ class PreflightTests(unittest.TestCase):
                             'GITHUB_EVENT_NAME': 'workflow_dispatch', 'GITHUB_SHA': 'a' * 40, 'GITHUB_RUN_ID': '123', 'GITHUB_RUN_ATTEMPT': '2',
                             'XO_NIXPKG_TRUSTED_PLAN_NIX': '/nix/store/fixture/bin/xo-nixpkg-candidate-nix',
                             'XO_NIXPKG_PLAN_RUNNER': '/nix/store/fixture/bin/plan-runner',
-                            'XO_NIXPKG_HISTORY_SCAN_SOURCE': str(ROOT / 'ci/history-scan.py'),
-                            'XO_NIXPKG_SECRET_SCANNER': '/nix/store/fixture/bin/gitleaks',
-                            'XO_NIXPKG_SECRET_SCANNER_IDENTITY': '/nix/store/fixture-identity.json',
                             'GH_TOKEN': 'must-not-enter-candidate-environment'}
         self.patch(patch.dict(os.environ, self.environment, clear=True))
         self.patch(patch.object(reuse, 'git', side_effect=self.git))
@@ -101,17 +99,19 @@ class PreflightTests(unittest.TestCase):
         self.exporter = Mock(side_effect=export)
         self.patch(patch.object(reuse, 'transport', return_value=Mock(export=self.exporter)))
 
-    def test_introduced_scan_is_event_bound_and_receipt_identifies_scope(self):
+    def test_event_bound_pure_preflight_has_no_observer_authority(self):
         self.export_fixture('pull_request')
         self.preflight()
-        self.assertEqual(self.scan.call_args.args[0][-6:],
-                         ['--mode', 'introduced', '--base-sha', 'b' * 40, '--head-sha', 'a' * 40])
+        self.scan.assert_not_called()
         binding = json.loads((self.evidence / 'preflight-binding.json').read_text())
-        self.assertEqual(binding['historyScanScope'],
-                         {'mode': 'introduced', 'base': 'b' * 40, 'head': 'a' * 40})
+        self.assertEqual(binding['repositoryScope'], {'mode': 'introduced', 'base': 'b' * 40, 'head': 'a' * 40})
+        self.assertEqual(binding['schema'], 2)
+        self.assertEqual(binding['repositorySecretPolicy']['policyId'], 'github-native-secret-observation-v1')
+        self.assertIs(binding['authorityClaim'], False)
         os.environ['GITHUB_EVENT_NAME'] = 'workflow_dispatch'
         with self.assertRaises(ValueError):
             reuse.verify_preflight(self.evidence, self.candidate, self.controller, self.plan, [self.cheap])
+
 
     def test_scan_provenance_never_serializes_credentials_or_extra_event_fields(self):
         self.export_fixture('pull_request')
@@ -124,7 +124,7 @@ class PreflightTests(unittest.TestCase):
         self.preflight()
         receipt = (self.evidence / 'preflight-binding.json').read_text()
         self.assertNotIn('private-', receipt)
-        self.assertEqual(json.loads(receipt)['historyScanScope'],
+        self.assertEqual(json.loads(receipt)['repositoryScope'],
                          {'mode': 'introduced', 'base': 'b' * 40, 'head': 'a' * 40})
 
     def test_introduced_scan_rejects_wrong_base_before_scanner(self):
@@ -175,7 +175,7 @@ class PreflightTests(unittest.TestCase):
                 reuse.validate(self.candidate, self.controller, self.evidence, phase='runtime', preflight=self.evidence)
                 self.exporter.assert_called_once()
                 receipt = json.loads((self.evidence / 'reuse-receipt/receipt.json').read_text())
-                self.assertEqual(receipt['schema'], 1)
+                self.assertEqual(receipt['schema'], 2)
                 self.assertEqual(receipt['event'], event)
                 self.assertEqual(receipt['outputs']['xo-latest']['storePath'], self.item['storePath'])
 
@@ -232,29 +232,24 @@ class PreflightTests(unittest.TestCase):
         self.assertTrue(self.output.read_text().endswith('cache_eligible=false\n'))
         self.assertFalse((self.evidence / 'reuse-receipt/receipt.json').exists())
 
-    def test_shared_checks_and_history_precede_runtime_without_duplicate_selected_targets(self):
+    def test_pure_shared_checks_precede_runtime_without_observer_or_duplicate_targets(self):
         self.preflight()
-        self.scan.assert_called_once()
-        self.assertEqual(self.scan.call_args.args[0], [reuse.sys.executable, str(ROOT / 'ci/history-scan.py'), '--mode', 'full'])
-        self.assertEqual(self.scan.call_args.kwargs['timeout'], 1260)
-        self.assertEqual(self.scan.call_args.kwargs['env']['PYTHONPATH'], str(Path(reuse.operations.__file__).parent))
-        self.assertNotIn('GH_TOKEN', self.scan.call_args.kwargs['env'])
+        self.scan.assert_not_called()
         self.assertEqual(self.native.call_args_list[0].args[-1], 'git+file://' + str(self.candidate) + '#lib.ciSecurityFixtures.x86_64-linux')
         self.restore.assert_not_called()
         self.assertEqual(self.runner.call_count, 1)
         self.native.reset_mock()
         reuse.validate(self.candidate, self.controller, self.evidence, phase='runtime', preflight=self.evidence)
         self.assertEqual(self.runner.call_count, 2)
-        self.scan.assert_called_once()
         self.native.assert_not_called()
+        self.scan.assert_not_called()
         self.restore.assert_called_once()
-        manifests = [json.loads((self.evidence / (phase + '.json')).read_text())['results'] for phase in ('preflight', 'runtime')]
-        self.assertEqual([[item['name'] for item in results] for results in manifests], [['repository-policy'], ['xo-latest']])
+
 
     def test_identity_changes_cannot_reuse_preflight(self):
         self.preflight()
         binding = json.loads((self.evidence / 'preflight-binding.json').read_text())
-        for field in ('source', 'tree', 'controller', 'planSha256', 'runId', 'runAttempt', 'workflowSha256', 'launcherSha256', 'repository', 'historyScan', 'securityFixtures'):
+        for field in ('source', 'tree', 'controller', 'planSha256', 'runId', 'runAttempt', 'workflowSha256', 'launcherSha256', 'repository', 'repositorySecretPolicy', 'securityFixtures'):
             changed = dict(binding, **{field: 999 if field in ('runId', 'runAttempt') else 'changed'})
             reuse.write_json(self.evidence / 'preflight-binding.json', changed)
             with self.subTest(field=field), self.assertRaises(ValueError):
@@ -278,29 +273,22 @@ class PreflightTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             reuse.verify_preflight(self.evidence, self.candidate, self.controller, self.plan, [self.cheap])
 
-    def test_secret_finding_shared_fixture_failure_and_shallow_history_fail_before_runtime(self):
+    def test_shared_fixture_failure_and_old_policy_block_runtime(self):
         self.preflight()
         self.runner.reset_mock()
-        self.native.reset_mock()
-        self.scan.side_effect = subprocess.CalledProcessError(1, ['gitleaks'])
-        with self.assertRaises(subprocess.CalledProcessError):
-            self.preflight()
-        self.native.assert_not_called()
-        self.scan.side_effect = None
         self.native.side_effect = subprocess.CalledProcessError(1, ['nix', 'build', '#lib.ciSecurityFixtures.x86_64-linux'])
         with self.assertRaises(subprocess.CalledProcessError):
             self.preflight()
         self.runner.assert_not_called()
         self.restore.assert_not_called()
         self.assertFalse((self.evidence / 'preflight-binding.json').exists())
-        with patch.object(reuse, 'git', return_value='true'), self.assertRaises(ValueError):
-            self.preflight()
 
-    def test_docs_only_still_requires_security_fixtures_and_complete_history(self):
+
+    def test_docs_only_still_requires_pure_security_fixtures_without_observer_authority(self):
         os.environ['PREPARED_CI_WORKFLOW'] = json.dumps({'jobs': {'validate': {'enabled': False, 'plan': None}}})
         self.preflight()
         self.runner.assert_not_called()
-        self.scan.assert_called_once()
+        self.scan.assert_not_called()
         reuse.verify_preflight(self.evidence, self.candidate, self.controller, None, [])
 
     def test_runtime_cannot_start_without_a_preflight_artifact(self):
@@ -318,7 +306,7 @@ class PreflightTests(unittest.TestCase):
         self.assertNotIn('pull_request', security['on'])
         self.assertNotIn('merge_group', security['on'])
         self.assertEqual(set(security['on']), {'push', 'schedule', 'workflow_dispatch'})
-        self.assertEqual(ci['jobs']['preflight']['name'], 'Repository security audit')
+        self.assertEqual(ci['jobs']['preflight']['name'], 'Repository preflight')
         self.assertEqual(ci['jobs']['validate']['needs'], ['classify', 'preflight'])
         self.assertIn('preflight', ci['jobs']['gate']['needs'])
         self.assertEqual(ci['jobs']['gate']['name'], 'CI gate')
