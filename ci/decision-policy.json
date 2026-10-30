@@ -19,7 +19,7 @@
   "maxEvidenceAgeHours": 48,
   "maxDatabaseAgeHours": 48,
   "repositorySecretPolicy": {
-    "policyId": "github-native-secret-observation-v1",
-    "policySha256": "1f0ef711d844b582a66bf13d727af1041755ca6e6694c824b6c975596836ebd3"
+    "policyId": "gitleaks-incoming-native-publication-v2",
+    "policySha256": "edfc59daaf284da183a59049b2fd2d0232471cb1780d16d9f117edb7bd8e98f3"
   }
 }
