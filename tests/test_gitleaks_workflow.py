@@ -7,6 +7,7 @@ import os
 from pathlib import Path
 from unittest.mock import patch
 import subprocess
+import sys
 import tempfile
 import unittest
 
@@ -56,7 +57,7 @@ class RangeTests(unittest.TestCase):
         self.runtime = self.root / 'runtime'
         (self.runtime / 'gitleaks').mkdir(parents=True)
         binary = self.runtime / 'gitleaks/gitleaks'
-        binary.write_text('#!/usr/bin/env python3\nimport json,os,sys\nfrom pathlib import Path\nPath(os.environ["ARG_LOG"]).write_text(json.dumps(sys.argv[1:]))\nprint("DO-NOT-EXPOSE-FIXTURE-PAYLOAD")\nsys.exit(int(os.environ.get("SCANNER_EXIT","0")))\n')
+        binary.write_text('#!' + sys.executable + '\nimport json,os,sys\nfrom pathlib import Path\nPath(os.environ["ARG_LOG"]).write_text(json.dumps(sys.argv[1:]))\nprint("DO-NOT-EXPOSE-FIXTURE-PAYLOAD")\nsys.exit(int(os.environ.get("SCANNER_EXIT","0")))\n')
         binary.chmod(0o755)
 
     def git(self, *args):
