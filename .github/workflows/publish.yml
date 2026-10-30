@@ -84,6 +84,7 @@ jobs:
           permission-members: read
       - name: Download and verify qualified evidence
         env:
+          NATIVE_SECRET_OBSERVER_TOKEN: ${{ steps.native_observer.outputs.token }}
           GH_TOKEN: ${{ steps.publisher.outputs.token }}
           REGISTRY_TOKEN: ${{ github.token }}
           XO_NIXPKG_PUBLICATION_METADATA_ONLY: 'true'

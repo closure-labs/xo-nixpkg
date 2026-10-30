@@ -43,10 +43,16 @@ main still lacks its observer. Therefore install the reviewed controller first:
 
 1. A separately reviewed bootstrap change adds only the native policy/validator,
    controller, observation workflow and focused tests. Leave all legacy CI/release
-   gates intact in that bootstrap. Normal current policy and exact-head maintainer
+   gates intact in that bootstrap. Its workflow must hardcode observer mode
+   `bootstrap`, which emits only `Native secret observation (bootstrap)`; the
+   default CLI mode is also bootstrap, regardless of the policy document. It must
+   never emit the required `Repository security audit` context. Normal current policy and exact-head maintainer
    approval still apply; do not use a rule bypass or old-product waiver.
-2. Once the bootstrap is on main and its authenticated check is demonstrated,
-   refresh/review this integration against that main. It renames pure preflight,
+2. Once the bootstrap is on main and its distinct authenticated check is demonstrated,
+   refresh/review this integration against that main. Only that separately reviewed
+   activation selects explicit `production` mode and the required audit context.
+   Failed, cancelled, incomplete or irrelevant CI events cannot publish a check.
+   It renames pure preflight,
    retires Gitleaks execution/dependencies, migrates evidence schemas and replaces
    the publication prerequisite. Until then a missing trusted native check is a
    real blocker, not a success to be synthesized by candidate tests.
@@ -104,3 +110,22 @@ Do not merge/activate or restart releases without separate user review. After a
 verified migration, independently verify and then cancel only superseded relevant
 active work and close only obsolete security/release proposals. Preserve history
 and unrelated #179 dependency / #195 CodeQL updates. Nothing is cancelled/closed here.
+
+## Activation blocker: observation age versus persistent checks
+
+GitHub completed check runs have no native expiry. A receipt expires after five
+minutes, but its successful PR/queue check remains successful. The current scheduled
+controller targets main only: it neither invalidates old PR/queue successes when
+posture/alerts change nor recovers those heads when alerts resolve. Therefore this
+draft does not establish continuously fresh admission and is not activation-ready.
+Publication independently re-observes live state at both fetch and resume boundaries.
+
+Proposed follow-up for review: a bounded protected-main reconciliation enumerates
+current open PR heads and current queue refs, rejects incomplete inventories or cap
+exhaustion, re-observes each eligible target, and updates that target's own check.
+It must handle blocked targets as well as prior successes. Scheduled execution has
+no guaranteed deadline, so this alone cannot promise a five-minute merge-time
+guarantee: admission needs an explicit age-aware trusted gate, or separately reviewed
+wording that admits the polling delay. No polling framework or new admission policy
+is activated by this repair. A separate minimal observer-only bootstrap PR remains
+necessary and has not been created.

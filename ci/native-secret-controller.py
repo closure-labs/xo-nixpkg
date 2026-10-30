@@ -177,6 +177,7 @@ def target(api, run_id, controller):
             and run['head_repository'].get('full_name') == REPO
             and run.get('path') == '.github/workflows/ci.yml'
             and run.get('status') == 'completed'
+            and run.get('conclusion') == 'success'
             and run.get('event') in ('pull_request', 'merge_group'), 'event-run-binding')
     head = sha(run.get('head_sha'))
     branch = run.get('head_branch')
@@ -241,9 +242,13 @@ def validate_product_policy(product, scans):
             and scans.get('repositorySecretPolicy') == policy_binding(), 'old-policy-qualification')
 
 
-def publish_check(api, selected, success, reason='native-observation-blocked'):
+def publish_check(api, selected, success, reason='native-observation-blocked', *, mode='bootstrap'):
     require(reason in ('observed', 'observer-token-unavailable', 'native-observation-blocked'), 'check-reason')
-    name = CHECK if contract.POLICY['activation'] == 'protected-main' else 'Native secret observation (bootstrap)'
+    require(mode in ('bootstrap', 'production'), 'observer-mode')
+    require(mode != 'production' or contract.POLICY['activation'] == 'protected-main', 'policy-not-active')
+    # Only the separately reviewed protected-main workflow selects production.
+    # Bootstrap never infers authority from a policy document on disk.
+    name = CHECK if mode == 'production' else 'Native secret observation (bootstrap)'
     body = {'name': name, 'head_sha': selected['sha'], 'status': 'completed',
             'conclusion': 'success' if success else 'failure',
             'output': {'title': name, 'summary': reason + '; posture/alert observation only; not full-history or exact-commit completion.'}}
@@ -256,6 +261,7 @@ def main():
     parser.add_argument('operation', choices=['scope', 'collect', 'check', 'qualification'])
     parser.add_argument('--output', required=True, type=Path)
     parser.add_argument('--run-id', type=int)
+    parser.add_argument('--observer-mode', choices=['bootstrap', 'production'], default='bootstrap')
     args = parser.parse_args()
     require(os.environ.get('GITHUB_REPOSITORY') == REPO and os.environ.get('GITHUB_REF') == 'refs/heads/main', 'controller-context')
     controller = sha(subprocess.check_output(['git', 'rev-parse', 'HEAD'], text=True).strip())
@@ -274,7 +280,7 @@ def main():
                    and receipt.get('protectedMainSha') == controller
                    and receipt.get('policySha256') == policy_binding()['policySha256']
                    and contract.stamp(receipt['expiresAt']) >= datetime.now(timezone.utc))
-        publish_check(api, selected, success, 'observed' if success else 'observer-token-unavailable')
+        publish_check(api, selected, success, 'observed' if success else 'observer-token-unavailable', mode=args.observer_mode)
         return
     args.output.unlink(missing_ok=True)
     receipt = observe(api, controller, selected, metadata_api=metadata)

@@ -37,7 +37,7 @@ class FixtureAPI:
         self.calls = []
         repo = {'id': M.REPO_ID, 'full_name': M.REPO}
         self.run = {'id': 123, 'repository': repo, 'head_repository': repo,
-                    'path': '.github/workflows/ci.yml', 'status': 'completed',
+                    'path': '.github/workflows/ci.yml', 'status': 'completed', 'conclusion': 'success',
                     'event': 'pull_request', 'head_sha': HEAD, 'head_branch': 'fixture'}
         self.pull = {'number': 4, 'state': 'open', 'base': {'ref': 'main', 'repo': repo},
                      'head': {'sha': HEAD, 'ref': 'fixture', 'repo': repo}}
@@ -162,7 +162,7 @@ class ControllerTests(unittest.TestCase):
     def test_check_owner_and_static_output(self):
         api = Mock()
         api.request.return_value = (201, {}, {'app': {'id': 15368}})
-        M.publish_check(api, {'sha': HEAD}, False)
+        M.publish_check(api, {'sha': HEAD}, False, mode='production')
         body = api.request.call_args.args[2]
         self.assertEqual(body['name'], 'Repository security audit')
         self.assertEqual(body['conclusion'], 'failure')
@@ -170,6 +170,39 @@ class ControllerTests(unittest.TestCase):
         api.request.return_value = (201, {}, {'app': {'id': 5384448}})
         with self.assertRaisesRegex(M.Blocked, 'check-owner'):
             M.publish_check(api, {'sha': HEAD}, True)
+
+    def test_bootstrap_never_emits_required_production_name(self):
+        api = Mock()
+        api.request.return_value = (201, {}, {'app': {'id': 15368}})
+        for success in (True, False):
+            M.publish_check(api, {'sha': HEAD}, success)
+            self.assertEqual(api.request.call_args.args[2]['name'], 'Native secret observation (bootstrap)')
+        with self.assertRaisesRegex(M.Blocked, 'observer-mode'):
+            M.publish_check(api, {'sha': HEAD}, True, mode='automatic')
+
+    def test_failed_or_irrelevant_ci_cannot_publish_observation(self):
+        for field, values in [('conclusion', ['failure', 'cancelled', 'timed_out', None]),
+                              ('status', ['in_progress']), ('event', ['push', 'workflow_dispatch']),
+                              ('path', ['.github/workflows/foreign.yml'])]:
+            for value in values:
+                api = FixtureAPI()
+                api.run[field] = value
+                with patch.object(M, 'publish_check') as publish:
+                    with self.assertRaisesRegex(M.Blocked, 'event-run-binding'):
+                        selected = M.target(api, 123, MAIN)
+                        M.publish_check(api, selected, True, mode='production')
+                    publish.assert_not_called()
+
+    @unittest.skipUnless(HAS_NATIVE_BOUNDARY, 'Stage2 publication wiring not installed in bootstrap')
+    def test_both_publication_boundaries_get_separate_observer(self):
+        publisher = (ROOT / '.github/workflows/publish.yml').read_text()
+        for boundary in ('release:fetch', 'release:resume'):
+            step = next(part for part in publisher.split('      - name:') if boundary in part)
+            self.assertIn('NATIVE_SECRET_OBSERVER_TOKEN: ${{ steps.native_observer.outputs.token }}', step)
+            self.assertIn('GH_TOKEN: ${{ steps.publisher.outputs.token }}', step)
+        workflow = (ROOT / '.github/workflows/native-secret-observation.yml').read_text()
+        self.assertIn('OBSERVER_MODE: production', workflow)
+        self.assertIn('check --observer-mode "$OBSERVER_MODE"', workflow)
 
     def test_duplicate_json_and_nonfinite_json_rejected(self):
         for raw in [b'{"id":1,"id":2}', b'{"id":NaN}', b'not-json']:
