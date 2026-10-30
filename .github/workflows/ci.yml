@@ -106,7 +106,7 @@ jobs:
       - name: Set up protected native toolchain
         uses: ./controller/.github/actions/setup-nix # zizmor: ignore[self-repository] -- protected controller checkout, never candidate setup code.
         with:
-          github-token: ${{ github.token }}
+          github-token: '' # No fetch token is installed into candidate-readable Nix configuration.
       - name: Scan full history and run selected pure preflight through protected code
         if: hashFiles('controller/.github/workflows/ci.yml') == hashFiles('candidate/.github/workflows/ci.yml')
         working-directory: controller
@@ -114,10 +114,30 @@ jobs:
           CI_CONTROLLER_ROOT: ${{ github.workspace }}/controller
           CI_CANDIDATE_ROOT: ${{ github.workspace }}/candidate
         run: nix run .#devenv -- tasks run --mode single --option 'packages:pkgs!' '' ci:preflight
-      - name: Validate bootstrap security conservatively
+      # A changed CI contract runs its proposed scanner transparently, not as a
+      # protected-controller/cache receipt. All three evidence stages must pass.
+      - name: Validate proposed scanner contract without credentials or authority
         if: hashFiles('controller/.github/workflows/ci.yml') != hashFiles('candidate/.github/workflows/ci.yml')
         working-directory: candidate
-        run: nix run .#devenv -- tasks run --mode single --option 'packages:pkgs!' '' ci:security-lint
+        run: |
+          clean_home="$RUNNER_TEMP/xo-scanner-bootstrap-home"
+          mkdir -p "$clean_home/nix"
+          : > "$clean_home/nix/nix.conf"
+          env -i PATH="$PATH" HOME="$clean_home" \
+            SSL_CERT_FILE="${SSL_CERT_FILE:-/etc/ssl/certs/ca-certificates.crt}" \
+            NIX_CONF_DIR="$clean_home/nix" NIX_USER_CONF_FILES=/dev/null \
+            NIX_CONFIG=$'experimental-features = nix-command flakes\naccept-flake-config = false\nsandbox = true\nbuilders =\naccess-tokens =\n' \
+            nix run --no-write-lock-file --no-accept-flake-config \
+              --option sandbox true --option builders '' .#secret-scan-evidence -- \
+              --output "$RUNNER_TEMP/xo-scanner-bootstrap-evidence"
+      - name: Retain bounded scanner diagnostic evidence (never cache authority)
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: xo-scanner-diagnostic-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/xo-scanner-bootstrap-evidence/*.json
+          if-no-files-found: ignore
+          retention-days: 7
       - name: Retain bounded same-execution preflight evidence
         if: always()
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2

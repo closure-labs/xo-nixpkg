@@ -9,10 +9,12 @@ import os
 from pathlib import Path
 import re
 import resource
+import shutil
 import subprocess
 import sys
 import tempfile
 import time
+import tomllib
 sys.path.insert(0, str(Path(__file__).with_name('decisions')))
 import operations
 
@@ -23,6 +25,8 @@ BATCH_SIZE = 8
 WORKERS = 2
 BATCH_TIMEOUT = 600
 TOTAL_TIMEOUT = 1200
+MAX_RECEIPT_BYTES = 16 * 1024 * 1024
+MAX_POLICY_BYTES = 8 * 1024 * 1024
 
 
 def git_lines(root, args, environment):
@@ -84,10 +88,85 @@ def inventory(root, environment):
     return snapshot, sorted(commits)
 
 
-def scan(root, environment=None, scanner='gitleaks'):
+def file_digest(path, maximum=None):
+    if not path.is_file():
+        raise ValueError('Scan identity file is not regular')
+    digest = hashlib.sha256()
+    size = 0
+    with path.open('rb') as stream:
+        while chunk := stream.read(65536):
+            size += len(chunk)
+            if maximum is not None and size > maximum:
+                raise ValueError('Scan identity file exceeds bound')
+            digest.update(chunk)
+    return digest.hexdigest()
+
+
+def policy_identity(root):
+    result = {}
+    for name in ('.gitleaks.toml', '.gitleaksignore'):
+        path = Path(root) / name
+        if path.is_symlink():
+            raise ValueError('Scan policy must not be a symlink')
+        result[name] = file_digest(path, MAX_POLICY_BYTES) if path.exists() else None
+    return result
+
+
+def production_scanner(environment):
+    scanner = environment.get('XO_NIXPKG_SECRET_SCANNER', '')
+    metadata_path = environment.get('XO_NIXPKG_SECRET_SCANNER_IDENTITY', '')
+    if (not re.fullmatch(r'/nix/store/[a-z0-9]{32}-[^/]+/bin/gitleaks', scanner)
+            or not re.fullmatch(r'/nix/store/[a-z0-9]{32}-[^/]+', metadata_path)):
+        raise ValueError('Pinned scanner identity is required')
+    path = Path(metadata_path)
+    if not path.is_file() or path.is_symlink():
+        raise ValueError('Pinned scanner metadata must be a regular store file')
+    with path.open('rb') as stream:
+        raw = stream.read(4097)
+    if not raw or len(raw) > 4096:
+        raise ValueError('Pinned scanner metadata exceeds bound')
+    identity = json.loads(raw)
+    if (not isinstance(identity, dict) or identity.get('schema') != 1
+            or identity.get('name') != 'gitleaks' or identity.get('version') != '8.30.1'
+            or identity.get('regexpEngine') != 'go-stdlib'
+            or identity.get('executable') != scanner
+            or not Path(scanner).is_file() or Path(scanner).is_symlink()
+            or not os.access(scanner, os.X_OK)):
+        raise ValueError('Pinned scanner identity does not match')
+    if any(environment.get(key) for key in ('GITLEAKS_CONFIG', 'GITLEAKS_CONFIG_TOML')):
+        raise ValueError('External scanner policy override is not supported')
+    # Never echo arbitrary caller-supplied fields into diagnostic telemetry.
+    metadata = {key: identity[key] for key in
+                ('schema', 'name', 'version', 'regexpEngine', 'executable')}
+    metadata['metadataSha256'] = hashlib.sha256(raw).hexdigest()
+    return scanner, metadata
+
+
+def scan(root, environment=None, scanner='gitleaks', scanner_identity=None):
     environment = dict(os.environ if environment is None else environment)
     started = time.monotonic()
     with operations.budget(TOTAL_TIMEOUT):
+        scanner_path = shutil.which(scanner, path=environment.get('PATH'))
+        scanner_hash = file_digest(Path(scanner_path)) if scanner_path else None
+        if scanner_identity is not None and scanner_hash is None:
+            raise ValueError('Pinned scanner executable unavailable')
+        policy = policy_identity(root)
+        if scanner_identity is not None and policy['.gitleaks.toml'] is not None:
+            with (Path(root) / '.gitleaks.toml').open('rb') as stream:
+                policy_bytes = stream.read(MAX_POLICY_BYTES + 1)
+            if (len(policy_bytes) > MAX_POLICY_BYTES
+                    or hashlib.sha256(policy_bytes).hexdigest() != policy['.gitleaks.toml']):
+                raise ValueError('Scanner policy changed before execution')
+            config = tomllib.loads(policy_bytes.decode('utf-8'))
+            for key, extension in config.items():
+                if key.casefold() == 'extend' and (
+                        not isinstance(extension, dict)
+                        or any(name.casefold() == 'path' for name in extension)):
+                    raise ValueError('External scanner policy extension is not supported')
+        helper_hash = file_digest(Path(__file__))
+        git_version = git_lines(root, ['--version'], environment)
+        if len(git_version) != 1 or not re.fullmatch(r'git version [0-9A-Za-z.+-]{1,80}', git_version[0]):
+            raise ValueError('Invalid Git version identity')
         snapshot, commits = inventory(root, environment)
         batches = [commits[i:i + BATCH_SIZE] for i in range(0, len(commits), BATCH_SIZE)]
         # Prove partition completeness before invoking scanners.
@@ -143,7 +222,28 @@ def scan(root, environment=None, scanner='gitleaks'):
                 or sum(count for count, _ in results.values()) != len(commits)
                 or refs(root, environment) != snapshot):
             raise ValueError('Incomplete or changed history scan coverage')
-        return {'schema': 1, 'status': 'success', 'commits': len(commits), 'batches': len(batches),
+        if (policy_identity(root) != policy or file_digest(Path(__file__)) != helper_hash
+                or (scanner_path and file_digest(Path(scanner_path)) != scanner_hash)):
+            raise ValueError('Scan identity changed during execution')
+        receipt = {'schema': 1, 'authorityClaim': False, 'reuseEligible': False,
+                   'coverage': 'complete-frozen-all-refs-and-worktree-heads',
+                   'commitIds': commits,
+                   'refs': [{'object': row.partition(' ')[0],
+                             'nameSha256': hashlib.sha256(row.partition(' ')[2].encode(
+                                 'utf-8', errors='surrogateescape')).hexdigest()}
+                            for row in snapshot],
+                   'scanner': {'executableSha256': scanner_hash,
+                               'identity': scanner_identity,
+                               'productionPinned': scanner_identity is not None},
+                   'policySha256': policy, 'helperSha256': helper_hash,
+                   'gitVersion': git_version[0],
+                   'semantics': {'enumeration': 'rev-list --full-history --stdin',
+                                 'patch': '--no-walk=unsorted --full-history --diff-filter=tuxdb',
+                                 'scanner': 'git --redact --no-banner',
+                                 'incrementalReuse': False}}
+        if len(json.dumps(receipt, sort_keys=True).encode()) > MAX_RECEIPT_BYTES:
+            raise ValueError('History receipt exceeds bound')
+        return {'schema': 1, 'status': 'success', 'authorityClaim': False, 'reuseEligible': False, 'receipt': receipt, 'commits': len(commits), 'batches': len(batches),
                 'inventorySha256': hashlib.sha256(('\n'.join(commits) + '\n').encode()).hexdigest(),
                 'seconds': round(time.monotonic() - started, 3),
                 'maximumBatchSeconds': max(elapsed for _, elapsed in results.values())}
@@ -151,10 +251,11 @@ def scan(root, environment=None, scanner='gitleaks'):
 
 def main():
     try:
-        print(json.dumps(scan(Path.cwd()), sort_keys=True))
+        scanner, identity = production_scanner(os.environ)
+        print(json.dumps(scan(Path.cwd(), scanner=scanner, scanner_identity=identity), sort_keys=True))
         return 0
     except (ValueError, OSError, UnicodeError, subprocess.SubprocessError):
-        print(json.dumps({'schema': 1, 'status': 'blocked',
+        print(json.dumps({'schema': 1, 'status': 'blocked', 'authorityClaim': False, 'reuseEligible': False,
                           'reason': 'Full history scan failed, timed out, or has incomplete coverage'}))
         return 1
 

@@ -262,3 +262,44 @@ claim production speedups. Bounded cloud measurements with Gitleaks 8.30.1 found
 an isolated 16.8 MB proposal commit completed in 7.34 seconds, while the hosted
 whole-history scan exceeded its previous 600-second limit. The individual
 proposal alone was therefore not proven to explain that timeout.
+
+### One pinned scanner and read-only contract bootstrap
+
+`nix/secret-scanner.nix` owns the Gitleaks 8.30.1 source and explicit Go standard
+library regexp build. The Nix lock pins its toolchain; a version/source assertion
+makes engine upgrades a reviewed change. Upstream release binaries use a different
+regexp backend and are not timing-equivalent CI validation. Native history scans,
+pure fixtures, and development tooling consume this same package. No scanner
+source patch or detection-policy exception is included.
+
+When the CI workflow contract changes, its existing conservative bootstrap path
+now runs `secret-scan-evidence`: bounded synthetic exact-finding fixtures (90s),
+complete history (1260s caller; 1200s internal and 600s per batch), and all security
+fixtures (600s), within a 1980s execution budget and the 60-minute preflight job.
+Each stage runs even when an earlier stage fails; any failure fails preflight and
+blocks dependent validation/verdict. Diagnostic success does not create cache,
+publication, attestation, or maintainer authority. The native App check and normal
+review requirements remain independent. This is a substantive proposed-contract
+validation path, not a renamed check or a timeout bypass.
+
+The job retains only bounded structured diagnostic artifacts, including full
+successful commit coverage, ref-tip/name hashes, scanner binary/metadata/policy
+hashes and Git invocation identity. Every receipt explicitly denies authority and
+reuse eligibility. There is no incremental reuse or suppressed-finding baseline.
+Bootstrap requires a clean checkout, so the scanned working policy and the pure
+Nix fixture source refer to the same candidate. Artifact retention is diagnostic,
+not authentication or a substitute for later protected-main execution.
+
+The preflight Nix installer receives no fetch token. Checkouts use the unavoidable
+job-scoped read-only GitHub token without persisting credentials; candidate
+execution receives a fresh HOME and an allowlisted environment, empty Git/user
+Nix configuration, no access tokens or remote builders, disabled flake-config
+acceptance and enabled sandboxing. No repository/App secrets, write permissions,
+privileged `pull_request_target` execution, or automatic merge are introduced.
+
+Fixtures deliberately expect compact generated keys to remain findings under the
+unchanged policy, while checking adjacent synthetic credentials and normal paths.
+They do not claim that historical compact proposals pass. Full-history evidence
+must establish that separately using this exact engine; failure remains blocking.
+Production Gitleaks coverage remains Git history. The directory-mode tests are
+synthetic fixtures, not a new worktree or build-artifact security gate.

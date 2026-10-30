@@ -9,7 +9,7 @@ import shutil
 import subprocess
 import tempfile
 import unittest
-from unittest.mock import patch
+from unittest.mock import patch, mock_open
 
 ROOT = Path(__file__).resolve().parents[1]
 spec = importlib.util.spec_from_file_location('history_scan', ROOT / 'ci/history-scan.py')
@@ -146,6 +146,113 @@ class HistoryScan(unittest.TestCase):
         with patch.object(mod.operations, 'run', side_effect=self.fake_run(calls)), self.assertRaises(ValueError):
             mod.scan(self.root, scanner='fixture-scanner')
         self.assertEqual(calls, [])
+
+    def test_receipt_has_full_inventory_and_no_authority_or_reuse_claim(self):
+        self.git('tag', 'sensitive-ref-label')
+        with patch.object(mod.operations, 'run', side_effect=self.fake_run([])):
+            result = mod.scan(self.root, scanner='fixture-scanner')
+        receipt = result['receipt']
+        self.assertIs(result['authorityClaim'], False)
+        self.assertIs(result['reuseEligible'], False)
+        self.assertEqual(receipt['commitIds'], sorted(self.git('rev-list', '--all').splitlines()))
+        self.assertFalse(receipt['authorityClaim'])
+        self.assertFalse(receipt['reuseEligible'])
+        self.assertFalse(receipt['scanner']['productionPinned'])
+        self.assertEqual(receipt['policySha256'], {'.gitleaks.toml': None, '.gitleaksignore': None})
+        self.assertEqual(len(receipt['helperSha256']), 64)
+        self.assertTrue(receipt['gitVersion'].startswith('git version '))
+        self.assertNotIn('sensitive-ref-label', json.dumps(receipt))
+        self.assertTrue(all(set(row) == {'object', 'nameSha256'} for row in receipt['refs']))
+
+    def test_policy_mutation_during_scan_blocks(self):
+        execute = self.fake_run([])
+        def mutate(args, **kwargs):
+            result = execute(args, **kwargs)
+            if args[0] == 'fixture-scanner':
+                (self.root / '.gitleaksignore').write_text('changed-policy')
+            return result
+        with patch.object(mod.operations, 'run', side_effect=mutate), self.assertRaises(ValueError):
+            mod.scan(self.root, scanner='fixture-scanner')
+
+    def test_executable_mutation_during_scan_blocks(self):
+        scanner = self.root / 'scanner'
+        scanner.write_text('#!/bin/sh\nexit 0\n')
+        scanner.chmod(0o755)
+        original = mod.operations.run
+        def mutate(args, **kwargs):
+            if args[0] == str(scanner):
+                scanner.write_text('#!/bin/sh\n# changed\nexit 0\n')
+                return subprocess.CompletedProcess(args, 0)
+            return original(args, **kwargs)
+        with patch.object(mod.operations, 'run', side_effect=mutate), self.assertRaises(ValueError):
+            mod.scan(self.root, scanner=str(scanner))
+
+    def test_symlink_policy_is_rejected(self):
+        (self.root / 'policy').write_text('safe')
+        (self.root / '.gitleaksignore').symlink_to('policy')
+        with self.assertRaises(ValueError):
+            mod.scan(self.root, scanner='fixture-scanner')
+
+    def test_receipt_limit_fails_closed(self):
+        with patch.object(mod, 'MAX_RECEIPT_BYTES', 1), \
+                patch.object(mod.operations, 'run', side_effect=self.fake_run([])), self.assertRaises(ValueError):
+            mod.scan(self.root, scanner='fixture-scanner')
+
+    def test_main_requires_pinned_metadata_before_scanning(self):
+        with patch.dict(os.environ, {}, clear=True), patch.object(mod, 'scan') as scan, \
+                contextlib.redirect_stdout(io.StringIO()) as output:
+            self.assertEqual(mod.main(), 1)
+        scan.assert_not_called()
+        self.assertEqual(json.loads(output.getvalue())['status'], 'blocked')
+
+    def test_production_identity_validation(self):
+        scanner = '/nix/store/' + 'a' * 32 + '-gitleaks-8.30.1/bin/gitleaks'
+        identity = {'schema': 1, 'name': 'gitleaks', 'version': '8.30.1',
+                    'regexpEngine': 'go-stdlib', 'executable': scanner,
+                    'unexpected': 'do-not-echo'}
+        environment = {'XO_NIXPKG_SECRET_SCANNER': scanner,
+                       'XO_NIXPKG_SECRET_SCANNER_IDENTITY': '/nix/store/' + 'b' * 32 + '-identity.json'}
+        with patch.object(Path, 'is_file', return_value=True), \
+                patch.object(Path, 'is_symlink', return_value=False), patch.object(os, 'access', return_value=True), \
+                patch.object(Path, 'open', mock_open(read_data=json.dumps(identity).encode())):
+            actual, metadata = mod.production_scanner(environment)
+            self.assertEqual(actual, scanner)
+            self.assertNotIn('unexpected', metadata)
+            self.assertEqual(metadata['metadataSha256'], mod.hashlib.sha256(json.dumps(identity).encode()).hexdigest())
+            with patch.object(Path, 'open', mock_open(read_data=b'x' * 4097)), self.assertRaises(ValueError):
+                mod.production_scanner(environment)
+            with self.assertRaises(ValueError):
+                mod.production_scanner(dict(environment, XO_NIXPKG_SECRET_SCANNER_IDENTITY=json.dumps(identity)))
+            for field, value in [('version', '8.29.0'), ('regexpEngine', 're2'),
+                                 ('executable', '/tmp/gitleaks'), ('schema', 2)]:
+                bad = json.dumps(dict(identity, **{field: value})).encode()
+                with self.subTest(field=field), patch.object(Path, 'open', mock_open(read_data=bad)), self.assertRaises(ValueError):
+                    mod.production_scanner(environment)
+            with self.assertRaises(ValueError):
+                mod.production_scanner(dict(environment, GITLEAKS_CONFIG='/tmp/config'))
+        with self.assertRaises(ValueError):
+            mod.production_scanner(dict(environment, XO_NIXPKG_SECRET_SCANNER='/tmp/gitleaks'))
+
+    def test_production_rejects_external_extension_or_invalid_toml(self):
+        scanner = self.root / 'scanner'
+        scanner.write_text('#!/bin/sh\nexit 0\n')
+        scanner.chmod(0o755)
+        for content in ('[extend]\npath = "elsewhere.toml"\n',
+                        '[ExTeNd]\nPaTh = "elsewhere.toml"\n', 'invalid TOML'):
+            (self.root / '.gitleaks.toml').write_text(content)
+            with self.subTest(content=content), self.assertRaises(ValueError):
+                mod.scan(self.root, scanner=str(scanner), scanner_identity={'fixture': True})
+
+    def test_executable_and_policy_hashes_are_recorded(self):
+        scanner = self.root / 'scanner'
+        scanner.write_text('#!/bin/sh\nexit 0\n')
+        scanner.chmod(0o755)
+        (self.root / '.gitleaks.toml').write_text('[extend]\nuseDefault = true\n')
+        result = mod.scan(self.root, scanner=str(scanner))
+        receipt = result['receipt']
+        self.assertEqual(receipt['scanner']['executableSha256'], mod.file_digest(scanner))
+        self.assertEqual(receipt['policySha256']['.gitleaks.toml'],
+                         mod.file_digest(self.root / '.gitleaks.toml'))
 
     @unittest.skipUnless(shutil.which('gitleaks'), 'native Gitleaks is unavailable')
     def test_native_scanner_matches_full_history_with_secret_removed_renamed_and_merged(self):

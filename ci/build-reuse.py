@@ -467,7 +467,9 @@ def validate(candidate, controller, evidence, phase='all', preflight=None):
             require(git(candidate, 'rev-parse', '--is-shallow-repository') == 'false',
                     'History security scan requires a complete Git checkout')
             operations.run([sys.executable, os.environ['XO_NIXPKG_HISTORY_SCAN_SOURCE']], cwd=candidate,
-                           env=dict(environment, PYTHONPATH=str(Path(operations.__file__).parent)),
+                           env=dict(environment, PYTHONPATH=str(Path(operations.__file__).parent),
+                                    XO_NIXPKG_SECRET_SCANNER=os.environ['XO_NIXPKG_SECRET_SCANNER'],
+                                    XO_NIXPKG_SECRET_SCANNER_IDENTITY=os.environ['XO_NIXPKG_SECRET_SCANNER_IDENTITY']),
                            check=True, timeout=1260)
             nix(environment, 'build', '--no-link', '--no-write-lock-file',
                 reference + '#lib.ciSecurityFixtures.x86_64-linux')

@@ -169,11 +169,23 @@
   ],
   "pathRules": [
     {
-      "pattern": "^(?:ci/security-fixtures\\.sh|nix/security-fixtures\\.nix|tests/test_preflight\\.py|tests/test_history_scan\\.py)$",
+      "pattern": "^(?:ci/security-fixtures\\.sh|nix/security-fixtures\\.nix|tests/test_(?:preflight|history_scan|scanner_fixtures|scanner_evidence)\\.py)$",
       "validation": [
         "repository-policy"
       ],
       "publication": []
+    },
+    {
+      "pattern": "^(?:nix/secret-scanner\\.nix|ci/(?:secret-scan-evidence\\.(?:py|sh)|scanner-fixtures\\.py))$",
+      "validation": [
+        "repository-policy",
+        "application-composition",
+        "automation-fixtures",
+        "automation-runtime"
+      ],
+      "publication": [
+        "automation-runtime"
+      ]
     },
     {
       "pattern": "^ci/decisions/",

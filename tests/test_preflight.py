@@ -37,6 +37,8 @@ class PreflightTests(unittest.TestCase):
                             'XO_NIXPKG_TRUSTED_PLAN_NIX': '/nix/store/fixture/bin/xo-nixpkg-candidate-nix',
                             'XO_NIXPKG_PLAN_RUNNER': '/nix/store/fixture/bin/plan-runner',
                             'XO_NIXPKG_HISTORY_SCAN_SOURCE': str(ROOT / 'ci/history-scan.py'),
+                            'XO_NIXPKG_SECRET_SCANNER': '/nix/store/fixture/bin/gitleaks',
+                            'XO_NIXPKG_SECRET_SCANNER_IDENTITY': '/nix/store/fixture-identity.json',
                             'GH_TOKEN': 'must-not-enter-candidate-environment'}
         self.patch(patch.dict(os.environ, self.environment, clear=True))
         self.patch(patch.object(reuse, 'git', side_effect=self.git))
