@@ -13,11 +13,11 @@ rec {
   inputs = {
     nixpkgs.url = "github:NixOS/nixpkgs/nixos-unstable";
     xo-latest = {
-      url = "github:vatesfr/xen-orchestra/5999d53e0b6172820567a1caee67da798e5a673f";
+      url = "github:vatesfr/xen-orchestra/b477167b41f2ac401e7d8c852c139566b9fe756e";
       flake = false;
     };
     xo-stable = {
-      url = "github:vatesfr/xen-orchestra/a2bd181d3528a61a45bbd4fe99686875fe8eebf8";
+      url = "github:vatesfr/xen-orchestra/5999d53e0b6172820567a1caee67da798e5a673f";
       flake = false;
     };
     xo-rolling = {
@@ -250,7 +250,7 @@ rec {
           update-xo-upstream = mkApp applications.updateXoRolling "Compatibility alias for the rolling XO updater";
           update-libvhdi = mkApp applications.updateLibvhdi "Update and validate the official libvhdi release";
           open-update-pr = mkApp applications.openUpdatePr "Commit and open one allowlisted source update pull request";
-          update-flake-lock = mkApp applications.updateFlakeLock "Refresh and validate the Nixpkgs lock";
+          update-devenv-modules = mkApp applications.updateDevenvModules "Refresh native Devenv modules without advancing nixpkgs";
         }
       );
 
