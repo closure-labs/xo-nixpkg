@@ -393,8 +393,12 @@ def repository_policy_binding(controller):
     policy = read_json(controller / 'ci/native-secret-policy.json')
     require(policy.get('policyId') == 'github-native-secret-observation-v1'
             and policy.get('activation') == 'protected-main', 'Current native policy required')
-    return {'policyId': policy['policyId'], 'policySha256': hashlib.sha256(
-        json.dumps(policy, sort_keys=True, separators=(',', ':')).encode()).hexdigest()}
+    combined = {'nativePublication': policy, 'incoming': {
+        'workflowSha256': digest(controller / '.github/workflows/repository-secret-scan.yml'),
+        'configSha256': digest(controller / '.gitleaks.toml')},
+        'history': 'visible-nonblocking-unresolved-debt'}
+    return {'policyId': 'gitleaks-incoming-native-publication-v2', 'policySha256': hashlib.sha256(
+        json.dumps(combined, sort_keys=True, separators=(',', ':')).encode()).hexdigest()}
 
 
 def preflight_identity(candidate, controller, plan):
