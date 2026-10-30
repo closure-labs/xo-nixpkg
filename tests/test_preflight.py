@@ -30,6 +30,9 @@ class PreflightTests(unittest.TestCase):
         (self.controller / 'ci').mkdir()
         (self.controller / 'ci/classifier.json').write_text(json.dumps({'preflightTargets': ['repository-policy']}))
         (self.controller / 'ci/native-secret-policy.json').write_bytes((ROOT / 'ci/native-secret-policy.json').read_bytes())
+        (self.controller / '.github/workflows').mkdir(parents=True, exist_ok=True)
+        (self.controller / '.github/workflows/repository-secret-scan.yml').write_bytes((ROOT / '.github/workflows/repository-secret-scan.yml').read_bytes())
+        (self.controller / '.gitleaks.toml').write_bytes((ROOT / '.gitleaks.toml').read_bytes())
         self.cheap = {'name': 'repository-policy', 'attribute': 'checks.x86_64-linux.repository-policy'}
         self.runtime = {'name': 'xo-latest', 'attribute': 'checks.x86_64-linux.xo-latest'}
         self.plan = {'schemaVersion': 2, 'name': 'fixture', 'targets': [self.cheap, self.runtime]}
@@ -106,7 +109,7 @@ class PreflightTests(unittest.TestCase):
         binding = json.loads((self.evidence / 'preflight-binding.json').read_text())
         self.assertEqual(binding['repositoryScope'], {'mode': 'introduced', 'base': 'b' * 40, 'head': 'a' * 40})
         self.assertEqual(binding['schema'], 2)
-        self.assertEqual(binding['repositorySecretPolicy']['policyId'], 'github-native-secret-observation-v1')
+        self.assertEqual(binding['repositorySecretPolicy']['policyId'], 'gitleaks-incoming-native-publication-v2')
         self.assertIs(binding['authorityClaim'], False)
         os.environ['GITHUB_EVENT_NAME'] = 'workflow_dispatch'
         with self.assertRaises(ValueError):

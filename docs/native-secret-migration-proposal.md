@@ -1,3 +1,7 @@
+> Historical design record. The custom native merge-check publisher described
+> below is replaced by the conventional [Gitleaks workflow](gitleaks-workflow.md).
+> Native posture/zero-open-alert checks remain a separate publication prerequisite.
+
 # GitHub-native repository secret policy migration (draft)
 
 This draft implements `github-native-secret-observation-v1`; it is not activated
