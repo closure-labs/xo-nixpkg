@@ -6,6 +6,13 @@
     "login": "cl-decider[bot]",
     "id": 344936881
   },
+  "dependabot": {
+    "login": "dependabot[bot]",
+    "id": 49699333,
+    "family": "github-actions-pins",
+    "sameRepositoryOnly": true,
+    "requiresCurrentHeadHumanApproval": true
+  },
   "workflows": [
     ".github/workflows/ci.yml",
     ".github/workflows/codeql.yml",

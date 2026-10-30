@@ -62,7 +62,7 @@ rec {
   ciAdmission = pkgs.writeShellApplication {
     name = "xo-nixpkg-ci-admission";
     runtimeInputs = [
-      pkgs.python3
+      (pkgs.python3.withPackages (p: [ p.pyyaml ]))
       boundedGh
     ];
     text = ''

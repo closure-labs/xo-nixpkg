@@ -26,7 +26,8 @@ if ! candidates_json=$(jq -c \
       select(.head.repo.full_name == $repository) |
       select(.base.ref == $branch) |
       ((.user.login // "") | sub("\\[bot\\]$"; "")) as $author |
-      if $author == "dependabot" and (.head.ref | startswith("dependabot/github_actions/")) then
+      if .user.login == "dependabot[bot]" and .user.id == 49699333 and .user.type == "Bot" and
+        (.head.ref | startswith("dependabot/github_actions/")) then
         {author:$author,branch:.head.ref,number,title,sha:.head.sha,
          kind:"dependabot-actions",approvalPolicy:"automatic"}
       elif $author == $update_author and

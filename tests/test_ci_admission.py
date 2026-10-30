@@ -21,7 +21,7 @@ SHA = 'a' * 40
 
 class API:
     def __init__(self):
-        self.run = dict(id=42, run_attempt=1, event='pull_request', conclusion='action_required',
+        self.run = dict(id=42, run_attempt=1, event='pull_request', status='completed', conclusion='action_required',
                         repository=REPO, head_repository={'id': 91}, head_branch='change', head_sha=SHA,
                         path='.github/workflows/ci.yml', workflow_id=5, actor=BOT, triggering_actor=BOT)
         self.pull = dict(number=7, state='open', draft=True, user=BOT,
@@ -30,7 +30,7 @@ class API:
         self.calls, self.posts = [], []
         self.mutate = lambda endpoint: None
         self.member, self.permission = True, 'admin'
-        self.workflow = {'path': self.run['path'], 'state': 'active'}
+        self.workflow = {'id': 5, 'path': self.run['path'], 'state': 'active'}
 
     def __call__(self, endpoint):
         self.calls.append(endpoint)
@@ -157,16 +157,18 @@ class Admission(unittest.TestCase):
         calls = []
         def api(endpoint):
             calls.append(endpoint)
-            return {'workflow_runs': [{'id': i} for i in range(100)] if len(calls)==1 else [{'id': 200}]}
+            return {'workflow_runs': [{'id': i + 1} for i in range(100)] if len(calls)==1 else [{'id': 200}]}
         self.assertEqual(len(admission.pending_runs(api, POLICY)), 101)
         with self.assertRaises(admission.AuthorityError):
-            admission.pending_runs(lambda _: {'workflow_runs':[{'id':i} for i in range(100)]}, POLICY)
+            admission.pending_runs(lambda _: {'workflow_runs':[{'id':i + 1} for i in range(100)]}, POLICY)
 
     def test_workflow_executes_only_protected_controller(self):
         workflow = (ROOT/'.github/workflows/ci-admission.yml').read_text()
         self.assertIn('ref: main', workflow)
         self.assertIn('persist-credentials: false', workflow)
-        self.assertIn('ci:admit-trusted', workflow)
+        self.assertIn('"$ADMISSION_TOOL/bin/xo-nixpkg-ci-admission"', workflow)
+        self.assertLess(workflow.index('nix build .#ci-admission'), workflow.index('secrets.DECIDER_KEY'))
+        self.assertNotIn('nix run', workflow[workflow.index('secrets.DECIDER_KEY'):])
         self.assertIn("cron: '*/15 * * * *'", workflow)
         for forbidden in ('head.sha', 'pull_request_target:', 'permission-contents: write',
                           'permission-pull-requests: write', 'permission-checks: write', 'download-artifact'):

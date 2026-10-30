@@ -134,6 +134,9 @@ if [[ -z $run_id ]]; then
 fi
 
 if [[ $run_conclusion == action_required ]]; then
+  if [[ $EXPECTED_AUTHOR == dependabot ]]; then
+    complete ci-admission-required "Dependabot PR $PR_NUMBER awaits the trusted CI admission controller and exact-head Super Admin review."
+  fi
   if ! approval_error=$(gh api --method POST \
     "repos/${GITHUB_REPOSITORY}/actions/runs/${run_id}/approve" 2>&1); then
     printf '%s\n' "$approval_error" >&2
@@ -170,6 +173,9 @@ if ! pr=$(read_pr); then
 fi
 validate_pr "$pr"
 if [[ $(jq -r '.autoMergeRequest != null' <<<"$pr") == true ]]; then
+  if [[ $EXPECTED_AUTHOR == dependabot ]]; then
+    complete queued "Dependabot PR $PR_NUMBER already has an auto-merge request; required human authority and native checks still gate queue/merge."
+  fi
   complete queued "Trusted update PR $PR_NUMBER is already enrolled in the merge queue."
 fi
 if [[ $APPROVAL_POLICY == trusted-maintainer ]]; then
@@ -194,10 +200,17 @@ if ! merge_error=$(gh pr merge \
   "$pr_url" 2>&1); then
   if latest_pr=$(read_pr) &&
     [[ $(jq -r '.autoMergeRequest != null' <<<"$latest_pr") == true ]]; then
+    if [[ $EXPECTED_AUTHOR == dependabot ]]; then
+      validate_pr "$latest_pr"
+      complete queued "Dependabot PR $PR_NUMBER has an auto-merge request; required human authority and native checks still gate queue/merge."
+    fi
     complete queued "Trusted update PR $PR_NUMBER is already enrolled in the merge queue."
   fi
   printf '%s\n' "$merge_error" >&2
   fail "Could not enroll PR $PR_NUMBER at validated head $head_sha in the merge queue; verify MERGE_QUEUE_TOKEN has Contents and Pull requests write permissions."
 fi
 [[ -z $merge_error ]] || printf '%s\n' "$merge_error"
+if [[ $EXPECTED_AUTHOR == dependabot ]]; then
+  complete queued "Requested auto-merge for Dependabot PR $PR_NUMBER at $head_sha; this is not human approval or confirmed queue/merge."
+fi
 complete queued "Enrolled trusted update PR $PR_NUMBER at $head_sha in the merge queue."

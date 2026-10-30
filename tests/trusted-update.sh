@@ -107,6 +107,13 @@ assert_status ci-authorized "$temporary/result.json"
 grep -Fq -- 'actions/runs/42/approve' "$temporary/approve.log"
 [[ ! -e $temporary/merge.log ]]
 
+rm -f "$temporary/approve.log"
+run_trusted automatic "$temporary/result.json" \
+  EXPECTED_AUTHOR=dependabot FAKE_AUTHOR='dependabot[bot]' \
+  FAKE_RUN_CONCLUSION=action_required >/dev/null
+assert_status ci-admission-required "$temporary/result.json"
+[[ ! -e $temporary/approve.log && ! -e $temporary/merge.log ]]
+
 rm -f "$temporary/approve.log" "$temporary/merge.log"
 run_trusted automatic "$temporary/result.json" \
   FAKE_RUN_STATUS=in_progress FAKE_RUN_CONCLUSION='' >/dev/null
@@ -300,6 +307,33 @@ grep -F '| #3 | xo-rolling | `policy-error` |' \
 # shellcheck disable=SC2016
 grep -F '| #4 | xo-rolling | `queued` |' \
   "$temporary/invalid-summary.md" >/dev/null
+
+# Native numeric bot identity is required even for an auto-merge request.
+dependabot_pr='{
+  "draft":false,"number":6,"title":"Bump Actions",
+  "user":{"login":"dependabot[bot]","id":49699333,"type":"Bot"},"base":{"ref":"main"},
+  "head":{"ref":"dependabot/github_actions/group","sha":"actions-sha","repo":{"full_name":"example/xo-nixpkg"}}
+}'
+for identity in official wrong-id wrong-type wrong-login; do
+  candidate=$dependabot_pr
+  case $identity in
+    wrong-id) candidate=$(jq '.user.id = 1' <<<"$candidate") ;;
+    wrong-type) candidate=$(jq '.user.type = "User"' <<<"$candidate") ;;
+    wrong-login) candidate=$(jq '.user.login = "dependabot"' <<<"$candidate") ;;
+  esac
+  : >"$temporary/trusted.log"
+  env PATH="$temporary/bin:$PATH" \
+    GH_TOKEN=fixture GITHUB_REPOSITORY=example/xo-nixpkg DEFAULT_BRANCH=main \
+    XO_NIXPKG_TRUSTED_UPDATE_COMMAND="$temporary/bin/fake-trusted-update" \
+    FAKE_TRUSTED_LOG="$temporary/trusted.log" FAKE_PULLS_JSON="[$candidate]" \
+    FAKE_FILES_6='[{"filename":".github/workflows/codeql.yml","status":"modified"}]' \
+    bash "$root/ci/queue-automation.sh" >/dev/null
+  if [[ $identity == official ]]; then
+    grep -Fx '6 automatic' "$temporary/trusted.log" >/dev/null
+  else
+    [[ ! -s $temporary/trusted.log ]]
+  fi
+done
 
 # The weekly native updater can change either lockfile or both. Only edits to
 # existing lockfiles qualify; deletions, renames and extra paths block queuing.

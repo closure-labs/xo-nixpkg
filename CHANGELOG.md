@@ -8,6 +8,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## Unreleased
 
+- Admit official same-repository Dependabot Actions-pin CI only after immutable
+  diff verification and current-head Super Admin review. Reconcile late review
+  wakeups and delegate Dependabot execution holds to the single CI controller.
+
 - Automatically admit pending CI for draft and ready PRs from the pinned Decider
   bot or live Super Admins, without granting review, merge or publication authority.
 
