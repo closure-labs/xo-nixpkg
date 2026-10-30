@@ -33,9 +33,12 @@ class PreflightTests(unittest.TestCase):
         self.runtime = {'name': 'xo-latest', 'attribute': 'checks.x86_64-linux.xo-latest'}
         self.plan = {'schemaVersion': 2, 'name': 'fixture', 'targets': [self.cheap, self.runtime]}
         self.environment = {'PREPARED_CI_WORKFLOW': json.dumps({'jobs': {'validate': {'plan': self.plan}}}),
-                            'GITHUB_SHA': 'a' * 40, 'GITHUB_RUN_ID': '123', 'GITHUB_RUN_ATTEMPT': '2',
+                            'GITHUB_EVENT_NAME': 'workflow_dispatch', 'GITHUB_SHA': 'a' * 40, 'GITHUB_RUN_ID': '123', 'GITHUB_RUN_ATTEMPT': '2',
                             'XO_NIXPKG_TRUSTED_PLAN_NIX': '/nix/store/fixture/bin/xo-nixpkg-candidate-nix',
                             'XO_NIXPKG_PLAN_RUNNER': '/nix/store/fixture/bin/plan-runner',
+                            'XO_NIXPKG_HISTORY_SCAN_SOURCE': str(ROOT / 'ci/history-scan.py'),
+                            'XO_NIXPKG_SECRET_SCANNER': '/nix/store/fixture/bin/gitleaks',
+                            'XO_NIXPKG_SECRET_SCANNER_IDENTITY': '/nix/store/fixture-identity.json',
                             'GH_TOKEN': 'must-not-enter-candidate-environment'}
         self.patch(patch.dict(os.environ, self.environment, clear=True))
         self.patch(patch.object(reuse, 'git', side_effect=self.git))
@@ -70,7 +73,7 @@ class PreflightTests(unittest.TestCase):
 
     def export_fixture(self, event='workflow_dispatch'):
         path = self.root / 'event.json'
-        path.write_text(json.dumps({'pull_request': {'head': {'repo': {'full_name': reuse.REPOSITORY}}}}))
+        path.write_text(json.dumps({'pull_request': {'base': {'sha': 'b' * 40}, 'head': {'repo': {'full_name': reuse.REPOSITORY}}}, 'merge_group': {'base_sha': 'b' * 40}}))
         os.environ.update(GITHUB_EVENT_NAME=event, GITHUB_REPOSITORY=reuse.REPOSITORY,
                           GITHUB_REF='refs/heads/main', GITHUB_EVENT_PATH=str(path), XO_NIXPKG_BUILD_JOBS='2')
         self.output = self.root / 'github-output'
@@ -97,6 +100,40 @@ class PreflightTests(unittest.TestCase):
                     'parts': {'distribution-cache.tar.part-000': {'size': 4, 'sha256': 'd' * 64}}}
         self.exporter = Mock(side_effect=export)
         self.patch(patch.object(reuse, 'transport', return_value=Mock(export=self.exporter)))
+
+    def test_introduced_scan_is_event_bound_and_receipt_identifies_scope(self):
+        self.export_fixture('pull_request')
+        self.preflight()
+        self.assertEqual(self.scan.call_args.args[0][-6:],
+                         ['--mode', 'introduced', '--base-sha', 'b' * 40, '--head-sha', 'a' * 40])
+        binding = json.loads((self.evidence / 'preflight-binding.json').read_text())
+        self.assertEqual(binding['historyScanScope'],
+                         {'mode': 'introduced', 'base': 'b' * 40, 'head': 'a' * 40})
+        os.environ['GITHUB_EVENT_NAME'] = 'workflow_dispatch'
+        with self.assertRaises(ValueError):
+            reuse.verify_preflight(self.evidence, self.candidate, self.controller, self.plan, [self.cheap])
+
+    def test_scan_provenance_never_serializes_credentials_or_extra_event_fields(self):
+        self.export_fixture('pull_request')
+        event_path = Path(os.environ['GITHUB_EVENT_PATH'])
+        event = json.loads(event_path.read_text())
+        event['token'] = 'private-event-value'
+        event['pull_request']['base']['credentials'] = 'private-nested-value'
+        event_path.write_text(json.dumps(event))
+        os.environ['GH_TOKEN'] = 'private-environment-value'
+        self.preflight()
+        receipt = (self.evidence / 'preflight-binding.json').read_text()
+        self.assertNotIn('private-', receipt)
+        self.assertEqual(json.loads(receipt)['historyScanScope'],
+                         {'mode': 'introduced', 'base': 'b' * 40, 'head': 'a' * 40})
+
+    def test_introduced_scan_rejects_wrong_base_before_scanner(self):
+        self.export_fixture('pull_request')
+        Path(os.environ['GITHUB_EVENT_PATH']).write_text(json.dumps(
+            {'pull_request': {'base': {'sha': 'c' * 40}}}))
+        with self.assertRaises(ValueError):
+            self.preflight()
+        self.scan.assert_not_called()
 
     def test_all_import_export_combinations_keep_validation_and_output_identities(self):
         self.export_fixture()
@@ -198,7 +235,9 @@ class PreflightTests(unittest.TestCase):
     def test_shared_checks_and_history_precede_runtime_without_duplicate_selected_targets(self):
         self.preflight()
         self.scan.assert_called_once()
-        self.assertEqual(self.scan.call_args.args[0], ['gitleaks', 'git', '--redact', '--no-banner'])
+        self.assertEqual(self.scan.call_args.args[0], [reuse.sys.executable, str(ROOT / 'ci/history-scan.py'), '--mode', 'full'])
+        self.assertEqual(self.scan.call_args.kwargs['timeout'], 1260)
+        self.assertEqual(self.scan.call_args.kwargs['env']['PYTHONPATH'], str(Path(reuse.operations.__file__).parent))
         self.assertNotIn('GH_TOKEN', self.scan.call_args.kwargs['env'])
         self.assertEqual(self.native.call_args_list[0].args[-1], 'git+file://' + str(self.candidate) + '#lib.ciSecurityFixtures.x86_64-linux')
         self.restore.assert_not_called()

@@ -214,6 +214,7 @@ rec {
           queue-preflight = mkApp applications.queuePreflight "Check merge queue runtime credential";
           rolling-failure = mkApp applications.rollingFailure "Report a preserved failed rolling candidate";
           fetch-evidence = mkApp applications.fetchEvidence "Fetch an authenticated immutable qualification packet";
+          secret-scan-evidence = mkApp applications.secretScanEvidence "Run bounded read-only scanner bootstrap evidence without authority";
           security-lint = mkApp applications.securityLint "Validate workflow security and evidence contracts";
           qualify-products = mkApp applications.qualifyProducts "Build complete four-profile runtime security evidence";
           build-reuse = mkApp applications.buildReuse "Build sandboxed candidates and restore authenticated exact CI outputs";

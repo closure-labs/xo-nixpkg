@@ -118,7 +118,8 @@ preflight emits its evidence and stops the runtime stage. Selection and required
 CI verdicts retain their existing behavior.
 
 For PR and merge-group events, CI's required **Repository security audit** job
-owns full-history `gitleaks git`, the private pure fixture component
+owns the complete introduced-commit `gitleaks git` scan between exact protected
+base and evaluation head, the private pure fixture component
 `lib.ciSecurityFixtures.x86_64-linux`, and selected preflight targets. The shared
 component validates the signal relay, workflows with actionlint/zizmor, Python
 suites and distribution-cache fixtures. `repository-policy` depends on that
@@ -132,8 +133,12 @@ plus all successful selected target manifests and timings. A missing, stale or
 mutated artifact blocks runtime before any build import. Output attestation
 remains a separate job that executes no candidate code. The required contexts
 remain **Repository security audit** and **CI gate**, each with one owner per
-eligible event. The standalone security workflow retains push, daily schedule
-and manual coverage, and its separately credentialed protection audit.
+eligible event. The standalone security workflow retains full-history scanning
+on protected-main pushes, daily schedules and manual runs, plus its separately
+credentialed protection audit. Scheduled/manual CI also scans full history.
+Publication separately requires a successful latest full audit for exact current
+protected main, within 24 hours; a missing, failed or stale audit blocks it.
+Introduced-commit success is not proof of clean historical coverage.
 
 A proposed CI workflow that differs from its protected controller uses complete
 bootstrap validation with Actions build imports and reuse certification disabled.
@@ -393,3 +398,15 @@ Cache permission diagnostics identify their HTTP client explicitly so Cachix's
 edge service does not reject Python's default user-agent. A Cloudflare non-JSON
 403 reports `cache-request-blocked`, rather than implying the stored token was
 rejected. Credential and API response bodies remain withheld.
+
+### Bounded proposal JSON formatting
+
+Decision proposals retain one JSON value per line while omitting unnecessary
+structural indentation. The canonical finding-key lines keep the exact spelling
+required by the existing secret-inventory policy. This is whitespace-only: the
+canonical proposal identity, actual UTF-8 16 MiB publication bound, reader bound,
+and scanner policy are unchanged. Individual string values are not truncated.
+
+This prevents future proposals from becoming multi-megabyte single-line scanner
+inputs. It does not rewrite or exempt already-published compact history, repair
+its scanner findings, or remove the need for exact-head approval on a new commit.
