@@ -51,6 +51,51 @@ class InventoryTests(unittest.TestCase):
             with self.assertRaisesRegex(ValueError, 'unversioned'):
                 inventory.inventory(root, {str(root): {}}, drv, xo=False)
 
+    def test_versioned_python_environment_preserves_exact_native_provenance(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary) / 'python3-3.14.8-env'
+            (root / 'bin').mkdir(parents=True)
+            binary = root / 'bin/python3.14'
+            binary.write_bytes(b'\x7fELFwrapper-fixture')
+            attrs = {'name': 'python3-3.14.8-env', 'pname': 'python3-env', 'version': '3.14.8'}
+            # buildEnv uses structured derivation attributes. Also retain the
+            # supported flat representation; neither case parses the store name.
+            for metadata in ({'env': attrs}, {'env': {}, 'structuredAttrs': attrs},
+                             {'env': {'__json': json.dumps(attrs)}}):
+                record = dict(metadata, outputs={'out': {'path': str(root)}})
+                with self.subTest(metadata=metadata):
+                    result = inventory.inventory(root, {str(root): {}}, {'python-env.drv': record}, xo=False)
+                    component, = result['components']
+                    self.assertEqual(component['purl'], 'pkg:nix/python3-env@3.14.8')
+                    properties = component['properties']
+                    self.assertIn({'name': 'nix:derivation', 'value': '/nix/store/python-env.drv'}, properties)
+                    self.assertIn({'name': 'xo-nixpkg:installedPath', 'value': str(binary)}, properties)
+                    self.assertIn({'name': 'xo-nixpkg:outputName', 'value': 'out'}, properties)
+
+    def test_python_environment_missing_or_malformed_identity_is_not_inferred(self):
+        path = '/nix/store/' + 'a' * 32 + '-python3-3.14.8-env'
+        for field in ('pname', 'version'):
+            for value in (None, '', ' ', 3148):
+                attrs = {'name': 'python3-3.14.8-env', 'pname': 'python3-env', 'version': '3.14.8'}
+                if value is None:
+                    attrs.pop(field)
+                else:
+                    attrs[field] = value
+                record = {'env': {'__json': json.dumps(attrs)}, 'outputs': {'out': {'path': path}}}
+                with self.subTest(field=field, value=value), self.assertRaisesRegex(ValueError, 'unversioned'):
+                    inventory.output_binding(path, {'python-env.drv': record})
+
+    def test_python_environment_conflicting_or_ambiguous_producers_fail(self):
+        path = '/nix/store/' + 'a' * 32 + '-python3-3.14.8-env'
+        def record(version, outputs=None):
+            return {'env': {'__json': json.dumps({'pname': 'python3-env', 'version': version})},
+                    'outputs': outputs or {'out': {'path': path}}}
+        with self.assertRaisesRegex(ValueError, 'conflicting exact output producer identities'):
+            inventory.output_binding(path, {'first.drv': record('3.14.8'), 'second.drv': record('3.14.9')})
+        with self.assertRaisesRegex(ValueError, 'multiple derivation outputs'):
+            inventory.output_binding(path, {'python-env.drv': record('3.14.8',
+                {'out': {'path': path}, 'other': {'path': path}})})
+
     def test_version_four_relative_output_identity(self):
         record = {'env': {'out': '/nix/store/identity-native'},
                   'outputs': {'out': {'path': 'identity-native'}}}

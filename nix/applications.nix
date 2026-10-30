@@ -6,6 +6,13 @@
 }:
 
 let
+  # withPackages creates native executable wrappers; retain an explicit exact
+  # identity for the shipped environment as well as its Python/PyYAML inputs.
+  ciAdmissionPython = (pkgs.python3.withPackages (p: [ p.pyyaml ])).overrideAttrs (_: {
+    pname = "${pkgs.python3.pname}-env";
+    version = pkgs.python3.version;
+  });
+
   boundedGh = pkgs.writeShellApplication {
     name = "gh";
     runtimeInputs = [ pkgs.python3 ];
@@ -62,7 +69,7 @@ rec {
   ciAdmission = pkgs.writeShellApplication {
     name = "xo-nixpkg-ci-admission";
     runtimeInputs = [
-      (pkgs.python3.withPackages (p: [ p.pyyaml ]))
+      ciAdmissionPython
       boundedGh
     ];
     text = ''
