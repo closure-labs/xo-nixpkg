@@ -1,0 +1,89 @@
+# SPDX-License-Identifier: Apache-2.0
+name: Prepare read-only XO release candidate
+
+on:
+  pull_request:
+    paths: ['.github/workflows/xo-release-candidate-artifact.yml']
+
+permissions:
+  contents: read
+
+jobs:
+  prepare:
+    if: github.repository == 'closure-labs/xo-nixpkg'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    env:
+      # Explicit protected-main revision reviewed for this one-off generation.
+      CANDIDATE_BASE: d93d59e446aa7916527d13a994d73458c1a24e1f
+    steps:
+      - name: Audit runner traffic
+        uses: step-security/harden-runner@dc2769abcc0fcfbadfc1df54081c1608579ef6b2 # v2
+        with:
+          egress-policy: audit
+      - name: Checkout immutable protected source, never PR code
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: closure-labs/xo-nixpkg
+          ref: d93d59e446aa7916527d13a994d73458c1a24e1f
+          persist-credentials: false
+      - name: Verify immutable source and current main before generation
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          test "$(git rev-parse HEAD)" = "$CANDIDATE_BASE"
+          test "$(gh api repos/closure-labs/xo-nixpkg/git/ref/heads/main --jq .object.sha)" = "$CANDIDATE_BASE"
+          test -z "$(git status --porcelain)"
+      - name: Set up pinned Nix without publishing credentials
+        uses: ./.github/actions/setup-nix # zizmor: ignore[self-repository] -- checkout is the fixed protected-main SHA above, never the PR revision.
+        with:
+          github-token: ${{ github.token }}
+      - name: Generate release pins and evaluate locks, without realization or publication
+        id: candidate
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: nix run .#devenv -- tasks run --mode single --option 'packages:pkgs!' '' update:xo-release
+      - name: Package bounded candidate bytes and provenance
+        env:
+          CANDIDATE_CHANGED: ${{ steps.candidate.outputs.changed }}
+        run: |
+          python3 - <<'PY'
+          import hashlib, json, os, pathlib, stat, subprocess
+          paths = ('flake.nix', 'flake.lock', 'nix/sources/xen-orchestra.json')
+          head = subprocess.check_output(['git', 'rev-parse', 'HEAD'], text=True).strip()
+          if head != os.environ['CANDIDATE_BASE']:
+              raise SystemExit('Source revision changed')
+          changed = subprocess.check_output(['git', 'diff', '--name-only', '-z', 'HEAD']).decode().split('\0')
+          if not set(filter(None, changed)) <= set(paths):
+              raise SystemExit('Updater modified an unexpected tracked path')
+          state = os.environ['CANDIDATE_CHANGED']
+          if state not in ('true', 'false') or (state == 'false' and any(changed)):
+              raise SystemExit('Missing or inconsistent updater outcome')
+          output = pathlib.Path(os.environ['RUNNER_TEMP']) / 'xo-release-candidate'
+          output.mkdir(exist_ok=False)
+          files = {}
+          for name in paths:
+              source = pathlib.Path(name)
+              if (not stat.S_ISREG(source.lstat().st_mode) or source.stat().st_size > 1048576
+                      or any(parent.is_symlink() for parent in source.parents)):
+                  raise SystemExit('Candidate file is not a bounded regular file')
+              content = source.read_bytes()
+              if name.endswith('.json') or name.endswith('.lock'):
+                  json.loads(content)
+              target = output / name
+              target.parent.mkdir(parents=True, exist_ok=True)
+              target.write_bytes(content)
+              files[name] = {'bytes': len(content), 'sha256': hashlib.sha256(content).hexdigest()}
+          manifest = {'schema': 1, 'repository': 'closure-labs/xo-nixpkg', 'base': head,
+                      'runId': os.environ['GITHUB_RUN_ID'], 'attempt': os.environ['GITHUB_RUN_ATTEMPT'],
+                      'changed': state == 'true', 'files': files,
+                      'authorityClaim': False, 'reuseEligible': False, 'realized': False}
+          (output / 'manifest.json').write_text(json.dumps(manifest, indent=2) + '\n')
+          PY
+      - name: Retain data for independent review and separate Decider handoff
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: xo-release-candidate-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/xo-release-candidate
+          if-no-files-found: error
+          retention-days: 7
