@@ -169,6 +169,11 @@
   ],
   "pathRules": [
     {
+      "pattern": "^(?:ci/sync-dependabot-lock\\.py|tests/test_(?:dependabot_nix_sync|update_devenv_modules)\\.py)$",
+      "validation": ["repository-policy"],
+      "publication": []
+    },
+    {
       "pattern": "^(?:ci/security-fixtures\\.sh|nix/security-fixtures\\.nix|tests/test_(?:preflight|history_scan|audit_freshness|scanner_fixtures|scanner_evidence|fuse_compat)\\.py)$",
       "validation": [
         "repository-policy"
@@ -423,7 +428,7 @@
       "publication": []
     },
     {
-      "pattern": "^(ci/(update-xo|update-libvhdi|update-flake-lock|open-update-pr)\\.sh|scripts/)",
+      "pattern": "^(ci/(update-xo|update-libvhdi|update-devenv-modules|open-update-pr)\\.sh|scripts/)",
       "validation": [
         "repository-policy",
         "source-update-fixtures",

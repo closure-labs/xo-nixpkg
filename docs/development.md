@@ -16,12 +16,28 @@ nix run --accept-flake-config .#devenv -- test
 
 The CLI follows the repository's Nixpkgs input, with no separate Devenv release
 pin or upstream CLI build graph. Native modules use the CLI's default rolling
-source. The existing weekly input workflow refreshes `devenv.lock` and the
-Nixpkgs input in `flake.lock`, checks their shared Nixpkgs identity, and includes
-both files in its update PR through the packaged updater command. The workflow
-path, historical PR title and automatic queue guard stay unchanged; a PR that
-changes both lockfiles needs normal source review. XO channel sources retain
-their dedicated updaters.
+source. Native Dependabot owns the branch-tracked `nixpkgs` input in
+`flake.lock`. Its PR receives a deterministic, exact-identity `devenv.lock`
+synchronization from protected-main code; the synchronizer never resolves a
+second upstream revision or evaluates candidate Nix. Normal exact-head human
+review and all required checks remain necessary after that additional commit.
+
+Generated paired-lock commits include `[dependabot skip]` so Dependabot can continue
+rebasing its PR. Dependabot may overwrite that generated commit; the protected-base
+synchronizer then deterministically recreates the paired lock. Each resulting head
+still requires normal validation and current-head human approval. A failed commit
+receipt check never retries the write automatically; inspect the live PR first.
+
+Native Devenv module inputs are not supported by Dependabot. Refresh them
+explicitly with `nix run .#update-devenv-modules`; this changes only the native
+module lock and refuses changes to either shared nixpkgs identity. Review and
+publish that local maintenance diff normally. There is no second scheduled
+nixpkgs updater. The queue observer retains its old `Refresh flake inputs`
+workflow name solely for already-existing legacy updater PRs; this does not
+create or automatically queue native Dependabot PRs. The CLI already comes from Nixpkgs (currently Devenv 2.4.0),
+not a separate old Devenv release pin. Both project lockfiles remain reproducible.
+XO channel sources retain their separate upstream release-commit detector,
+which checks at 06:00 and 18:00 UTC; these are not Nix dependency versions.
 
 With a compatible Devenv already installed, use `devenv shell` and `devenv test`.
 `nix develop --accept-flake-config` remains a plain `mkShellNoCC` alternative.

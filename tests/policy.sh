@@ -9,7 +9,7 @@ for channel in latest stable rolling; do
   rev=$(jq -er ".channels.$channel.rev" nix/sources/xen-orchestra.json)
   rg -F "url = \"github:vatesfr/xen-orchestra/$rev\";" flake.nix >/dev/null
 done
-if rg -e 'CACHIX_AUTH_TOKEN|cachix push' ci/prewarm-rolling.sh ci/prewarm-candidate.sh .github/workflows/update-rolling.yml .github/workflows/update-check.yml .github/workflows/update-flake-lock.yml .github/workflows/prewarm-runtime.yml; then
+if rg -e 'CACHIX_AUTH_TOKEN|cachix push' ci/prewarm-rolling.sh ci/prewarm-candidate.sh .github/workflows/update-rolling.yml .github/workflows/update-check.yml .github/workflows/prewarm-runtime.yml; then
   echo 'Rolling candidate realization must not distribute packages' >&2
   exit 1
 fi

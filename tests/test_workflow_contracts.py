@@ -19,15 +19,17 @@ class WorkflowContracts(unittest.TestCase):
 
     def test_privileged_producers_only_run_for_main(self):
         for name, job in [('qualification.yml', 'qualify'), ('update-check.yml', 'update'),
-                          ('update-rolling.yml', 'update'), ('update-flake-lock.yml', 'update'),
+                          ('update-rolling.yml', 'update'),
                           ('libvhdi-input-update.yml', 'update')]:
             with self.subTest(workflow=name):
                 source = (WORKFLOWS / name).read_text()
                 self.assertRegex(source, rf"  {job}:\n    if: github.ref == 'refs/heads/main'")
 
-    def test_weekly_candidate_explicitly_retains_both_lockfiles(self):
-        self.assertIn('XO_NIXPKG_UPDATE_PATHS: flake.lock devenv.lock',
-                      (WORKFLOWS / 'update-flake-lock.yml').read_text())
+    def test_native_dependabot_owns_nixpkgs_schedule(self):
+        self.assertFalse((WORKFLOWS / 'update-flake-lock.yml').exists())
+        self.assertIn('package-ecosystem: nix', (ROOT / '.github/dependabot.yml').read_text())
+        self.assertIn('dependency-name: nixpkgs', (ROOT / '.github/dependabot.yml').read_text())
+        self.assertIn('"0 6,18 * * *"', (WORKFLOWS / 'update-check.yml').read_text())
 
     def test_reconciliation_binds_qualification_completion_to_its_run_and_attempt(self):
         source = (WORKFLOWS / 'security-reconcile.yml').read_text()
