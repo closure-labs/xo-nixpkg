@@ -365,8 +365,11 @@ def validate_plan(plan):
         names.add(item['name']); attributes.add(item['attribute'])
 
 
-def secret_scan_scope(candidate, controller):
-    """Bind incremental coverage to trusted event inputs, not candidate metadata."""
+def history_scan_scope(candidate, controller):
+    """Return public coverage provenance only: mode and validated commit IDs.
+
+    Never include event bodies, credentials, or scanner findings in this receipt.
+    """
     event = os.environ.get('GITHUB_EVENT_NAME')
     if event not in ('pull_request', 'merge_group'):
         require(event in ('schedule', 'workflow_dispatch'), 'Unsupported secret scan event')
@@ -394,7 +397,7 @@ def preflight_identity(candidate, controller, plan):
                 'workflowSha256': digest(controller / WORKFLOW), 'launcherSha256': digest(Path(__file__)),
                 'planSha256': hashlib.sha256(json.dumps(plan, sort_keys=True, separators=(',', ':')).encode()).hexdigest(),
                 'runId': int(os.environ['GITHUB_RUN_ID']), 'runAttempt': int(os.environ['GITHUB_RUN_ATTEMPT']),
-                'authorityClaim': False, 'secretScanScope': secret_scan_scope(candidate, controller)}
+                'authorityClaim': False, 'historyScanScope': history_scan_scope(candidate, controller)}
     require(all(SHA.fullmatch(identity[key]) for key in ('source', 'tree', 'controller'))
             and identity['runId'] > 0 and identity['runAttempt'] > 0, 'Invalid preflight source or invocation')
     return identity
@@ -486,7 +489,7 @@ def validate(candidate, controller, evidence, phase='all', preflight=None):
         if phase == 'preflight':
             require(git(candidate, 'rev-parse', '--is-shallow-repository') == 'false',
                     'History security scan requires a complete Git checkout')
-            scope = secret_scan_scope(candidate, controller)
+            scope = history_scan_scope(candidate, controller)
             scan_args = ['--mode', scope['mode']]
             if scope['mode'] == 'introduced':
                 scan_args += ['--base-sha', scope['base'], '--head-sha', scope['head']]

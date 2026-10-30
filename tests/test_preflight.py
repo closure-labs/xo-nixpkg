@@ -107,11 +107,25 @@ class PreflightTests(unittest.TestCase):
         self.assertEqual(self.scan.call_args.args[0][-6:],
                          ['--mode', 'introduced', '--base-sha', 'b' * 40, '--head-sha', 'a' * 40])
         binding = json.loads((self.evidence / 'preflight-binding.json').read_text())
-        self.assertEqual(binding['secretScanScope'],
+        self.assertEqual(binding['historyScanScope'],
                          {'mode': 'introduced', 'base': 'b' * 40, 'head': 'a' * 40})
         os.environ['GITHUB_EVENT_NAME'] = 'workflow_dispatch'
         with self.assertRaises(ValueError):
             reuse.verify_preflight(self.evidence, self.candidate, self.controller, self.plan, [self.cheap])
+
+    def test_scan_provenance_never_serializes_credentials_or_extra_event_fields(self):
+        self.export_fixture('pull_request')
+        event_path = Path(os.environ['GITHUB_EVENT_PATH'])
+        event = json.loads(event_path.read_text())
+        event['token'] = 'private-event-value'
+        event['pull_request']['base']['credentials'] = 'private-nested-value'
+        event_path.write_text(json.dumps(event))
+        os.environ['GH_TOKEN'] = 'private-environment-value'
+        self.preflight()
+        receipt = (self.evidence / 'preflight-binding.json').read_text()
+        self.assertNotIn('private-', receipt)
+        self.assertEqual(json.loads(receipt)['historyScanScope'],
+                         {'mode': 'introduced', 'base': 'b' * 40, 'head': 'a' * 40})
 
     def test_introduced_scan_rejects_wrong_base_before_scanner(self):
         self.export_fixture('pull_request')

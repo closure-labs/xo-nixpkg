@@ -394,7 +394,12 @@ rec {
   publicationGate = mkRepositoryApplication {
     name = "xo-nixpkg-publication-gate";
     script = ../ci/publication-gate.sh;
-    runtimeInputs = [ decisions git gh python3 ];
+    runtimeInputs = [
+      decisions
+      pkgs.git
+      pkgs.gh
+      pkgs.python3
+    ];
     prelude = ''
       export XO_NIXPKG_AUDIT_FRESHNESS_SOURCE=${../ci/audit-freshness.py}
       export PYTHONPATH=${decisions}/lib/decisions

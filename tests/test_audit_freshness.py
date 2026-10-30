@@ -11,6 +11,15 @@ spec.loader.exec_module(audit)
 
 
 class AuditFreshnessTests(unittest.TestCase):
+    def test_publication_packaging_qualifies_nixpkgs_dependencies(self):
+        # Narrow source regression, NOT a substitute for hosted Nix evaluation.
+        source = (Path(__file__).parents[1] / 'nix/applications.nix').read_text()
+        block = source.split('  publicationGate = mkRepositoryApplication {', 1)[1].split('  decisions =', 1)[0]
+        dependencies = block.split('runtimeInputs = [', 1)[1].split('];', 1)[0].split()
+        self.assertEqual(dependencies, ['decisions', 'pkgs.git', 'pkgs.gh', 'pkgs.python3'])
+        self.assertIn('XO_NIXPKG_AUDIT_FRESHNESS_SOURCE=${../ci/audit-freshness.py}', block)
+        self.assertIn('PYTHONPATH=${decisions}/lib/decisions', block)
+
     def setUp(self):
         self.sha, self.source = 'a' * 40, 'b' * 40
         self.now = dt.datetime(2026, 10, 30, 12, tzinfo=dt.timezone.utc)
