@@ -274,6 +274,7 @@ jobs:
       needs.validate.result == 'failure' &&
       github.event_name == 'pull_request' &&
       github.event.pull_request.user.login == 'dependabot[bot]' &&
+      !startsWith(github.event.pull_request.head.ref, 'dependabot/nix/') &&
       github.event.pull_request.head.repo.full_name == github.repository
     runs-on: ubuntu-24.04
     timeout-minutes: 20

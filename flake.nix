@@ -21,7 +21,7 @@ rec {
       flake = false;
     };
     xo-rolling = {
-      url = "github:vatesfr/xen-orchestra/d2ffe1ad5640b55ecdd869f5891571b295bf37bf";
+      url = "github:vatesfr/xen-orchestra/a50776cb7d013b359a34d9b0103665d158db1f0a";
       flake = false;
     };
   };
@@ -250,7 +250,7 @@ rec {
           update-xo-upstream = mkApp applications.updateXoRolling "Compatibility alias for the rolling XO updater";
           update-libvhdi = mkApp applications.updateLibvhdi "Update and validate the official libvhdi release";
           open-update-pr = mkApp applications.openUpdatePr "Commit and open one allowlisted source update pull request";
-          update-flake-lock = mkApp applications.updateFlakeLock "Refresh and validate the Nixpkgs lock";
+          update-devenv-modules = mkApp applications.updateDevenvModules "Refresh native Devenv modules without advancing nixpkgs";
         }
       );
 
