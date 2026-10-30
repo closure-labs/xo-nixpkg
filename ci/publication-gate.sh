@@ -3,6 +3,7 @@
 set -euo pipefail
 : "${XO_NIXPKG_EVIDENCE:?XO_NIXPKG_EVIDENCE must identify attested candidate evidence}"
 : "${XO_NIXPKG_PUBLICATION_PURPOSE:?Set publication purpose rolling or release}"
+python3 "${XO_NIXPKG_AUDIT_FRESHNESS_SOURCE:?}"
 # This command queries current-main policy and human authority each invocation.
 # A previously generated receipt can never substitute for this check.
 exec xo-nixpkg-decision-publication \
