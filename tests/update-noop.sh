@@ -22,6 +22,12 @@ cat >"$temporary/commits.json" <<JSON
 ]
 JSON
 
+mkdir -p "$temporary/release-context"
+printf '## **%s**\n<img id="latest" />\n## **%s**\n<img id="stable" />\n' \
+  "$xo_version" "$stable_version" >"$temporary/channels.md"
+printf '## **%s**\n<img id="latest" />\n' "$xo_version" >"$temporary/release-context/$xo_rev.md"
+printf '## **%s**\n<img id="latest" />\n' "$stable_version" >"$temporary/release-context/$stable_rev.md"
+
 vhdi_version=$(jq -er .version "$temporary/libvhdi.json")
 vhdi_url=$(jq -er .url "$temporary/libvhdi.json")
 cat >"$temporary/releases.json" <<JSON
@@ -38,6 +44,10 @@ SH
 chmod +x "$temporary/bin/nix"
 : >"$temporary/nix.log"
 
+xo_command=(bash "$root/ci/update-xo.sh")
+if [[ -n ${XO_NIXPKG_UPDATE_XO_WRAPPER:-} ]]; then
+  xo_command=("$XO_NIXPKG_UPDATE_XO_WRAPPER")
+fi
 PATH="$temporary/bin:$PATH" \
 NOOP_NIX_LOG="$temporary/nix.log" \
 XO_NIXPKG_SOURCE_ROOT="$root" \
@@ -46,7 +56,9 @@ XO_NIXPKG_UPDATE_XO_SOURCE_COMMAND="$root/scripts/update.sh" \
 XO_NIXPKG_XO_PIN_FILE="$temporary/xo.json" \
 XO_NIXPKG_FLAKE_FILE="$temporary/flake.nix" \
 XO_NIXPKG_COMMITS_JSON="$temporary/commits.json" \
-  bash "$root/ci/update-xo.sh" --release "$temporary/xo-output"
+XO_NIXPKG_RELEASE_CHANNELS_FILE="$temporary/channels.md" \
+XO_NIXPKG_RELEASE_CHANGELOG_DIR="$temporary/release-context" \
+  "${xo_command[@]}" --release "$temporary/xo-output"
 grep -Fx 'changed=false' "$temporary/xo-output" >/dev/null
 if [[ -s $temporary/nix.log ]]; then
   echo 'No-change XO updater invoked Nix' >&2

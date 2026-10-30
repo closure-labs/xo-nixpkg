@@ -163,6 +163,29 @@ run_trusted trusted-maintainer "$temporary/result.json" \
 assert_status awaiting-review "$temporary/result.json"
 [[ ! -e $temporary/merge.log ]]
 
+# Authenticated exact-head Comment reviews use the native authority protocol.
+command_review='[{"id":1,"state":"COMMENTED","commit_id":"abc123","body":"/decider approve abc123","user":{"login":"maintainer"}}]'
+run_trusted trusted-maintainer "$temporary/result.json" \
+  FAKE_REVIEWS_JSON="$command_review" >/dev/null
+assert_status queued "$temporary/result.json"
+rm -f "$temporary/merge.log"
+for body in '/decider withdraw abc123' '/decider approve oldsha' 'approved' $'/decider approve abc123\nextra'; do
+  reviews=$(jq --arg body "$body" '.[0].body = $body' <<<"$command_review")
+  run_trusted trusted-maintainer "$temporary/result.json" FAKE_REVIEWS_JSON="$reviews" >/dev/null
+  assert_status awaiting-review "$temporary/result.json"
+  [[ ! -e $temporary/merge.log ]]
+done
+for state in COMMENTED CHANGES_REQUESTED DISMISSED; do
+  reviews=$(jq --arg state "$state" '. + [.[0] | .id = 2 | .state = $state | .body = "/decider withdraw abc123"]' <<<"$command_review")
+  run_trusted trusted-maintainer "$temporary/result.json" FAKE_REVIEWS_JSON="$reviews" >/dev/null
+  assert_status awaiting-review "$temporary/result.json"
+  [[ ! -e $temporary/merge.log ]]
+done
+run_trusted trusted-maintainer "$temporary/result.json" \
+  FAKE_REVIEWS_JSON="$command_review" FAKE_PERMISSION=read >/dev/null
+assert_status awaiting-review "$temporary/result.json"
+[[ ! -e $temporary/merge.log ]]
+
 if run_trusted trusted-maintainer "$temporary/result.json" \
   FAKE_REVIEWS_JSON='{"malformed":true}' >/dev/null 2>&1; then
   echo 'Trusted queue treated malformed review state as a missing approval' >&2

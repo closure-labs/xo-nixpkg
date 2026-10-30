@@ -16,6 +16,7 @@ permissions:
 
 jobs:
   update:
+    if: github.ref == 'refs/heads/main'
     name: Refresh upstream HEAD candidate
     runs-on: ubuntu-24.04
     timeout-minutes: 180

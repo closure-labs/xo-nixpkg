@@ -24,6 +24,7 @@ concurrency:
   cancel-in-progress: false
 jobs:
   qualify:
+    if: github.ref == 'refs/heads/main'
     name: Build and scan all distributed profiles
     runs-on: ubuntu-24.04
     timeout-minutes: 240

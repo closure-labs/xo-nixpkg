@@ -19,6 +19,7 @@ import time
 from urllib.parse import quote
 
 from security_decisions import TechnicalError, canonical_hash, load_json
+from review_protocol import effective_review
 
 SHA = re.compile(r'[0-9a-f]{40}')
 REPOSITORY = re.compile(r'[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+')
@@ -427,24 +428,11 @@ def approval(api, repository, number, head):
         if (not isinstance(review, dict) or type(review.get('id')) is not int or review['id'] < 1
                 or not isinstance(review.get('user'), dict)):
             raise AuthorityError('Invalid authenticated PR review record')
-        if review.get('state') == 'COMMENTED':
-            # Only authenticated Comment reviews, not issue/inline comments,
-            # support the same explicit exact-head protocol as Finite.
-            body = review.get('body')
-            if body is None:
-                body = ''
-            if not isinstance(body, str):
-                raise AuthorityError('Invalid authenticated review body')
-            command = body.strip()
-            if review.get('commit_id') != head:
-                continue
-            if command == '/decider approve ' + head:
-                review = {**review, 'state': 'APPROVED', 'approvalMethod': 'comment-review'}
-            elif command == '/decider withdraw ' + head:
-                review = {**review, 'state': 'DISMISSED', 'approvalMethod': 'comment-review'}
-            else:
-                continue
-        if review.get('state') not in ('APPROVED', 'CHANGES_REQUESTED', 'DISMISSED'):
+        try:
+            review = effective_review(review, head)
+        except ValueError as error:
+            raise AuthorityError(str(error)) from error
+        if review is None:
             continue
         user = review['user']
         if user.get('type') == 'Bot':
