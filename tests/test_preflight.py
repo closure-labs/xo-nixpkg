@@ -314,7 +314,10 @@ class PreflightTests(unittest.TestCase):
         self.assertIn('preflight', ci['jobs']['gate']['needs'])
         self.assertEqual(ci['jobs']['gate']['name'], 'CI gate')
         self.assertEqual(ci['jobs']['attest-builds']['needs'], 'validate')
-        self.assertEqual(ci['jobs']['attest-builds']['if'], "needs.validate.outputs.cache_eligible == 'true'")
+        self.assertEqual(ci['jobs']['attest-builds']['if'],
+                         "github.event_name != 'pull_request' && "
+                         "github.event_name != 'pull_request_review' && "
+                         "needs.validate.outputs.cache_eligible == 'true'")
         self.assertEqual(ci['on']['workflow_dispatch']['inputs']['export_reuse_payload']['default'], True)
         self.assertEqual(ci['on']['workflow_dispatch']['inputs']['export_reuse_payload']['type'], 'boolean')
         for name in ('preflight', 'validate'):
