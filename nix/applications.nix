@@ -698,14 +698,15 @@ rec {
     ];
   };
 
-  updateFlakeLock = mkRepositoryApplication {
-    name = "xo-nixpkg-update-flake-lock";
-    script = ../ci/update-flake-lock.sh;
+  updateDevenvModules = mkRepositoryApplication {
+    name = "xo-nixpkg-update-devenv-modules";
+    script = ../ci/update-devenv-modules.sh;
     runtimeInputs = with pkgs; [
       coreutils
       git
       jq
       nix
+      python3
     ];
   };
 }

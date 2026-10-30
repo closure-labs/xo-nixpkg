@@ -27,6 +27,40 @@
     "xo-latest": {
       "flake": false,
       "locked": {
+        "lastModified": 1793289124,
+        "narHash": "sha256-Asai029Ja2rBGnkdjG/6W2QsUIh9meh4QBohArPwf20=",
+        "owner": "vatesfr",
+        "repo": "xen-orchestra",
+        "rev": "b477167b41f2ac401e7d8c852c139566b9fe756e",
+        "type": "github"
+      },
+      "original": {
+        "owner": "vatesfr",
+        "repo": "xen-orchestra",
+        "rev": "b477167b41f2ac401e7d8c852c139566b9fe756e",
+        "type": "github"
+      }
+    },
+    "xo-rolling": {
+      "flake": false,
+      "locked": {
+        "lastModified": 1793291652,
+        "narHash": "sha256-ms+XulH9EJ2FWPKUA1pOlI3zE+A0pIctomPBO6QIu94=",
+        "owner": "vatesfr",
+        "repo": "xen-orchestra",
+        "rev": "a50776cb7d013b359a34d9b0103665d158db1f0a",
+        "type": "github"
+      },
+      "original": {
+        "owner": "vatesfr",
+        "repo": "xen-orchestra",
+        "rev": "a50776cb7d013b359a34d9b0103665d158db1f0a",
+        "type": "github"
+      }
+    },
+    "xo-stable": {
+      "flake": false,
+      "locked": {
         "lastModified": 1791213531,
         "narHash": "sha256-qHOzAYfLTe9xD2dP+DSxAyf+1FlDwwyOIsxz6iEa4Ec=",
         "owner": "vatesfr",
@@ -38,40 +72,6 @@
         "owner": "vatesfr",
         "repo": "xen-orchestra",
         "rev": "5999d53e0b6172820567a1caee67da798e5a673f",
-        "type": "github"
-      }
-    },
-    "xo-rolling": {
-      "flake": false,
-      "locked": {
-        "lastModified": 1792749848,
-        "narHash": "sha256-iZip51pwq8EcaVBf0dePcZ29RMpiTziRAK9TXMncZXc=",
-        "owner": "vatesfr",
-        "repo": "xen-orchestra",
-        "rev": "d2ffe1ad5640b55ecdd869f5891571b295bf37bf",
-        "type": "github"
-      },
-      "original": {
-        "owner": "vatesfr",
-        "repo": "xen-orchestra",
-        "rev": "d2ffe1ad5640b55ecdd869f5891571b295bf37bf",
-        "type": "github"
-      }
-    },
-    "xo-stable": {
-      "flake": false,
-      "locked": {
-        "lastModified": 1790784773,
-        "narHash": "sha256-/GmHla/wEUx/6VmWB0pQRcHuryVlpqvB8pwWEGU5ro4=",
-        "owner": "vatesfr",
-        "repo": "xen-orchestra",
-        "rev": "a2bd181d3528a61a45bbd4fe99686875fe8eebf8",
-        "type": "github"
-      },
-      "original": {
-        "owner": "vatesfr",
-        "repo": "xen-orchestra",
-        "rev": "a2bd181d3528a61a45bbd4fe99686875fe8eebf8",
         "type": "github"
       }
     }
