@@ -114,12 +114,23 @@ class ProducerTests(ReuseFixture):
                 with self.assertRaises(ValueError):
                     reuse.producer(receipt, self.controller, TREE)
 
-    def test_old_policy_receipt_cannot_be_reused(self):
+    def test_policy_binding_shape_is_validated_before_provenance(self):
         self.provenance_mocks()
-        for binding in [None, {'policyId': 'old-policy', 'policySha256': '0' * 64}]:
+        for binding in [None, {}, {'policyId': 'old-policy'},
+                        {'policyId': 'old-policy', 'policySha256': 'bad'},
+                        {'policyId': '../old-policy', 'policySha256': '0' * 64},
+                        {'policyId': 'old-policy', 'policySha256': '0' * 64, 'extra': True}]:
             changed = dict(self.receipt, repositorySecretPolicy=binding)
-            with self.assertRaisesRegex(ValueError, 'Reuse policy mismatch'):
+            with self.assertRaisesRegex(ValueError, 'Invalid reuse policy binding'):
                 reuse.producer(changed, self.controller, TREE)
+
+    def test_old_policy_requires_provenance_and_is_never_compatible(self):
+        self.provenance_mocks()
+        changed = dict(self.receipt, repositorySecretPolicy={
+            'policyId': 'github-native-secret-observation-v1', 'policySha256': '0' * 64})
+        self.assertEqual(reuse.producer(changed, self.controller, TREE), self.run)
+        with self.assertRaises(reuse.UnavailableProducer):
+            reuse.compatible_producer(changed, self.controller)
 
     def test_api_run_attempt_event_fork_and_workflow_substitutions_rejected(self):
         self.provenance_mocks()
@@ -589,6 +600,28 @@ class RestoreTests(ReuseFixture):
         self.receipt['outputs']['xo-latest']['storePath'] = '/tmp/forged-output'
         with self.assertRaisesRegex(ValueError, 'Invalid authenticated output'):
             self.restore()
+        self.transport.restore.assert_not_called()
+        self.native.assert_not_called()
+        self.assertFalse((self.directory / 'result.json').exists())
+
+    def test_authenticated_old_policy_is_cache_miss_without_import(self):
+        self.receipt['repositorySecretPolicy'] = {
+            'policyId': 'github-native-secret-observation-v1', 'policySha256': '0' * 64}
+        result = self.restore()
+        self.assertEqual(result['status'], 'miss')
+        self.assertFalse(result['authorityClaim'])
+        self.attestation.assert_called_once()
+        self.transport.restore.assert_not_called()
+        self.native.assert_not_called()
+
+    def test_old_policy_does_not_hide_bad_signature_or_output(self):
+        self.receipt['repositorySecretPolicy'] = {
+            'policyId': 'github-native-secret-observation-v1', 'policySha256': '0' * 64}
+        self.attestation.side_effect = ValueError('signature invalid')
+        with self.assertRaisesRegex(ValueError, 'signature invalid'): self.restore()
+        self.attestation.side_effect = None
+        self.receipt['outputs']['xo-latest']['storePath'] = '/tmp/forged'
+        with self.assertRaisesRegex(ValueError, 'Invalid authenticated output'): self.restore()
         self.transport.restore.assert_not_called()
         self.native.assert_not_called()
         self.assertFalse((self.directory / 'result.json').exists())
