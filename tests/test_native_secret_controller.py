@@ -145,9 +145,11 @@ class ControllerTests(unittest.TestCase):
         binding = GATE.native.policy_binding()
         product = {'repository': M.REPO, 'revision': HEAD, 'repositorySecretPolicy': binding}
         scans = {'repositorySecretPolicy': binding, 'savedNativeObservation': {'status': 'observed'}}
-        GATE.verify(MAIN, product, scans, self.api, now=lambda: NOW)
-        first = len(self.api.calls)
-        GATE.verify(MAIN, product, scans, self.api, now=lambda: NOW)
+        with patch.object(GATE, 'incoming_check', return_value={'head': HEAD}) as incoming:
+            GATE.verify(MAIN, product, scans, self.api, now=lambda: NOW)
+            first = len(self.api.calls)
+            GATE.verify(MAIN, product, scans, self.api, now=lambda: NOW)
+            self.assertEqual(incoming.call_count, 4)
         self.assertGreater(len(self.api.calls), first)
         self.assertEqual(sum('/secret-scanning/alerts?' in p for p in self.api.calls), 4)
 
@@ -159,26 +161,9 @@ class ControllerTests(unittest.TestCase):
                                   'repositorySecretPolicy': binding}, {'repositorySecretPolicy': binding}, self.api)
         self.assertEqual(self.api.calls, [])
 
-    def test_check_owner_and_static_output(self):
-        api = Mock()
-        api.request.return_value = (201, {}, {'app': {'id': 15368}})
-        M.publish_check(api, {'sha': HEAD}, False, mode='production')
-        body = api.request.call_args.args[2]
-        self.assertEqual(body['name'], 'Repository security audit')
-        self.assertEqual(body['conclusion'], 'failure')
-        self.assertNotIn('secret', json.dumps(body).lower().replace('native secret', ''))
-        api.request.return_value = (201, {}, {'app': {'id': 5384448}})
-        with self.assertRaisesRegex(M.Blocked, 'check-owner'):
-            M.publish_check(api, {'sha': HEAD}, True)
-
-    def test_bootstrap_never_emits_required_production_name(self):
-        api = Mock()
-        api.request.return_value = (201, {}, {'app': {'id': 15368}})
-        for success in (True, False):
-            M.publish_check(api, {'sha': HEAD}, success)
-            self.assertEqual(api.request.call_args.args[2]['name'], 'Native secret observation (bootstrap)')
-        with self.assertRaisesRegex(M.Blocked, 'observer-mode'):
-            M.publish_check(api, {'sha': HEAD}, True, mode='automatic')
+    def test_native_controller_cannot_publish_merge_checks(self):
+        self.assertFalse(hasattr(M, 'publish_check'))
+        self.assertFalse((ROOT / '.github/workflows/native-secret-observation.yml').exists())
 
     def test_failed_or_irrelevant_ci_cannot_publish_observation(self):
         for field, values in [('conclusion', ['failure', 'cancelled', 'timed_out', None]),
@@ -187,11 +172,8 @@ class ControllerTests(unittest.TestCase):
             for value in values:
                 api = FixtureAPI()
                 api.run[field] = value
-                with patch.object(M, 'publish_check') as publish:
-                    with self.assertRaisesRegex(M.Blocked, 'event-run-binding'):
-                        selected = M.target(api, 123, MAIN)
-                        M.publish_check(api, selected, True, mode='production')
-                    publish.assert_not_called()
+                with self.assertRaisesRegex(M.Blocked, 'event-run-binding'):
+                    M.target(api, 123, MAIN)
 
     @unittest.skipUnless(HAS_NATIVE_BOUNDARY, 'Stage2 publication wiring not installed in bootstrap')
     def test_both_publication_boundaries_get_separate_observer(self):
@@ -200,9 +182,9 @@ class ControllerTests(unittest.TestCase):
             step = next(part for part in publisher.split('      - name:') if boundary in part)
             self.assertIn('NATIVE_SECRET_OBSERVER_TOKEN: ${{ steps.native_observer.outputs.token }}', step)
             self.assertIn('GH_TOKEN: ${{ steps.publisher.outputs.token }}', step)
-        workflow = (ROOT / '.github/workflows/native-secret-observation.yml').read_text()
-        self.assertIn('OBSERVER_MODE: production', workflow)
-        self.assertIn('check --observer-mode "$OBSERVER_MODE"', workflow)
+        workflow = (ROOT / '.github/workflows/repository-secret-scan.yml').read_text()
+        self.assertIn('name: Repository security audit', workflow)
+        self.assertNotIn('DECIDER_KEY', workflow)
 
     def test_duplicate_json_and_nonfinite_json_rejected(self):
         for raw in [b'{"id":1,"id":2}', b'{"id":NaN}', b'not-json']:
@@ -275,10 +257,10 @@ class ControllerTests(unittest.TestCase):
         ci = (ROOT / '.github/workflows/ci.yml').read_text()
         self.assertNotIn('DECIDER_KEY', ci)
         self.assertNotIn('NATIVE_SECRET_OBSERVER_TOKEN', ci)
-        observer = (ROOT / '.github/workflows/native-secret-observation.yml').read_text()
-        self.assertIn('workflow_run:', observer)
+        observer = (ROOT / '.github/workflows/repository-secret-scan.yml').read_text()
+        self.assertNotIn('workflow_run:', observer)
         self.assertNotIn('pull_request_target:', observer)
-        self.assertNotIn('path: candidate', observer)
+        self.assertNotIn('DECIDER_KEY', observer)
         publisher = (ROOT / '.github/workflows/publish.yml').read_text()
         self.assertIn('permission-secret-scanning-alerts: read', publisher)
         self.assertIn('NATIVE_SECRET_OBSERVER_TOKEN: ${{ steps.native_observer.outputs.token }}', publisher)

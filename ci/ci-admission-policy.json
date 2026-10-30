@@ -9,9 +9,13 @@
   "dependabot": {
     "login": "dependabot[bot]",
     "id": 49699333,
-    "family": "github-actions-pins",
+    "families": [
+      "github-actions-pins",
+      "nixpkgs-paired-lock"
+    ],
     "sameRepositoryOnly": true,
-    "requiresCurrentHeadHumanApproval": true
+    "requiresCurrentHeadHumanMergeApproval": true,
+    "execution": "verified-read-only"
   },
   "workflows": [
     ".github/workflows/ci.yml",

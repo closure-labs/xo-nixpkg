@@ -2,6 +2,9 @@
 """Classify official dependency PRs from immutable metadata; never grant review authority."""
 import base64
 import hashlib
+import importlib.util
+import os
+from pathlib import Path
 import re
 from urllib.parse import quote
 
@@ -117,9 +120,14 @@ def inspect(api, repository, pull, files=None):
     paths = changed_paths(files, pull.get('changed_files'))
     if (not 1 <= len(paths) <= MAX_FILES or len(paths) != len(files)
             or any(item.get('status') != 'modified' or item.get('previous_filename') for item in files)):
-        raise ValueError('Dependency exception supports only existing Actions workflow/composite pin updates')
-    if any(not (WORKFLOW.fullmatch(path) or ACTION.fullmatch(path)) for path in paths):
-        raise UnsupportedFamily('Only Actions pins are supported; native Nix updates retain their paired-lock/manual queue policy')
+        raise ValueError('Dependency exception supports only existing dependency files')
+    family = 'nixpkgs-paired-lock' if paths <= {'flake.lock', 'devenv.lock'} and 'flake.lock' in paths else 'github-actions-pins'
+    if family == 'github-actions-pins' and any(not (WORKFLOW.fullmatch(path) or ACTION.fullmatch(path)) for path in paths):
+        raise UnsupportedFamily('Only complete Actions pins or paired nixpkgs locks are supported')
+    branch = pull.get('head', {}).get('ref', '')
+    if family == 'nixpkgs-paired-lock' and (not re.fullmatch(r'dependabot/nix/[A-Za-z0-9][A-Za-z0-9._/-]*', branch)
+                                           or '..' in branch):
+        raise ValueError('Unexpected native Dependabot branch')
     comparison = api(f'repos/{repository}/compare/{base}...{head}')
     merge_base = comparison.get('merge_base_commit', {}).get('sha')
     if (comparison.get('base_commit', {}).get('sha') != base
@@ -139,7 +147,7 @@ def inspect(api, repository, pull, files=None):
         if size > 8 * MAX_BYTES:
             raise ValueError('Dependency content exceeds the total byte budget')
         documents[path] = (before, after)
-    return {'number': number, 'base': base, 'head': head, 'mergeBase': merge_base, 'documents': documents}
+    return {'number': number, 'base': base, 'head': head, 'mergeBase': merge_base, 'documents': documents, 'family': family, 'oldTree': old, 'headTree': new}
 
 
 def revalidate(api, repository, context):
@@ -256,6 +264,8 @@ def published_tag(api, action, version, sha):
 
 
 def classify(api, context):
+    if context.get('family') == 'nixpkgs-paired-lock':
+        return paired_lock(api, context)
     changes = []
     for path, (before, after) in context['documents'].items():
         old, new = action_spans(before, path), action_spans(after, path)
@@ -283,3 +293,99 @@ def classify(api, context):
     if not changes:
         raise ValueError('Dependency update has no supported pin changes')
     return changes
+
+
+def immutable_text(api, context, path, *, old=False):
+    entries = context['oldTree' if old else 'headTree']
+    entry = entries.get(path)
+    if not entry or entry[:2] != ('blob', '100644'):
+        raise ValueError('Admission requires a regular immutable controller file')
+    return blob(api, REPOSITORY, entry[2])
+
+
+def paired_lock(api, context):
+    """Reuse the protected JSON-only synchronizer; never load candidate Python/Nix."""
+    source = Path(os.environ.get('XO_NIXPKG_LOCK_SYNC', Path(__file__).resolve().parents[1] / 'sync-dependabot-lock.py'))
+    spec = importlib.util.spec_from_file_location('admission_lock_sync', source)
+    sync = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(sync)
+    args = [immutable_text(api, context, path, old=old).encode()
+            for path, old in [('flake.lock', True), ('flake.lock', False),
+                              ('devenv.lock', True), ('devenv.lock', False)]]
+    if sync.synchronize(*args) is not None:
+        raise UnsupportedFamily('Awaiting trusted JSON-only paired-lock synchronization')
+    return [{'family': 'nixpkgs-paired-lock'}]
+
+
+# Only this exact protected predicate is interpreted. Unknown conditions never
+# justify skipping a privileged job during admission of a PR/review event.
+NON_PR = "github.event_name != 'pull_request' && github.event_name != 'pull_request_review'"
+
+
+def read_only_run(api, context, run):
+    """Prove the admitted immutable workflow cannot execute privileged jobs.
+
+    This is an execution boundary, not a human merge-approval exception.
+    Pin-only deltas retain the reviewed graph; Nix deltas retain all workflows.
+    """
+    import yaml
+    path = run['path']
+    source = immutable_text(api, context, path)
+    action_spans(source, path)  # bounded parse, rejects aliases/duplicate keys/tags
+    document = yaml.load(source, Loader=yaml.BaseLoader)
+    def permissions(value):
+        if not isinstance(value, dict) or any(v not in ('read', 'none') for v in value.values()):
+            raise ValueError('Dependabot execution requires explicit read-only permissions')
+    permissions(document.get('permissions'))
+    if re.search(r'\bsecrets\b', str({k: v for k, v in document.items() if k != 'jobs'})):
+        raise ValueError('Dependabot execution cannot reference secrets')
+    seen = set()
+    local_count = 0
+    def steps(values):
+        nonlocal local_count
+        if not isinstance(values, list):
+            raise ValueError('Admission requires explicit non-reusable steps')
+        for step in values:
+            uses = step.get('uses', '')
+            if not isinstance(uses, str):
+                raise ValueError('Invalid immutable action identity')
+            if uses.startswith('./'):
+                local = uses[2:]
+                protected = local.startswith('controller/')
+                if protected:
+                    local = local[len('controller/'):]
+                if not re.fullmatch(r'\.github/actions/[A-Za-z0-9_/-]+', local):
+                    raise ValueError('Unsupported local action path')
+                if local in seen:
+                    raise ValueError('Recursive local action graph')
+                local_count += 1
+                if local_count > 64 or len(seen) >= 16:
+                    raise ValueError('Local action graph exceeds admission bounds')
+                seen.add(local)
+                action_path = local + '/action.yml'
+                if protected:
+                    if 'controllerTree' not in context:
+                        context['controllerTree'] = tree(api, REPOSITORY, context['base'])
+                    trusted = dict(context, headTree=context['controllerTree'])
+                    raw = immutable_text(api, trusted, action_path)
+                else:
+                    raw = immutable_text(api, context, action_path)
+                action_spans(raw, action_path)
+                if re.search(r'\bsecrets\b', raw):
+                    raise ValueError('Local action cannot reference secrets')
+                action = yaml.load(raw, Loader=yaml.BaseLoader)
+                if action.get('runs', {}).get('using') != 'composite':
+                    raise ValueError('Local action must be a bounded composite')
+                steps(action['runs'].get('steps'))
+                seen.remove(local)
+            elif uses and (not PIN.fullmatch(uses) or uses.startswith(('actions/attest', 'actions/cache'))):
+                raise ValueError('No reusable, dynamic, attestation or cache-publishing action in admitted jobs')
+    for job in document['jobs'].values():
+        condition = job.get('if', '')
+        if condition in (NON_PR, NON_PR + " && needs.validate.outputs.cache_eligible == 'true'"):
+            continue  # always false for both permitted native PR event types
+        permissions(job.get('permissions', document['permissions']))
+        if re.search(r'\bsecrets\b', str(job)) or 'uses' in job or job.get('runs-on') not in ('ubuntu-24.04', 'ubuntu-slim'):
+            raise ValueError('Admitted jobs require isolated hosted runners and no secrets/reusable workflows')
+        steps(job.get('steps'))
+    return True

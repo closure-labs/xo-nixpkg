@@ -8,7 +8,7 @@ from pathlib import Path
 import re
 import subprocess
 
-from decision_authority import AuthorityError, HumanDecisionRequired, approval, collection, eligible, github_api
+from decision_authority import AuthorityError, collection, eligible, github_api
 import dependency_update as dependency
 
 COLLECTOR = '.github/workflows/decision-events.yml'
@@ -96,24 +96,21 @@ def approve_run(api, post, policy, run_id):
                 return 'dependency-origin-mismatch'
             if policy.get('dependabot') != {
                     'login': dependency.BOT['login'], 'id': dependency.BOT['id'],
-                    'family': 'github-actions-pins', 'sameRepositoryOnly': True,
-                    'requiresCurrentHeadHumanApproval': True}:
+                    'families': ['github-actions-pins', 'nixpkgs-paired-lock'], 'sameRepositoryOnly': True,
+                    'requiresCurrentHeadHumanMergeApproval': True, 'execution': 'verified-read-only'}:
                 raise AuthorityError('Dependency CI admission differs from the reviewed policy')
             # This is a narrow execution exception, not a new proposal author
-            # or merge approval. The complete immutable delta must be pins only.
+            # or merge approval. Complete deltas must be pins or paired locks.
             try:
                 context = dependency.inspect(api, policy['repository'], pull)
                 dependency.classify(api, context)
+                dependency.read_only_run(api, context, run)
             except dependency.UnsupportedFamily as error:
                 print(json.dumps({'pullRequest': number, 'dependencyPolicy': str(error)}))
                 return 'unsupported-dependency-family'
             actors = users[1:]
             if not all(dependency.official({'user': user}) or trusted(api, policy, user) for user in actors):
                 continue
-            try:
-                approval(api, policy['repository'], number, run['head_sha'])
-            except HumanDecisionRequired:
-                return 'human-review-required'
             dependency.revalidate(api, policy['repository'], context)
         else:
             if not all(trusted(api, policy, user) for user in users):
@@ -128,14 +125,10 @@ def approve_run(api, post, policy, run_id):
                 or not valid_run(current_run, policy, run_id)):
             return 'binding-changed'
         if context is not None:
-            # Immutable bytes need no second parse. Mutable review, eligibility,
+            # Immutable bytes need no second parse. Mutable actor eligibility,
             # actors, PR/base/head and run attempt must still be current.
             if not all(dependency.official({'user': user}) or trusted(api, policy, user) for user in actors):
                 return 'identity-revoked'
-            try:
-                approval(api, policy['repository'], number, run['head_sha'])
-            except HumanDecisionRequired:
-                return 'human-review-required'
             dependency.revalidate(api, policy['repository'], context)
             final_run = api(endpoint)
             if run_binding(final_run) != run_binding(run) or not valid_run(final_run, policy, run_id):

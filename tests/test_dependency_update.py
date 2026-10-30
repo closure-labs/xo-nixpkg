@@ -34,9 +34,19 @@ class GitHub:
             sha = hashlib.sha1(b'blob ' + str(len(raw)).encode() + b'\0' + raw).hexdigest()
             self.blobs[sha] = {'sha': sha, 'size': len(raw), 'encoding': 'base64', 'content': base64.b64encode(raw).decode()}
             self.trees[commit] = {'truncated': False, 'tree': [{'path': path, 'type': 'blob', 'mode': '100644', 'sha': sha}]}
+        self.add_file('.github/workflows/ci.yml', 'permissions:\n  contents: read\njobs:\n  test:\n    runs-on: ubuntu-24.04\n    steps:\n      - run: echo safe\n')
+        self.add_file('.github/workflows/decision-events.yml', (ROOT / '.github/workflows/decision-events.yml').read_text())
         self.ref = {'ref': 'refs/tags/v7.0.1', 'object': {'type': 'commit', 'sha': NEW}}
         self.tag = {'sha': TAG, 'object': {'type': 'commit', 'sha': NEW}}
         self.calls = []
+
+    def add_file(self, path, before, after=None):
+        for commit, text in ((MERGE_BASE, before), (HEAD, before if after is None else after)):
+            raw = text.encode()
+            sha = hashlib.sha1(b'blob ' + str(len(raw)).encode() + b'\0' + raw).hexdigest()
+            self.blobs[sha] = {'sha': sha, 'size': len(raw), 'encoding': 'base64', 'content': base64.b64encode(raw).decode()}
+            self.trees[commit]['tree'] = [x for x in self.trees[commit]['tree'] if x['path'] != path]
+            self.trees[commit]['tree'].append({'path': path, 'type': 'blob', 'mode': '100644', 'sha': sha})
 
     def __call__(self, endpoint):
         self.calls.append(endpoint)
@@ -46,7 +56,7 @@ class GitHub:
         if endpoint == prefix + f'/compare/{BASE}...{HEAD}':
             return {'base_commit': {'sha': BASE}, 'merge_base_commit': {'sha': MERGE_BASE}}
         if '/git/trees/' in endpoint:
-            return deepcopy(self.trees[endpoint.split('/git/trees/')[1].split('?')[0]])
+            return deepcopy(self.trees.get(endpoint.split('/git/trees/')[1].split('?')[0], self.trees[MERGE_BASE]))
         if '/git/blobs/' in endpoint: return deepcopy(self.blobs[endpoint.rsplit('/', 1)[1]])
         if endpoint == 'repos/actions/checkout/git/ref/tags/v7.0.1': return deepcopy(self.ref)
         if endpoint == 'repos/actions/checkout/git/tags/' + TAG: return deepcopy(self.tag)
@@ -228,30 +238,16 @@ class Integration(unittest.TestCase):
     def test_official_current_head_has_one_admission_owner(self):
         self.assertEqual(self.admit(), 'approved')
         self.assertEqual(self.posts, [f'repos/{dependency.REPOSITORY}/actions/runs/40/approve'])
-        self.assertEqual(self.review_reads, 2)
+        self.assertEqual(self.review_reads, 0)
         self.assertEqual(sum('/git/trees/' in call for call in self.source.calls), 2)
 
-    def test_absent_stale_dismissed_withdrawn_and_ineligible_reviews_never_admit(self):
-        for case in ('none', 'head', 'dismissed', 'withdrawn', 'changes', 'role', 'membership', 'pending', 'bot'):
-            self.setUp()
-            review = self.humans.reviews[0]
-            if case == 'none': self.humans.reviews = []
-            if case == 'head': review['commit_id'] = BASE
-            if case == 'dismissed': review['state'] = 'DISMISSED'
-            if case == 'withdrawn': review.update(state='COMMENTED', body='/decider withdraw ' + HEAD)
-            if case == 'changes': review['state'] = 'CHANGES_REQUESTED'
-            if case == 'role': self.humans.roles['maintainer'] = 'write'
-            if case == 'membership': self.humans.members = []
-            if case == 'pending': self.humans.memberships['maintainer'] = {'state': 'pending', 'role': 'member'}
-            if case == 'bot': review['user'] = deepcopy(dependency.BOT)
-            with self.subTest(case=case):
-                self.assertEqual(self.admit(), 'human-review-required')
-                self.assertEqual(self.posts, [])
-
-    def test_live_review_rechecked_immediately_before_admission(self):
-        self.revoke_at = 2
-        with self.assertRaises(admission.AuthorityError): self.admit()
-        self.assertEqual(self.posts, [])
+    def test_execution_needs_no_review_but_merge_still_does(self):
+        self.humans.reviews = []
+        self.assertEqual(self.admit(), 'approved')
+        self.assertEqual(self.review_reads, 0)
+        from decision_authority import approval, HumanDecisionRequired
+        with self.assertRaises(HumanDecisionRequired):
+            approval(self.api, dependency.REPOSITORY, 7, HEAD)
 
     def test_impostor_or_untrusted_actor_cannot_use_dependency_exception(self):
         for field in ('author', 'actor', 'triggering_actor'):
@@ -268,7 +264,7 @@ class Integration(unittest.TestCase):
         self.assertEqual(self.posts, [])
         self.setUp()
         policy = deepcopy(POLICY)
-        policy['dependabot']['requiresCurrentHeadHumanApproval'] = False
+        policy['dependabot']['requiresCurrentHeadHumanMergeApproval'] = False
         with self.assertRaises(admission.AuthorityError):
             admission.approve_run(self.api, self.posts.append, policy, 40)
         self.assertEqual(self.posts, [])
@@ -292,10 +288,12 @@ class Integration(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, 'outside immutable'): self.admit()
         self.assertEqual(self.posts, [])
         self.source = GitHub(path='flake.lock')
-        self.assertEqual(self.admit(), 'unsupported-dependency-family')
+        self.source.pull['head']['ref'] = self.run['head_branch'] = 'dependabot/nix/nixpkgs-example'
+        with self.assertRaises(ValueError): self.admit()
         self.assertEqual(self.posts, [])
         self.assertEqual(self.review_reads, 0)
         self.source = GitHub()
+        self.run['head_branch'] = self.source.pull['head']['ref']
         self.assertEqual(self.admit(), 'approved')
 
     def test_incomplete_metadata_is_not_a_harmless_unsupported_family(self):
@@ -326,8 +324,8 @@ class Integration(unittest.TestCase):
         self.assertEqual(admission.wake_runs(self.api, POLICY, 41), [40])
         self.assertTrue(any('head_sha=' + HEAD in call for call in self.calls))
         self.assertEqual(self.review_reads, 0)
-        self.assertEqual(self.admit(), 'human-review-required')
-        self.assertEqual(self.posts, [])
+        self.assertEqual(self.admit(), 'approved')
+        self.assertEqual(len(self.posts), 1)
         self.collector['head_sha'] = BASE
         with self.assertRaises(admission.AuthorityError): admission.wake_runs(self.api, POLICY, 41)
 
@@ -345,8 +343,8 @@ class Integration(unittest.TestCase):
             self.recovery['conclusion'] = conclusion
             self.assertEqual(admission.wake_runs(self.api, POLICY, 42), [40])
         self.assertEqual(self.review_reads, 0)
-        self.assertEqual(self.admit(), 'human-review-required')
-        self.assertEqual(self.posts, [])
+        self.assertEqual(self.admit(), 'approved')
+        self.assertEqual(len(self.posts), 1)
         for change in ({'head_branch': 'attacker'}, {'event': 'pull_request'}, {'conclusion': 'cancelled'},
                        {'conclusion': 'timed_out'}, {'repository': {'id': 1}}, {'head_repository': {'id': 1}}):
             previous = deepcopy(self.recovery); self.recovery.update(change)
@@ -371,7 +369,10 @@ class Integration(unittest.TestCase):
             return self.api(endpoint)
         changes = dependency.classify(api, self.source.inspect())
         self.assertEqual([change['action'] for change in changes], ['github/codeql-action/init', 'github/codeql-action/analyze'])
-        self.assertEqual(admission.approve_run(api, self.posts.append, POLICY, 40), 'approved')
+        self.run['path'] = '.github/workflows/codeql.yml'
+        with self.assertRaisesRegex(ValueError, 'read-only'):
+            admission.approve_run(api, self.posts.append, POLICY, 40)
+        self.assertEqual(self.posts, [])
 
     def test_workflow_tool_precedes_credentials_and_permissions_do_not_expand(self):
         import yaml
@@ -395,3 +396,87 @@ class Integration(unittest.TestCase):
 
 if __name__ == '__main__':
     unittest.main()
+
+
+class AutomaticBoundaries(Integration):
+    """Run against real workflow bytes as well as immutable hostile fixtures."""
+    def real_workflow(self, name):
+        self.run['path'] = '.github/workflows/' + name
+        for path in (ROOT / '.github').rglob('*.yml'):
+            self.source.add_file(str(path.relative_to(ROOT)), path.read_text())
+
+    def test_real_ci_codeql_and_collector_admit_without_human_review(self):
+        for workflow in ('ci.yml', 'codeql.yml', 'decision-events.yml'):
+            self.setUp(); self.real_workflow(workflow); self.humans.reviews = []
+            with self.subTest(workflow=workflow):
+                self.assertEqual(self.admit(), 'approved')
+                self.assertEqual(self.review_reads, 0)
+                self.assertFalse(self.source.pull['draft'] is False)  # admission never changes metadata
+
+    def test_write_oidc_secret_reusable_runner_and_skip_expression_fail_closed(self):
+        safe = 'permissions:\n  contents: read\njobs:\n  test:\n    runs-on: ubuntu-24.04\n    steps:\n      - run: echo safe\n'
+        mutations = [safe.replace('contents: read', 'contents: write'),
+                     safe.replace('contents: read', 'id-token: write'),
+                     safe.replace('echo safe', "echo ${{ secrets['KEY'] }}"),
+                     safe.replace('ubuntu-24.04', 'self-hosted'),
+                     safe.replace('    steps:', '    uses: owner/repo/.github/workflows/run.yml@' + OLD + '\n    steps:'),
+                     safe.replace('    runs-on:', '    permissions:\n      contents: write\n    runs-on:'),
+                     safe.replace('    runs-on:', '    if: ' + dependency.NON_PR + " && false || true\n    permissions:\n      contents: write\n    runs-on:")]
+        for text in mutations:
+            self.setUp(); self.source.add_file('.github/workflows/ci.yml', text)
+            with self.subTest(text=text), self.assertRaises(ValueError): self.admit()
+            self.assertEqual(self.posts, [])
+
+    def native(self, synchronized=True):
+        import copy
+        self.source.files = [{'filename': p, 'status': 'modified'} for p in ('flake.lock', 'devenv.lock')]
+        if not synchronized:
+            self.source.files = self.source.files[:1]
+        self.source.pull['changed_files'] = len(self.source.files)
+        self.source.pull['head']['ref'] = self.run['head_branch'] = 'dependabot/nix/nixpkgs-example'
+        for revision in (MERGE_BASE, HEAD):
+            self.source.trees[revision]['tree'] = [x for x in self.source.trees[revision]['tree'] if x['path'] != PATH]
+        for name in ('flake.lock', 'devenv.lock'):
+            old = json.loads((ROOT / name).read_text()); new = copy.deepcopy(old)
+            node = new['nodes'][new['nodes']['root']['inputs']['nixpkgs']]['locked']
+            node['rev'] = NEW
+            node['lastModified'] += 1
+            self.source.add_file(name, json.dumps(old), json.dumps(new if synchronized or name == 'flake.lock' else old))
+
+    def test_complete_synchronized_nix_pair_admits_all_readonly_workflows(self):
+        for workflow in ('ci.yml', 'codeql.yml', 'decision-events.yml'):
+            self.setUp(); self.native(); self.real_workflow(workflow); self.humans.reviews = []
+            with self.subTest(workflow=workflow):
+                self.assertEqual(self.admit(), 'approved')
+                self.assertEqual(self.review_reads, 0)
+
+    def test_unpaired_nix_waits_and_hidden_delta_or_unsafe_workflow_never_admit(self):
+        self.native(synchronized=False)
+        self.assertEqual(self.admit(), 'unsupported-dependency-family')
+        self.assertEqual(self.posts, [])
+        for kind in ('controller', 'unrelated-lock', 'symlink', 'foreign', 'partial'):
+            self.setUp(); self.native()
+            if kind == 'controller':
+                self.source.add_file('ci/malicious.py', 'safe', 'unsafe')
+            if kind == 'unrelated-lock':
+                entry = next(x for x in self.source.trees[HEAD]['tree'] if x['path'] == 'flake.lock')
+                value = json.loads(base64.b64decode(self.source.blobs[entry['sha']]['content']))
+                value['nodes']['root']['inputs']['extra'] = 'evil'
+                before_entry = next(x for x in self.source.trees[MERGE_BASE]['tree'] if x['path'] == 'flake.lock')
+                before = base64.b64decode(self.source.blobs[before_entry['sha']]['content']).decode()
+                self.source.add_file('flake.lock', before, json.dumps(value))
+            if kind == 'symlink': self.source.trees[HEAD]['tree'][-1]['mode'] = '120000'
+            if kind == 'foreign': self.source.pull['head']['repo']['id'] = 1
+            if kind == 'partial': self.source.pull['changed_files'] = 1
+            with self.subTest(kind=kind):
+                try: self.assertNotEqual(self.admit(), 'approved')
+                except (ValueError, admission.AuthorityError): pass
+            self.assertEqual(self.posts, [])
+
+    def test_pr_cannot_export_or_attest_or_repair_hashes(self):
+        workflow = (ROOT / '.github/workflows/ci.yml').read_text()
+        self.assertNotIn('  fix-hashes:', workflow)
+        self.assertIn('if: ' + dependency.NON_PR + " && needs.validate.outputs.cache_eligible == 'true'", workflow)
+        export_lines = [line for line in workflow.splitlines() if 'XO_NIXPKG_EXPORT_REUSE_PAYLOAD:' in line]
+        self.assertEqual(len(export_lines), 2)
+        self.assertTrue(all("github.event_name != 'pull_request' &&" in line for line in export_lines))

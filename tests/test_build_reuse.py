@@ -36,7 +36,7 @@ class ReuseFixture(unittest.TestCase):
         workflow.write_text('trusted immutable controller workflow\n')
         self.receipt = {
             'schema': 2, 'repository': reuse.REPOSITORY, 'tree': TREE,
-            'repositorySecretPolicy': {'policyId': 'github-native-secret-observation-v1', 'policySha256': 'f' * 64},
+            'repositorySecretPolicy': {'policyId': 'gitleaks-incoming-native-publication-v2', 'policySha256': 'f' * 64},
             'system': 'x86_64-linux', 'source': SOURCE, 'controller': CONTROLLER,
             'runId': 101, 'runAttempt': 2, 'workflow': reuse.WORKFLOW,
             'event': 'pull_request', 'ref': 'refs/pull/97/merge',

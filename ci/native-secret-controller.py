@@ -26,7 +26,6 @@ REPO = contract.REPOSITORY
 REPO_ID = 1198726032
 PREFIX = '/repos/' + REPO
 MAX_BODY = 2 * 1024 * 1024
-CHECK = 'Repository security audit'
 
 
 def decode(raw):
@@ -229,12 +228,26 @@ def observe(api, controller, selected, now=lambda: datetime.now(timezone.utc), m
         passes=[first, second], started_at=start, completed_at=end, now=now())
 
 
+def incoming_sources():
+    result = {}
+    for key, env, fallback in [
+        ('workflowSha256', 'XO_INCOMING_SECRET_WORKFLOW_SOURCE', Path(__file__).parents[1] / '.github/workflows/repository-secret-scan.yml'),
+        ('configSha256', 'XO_GITLEAKS_CONFIG_SOURCE', Path(__file__).parents[1] / '.gitleaks.toml'),
+    ]:
+        path = Path(os.environ.get(env, str(fallback)))
+        require(path.is_file() and not path.is_symlink() and path.stat().st_size <= 65536, 'incoming-policy-file')
+        result[key] = __import__('hashlib').sha256(path.read_bytes()).hexdigest()
+    return result
+
+
 def policy_binding():
     path = Path(os.environ.get('XO_NATIVE_SECRET_POLICY_PATH', str(Path(__file__).with_name('native-secret-policy.json'))))
     require(path.is_file() and not path.is_symlink() and path.stat().st_size <= 16384, 'policy-file')
     require(contract.canonical(decode(path.read_bytes())) == contract.canonical(contract.POLICY), 'policy-changed')
-    return {'policyId': contract.POLICY_ID,
-            'policySha256': __import__('hashlib').sha256(contract.canonical(contract.POLICY)).hexdigest()}
+    combined = {'nativePublication': contract.POLICY, 'incoming': incoming_sources(),
+                'history': 'visible-nonblocking-unresolved-debt'}
+    return {'policyId': 'gitleaks-incoming-native-publication-v2',
+            'policySha256': __import__('hashlib').sha256(contract.canonical(combined)).hexdigest()}
 
 
 def validate_product_policy(product, scans):
@@ -242,45 +255,21 @@ def validate_product_policy(product, scans):
             and scans.get('repositorySecretPolicy') == policy_binding(), 'old-policy-qualification')
 
 
-def publish_check(api, selected, success, reason='native-observation-blocked', *, mode='bootstrap'):
-    require(reason in ('observed', 'observer-token-unavailable', 'native-observation-blocked'), 'check-reason')
-    require(mode in ('bootstrap', 'production'), 'observer-mode')
-    require(mode != 'production' or contract.POLICY['activation'] == 'protected-main', 'policy-not-active')
-    # Only the separately reviewed protected-main workflow selects production.
-    # Bootstrap never infers authority from a policy document on disk.
-    name = CHECK if mode == 'production' else 'Native secret observation (bootstrap)'
-    body = {'name': name, 'head_sha': selected['sha'], 'status': 'completed',
-            'conclusion': 'success' if success else 'failure',
-            'output': {'title': name, 'summary': reason + '; posture/alert observation only; not full-history or exact-commit completion.'}}
-    status, _, result = api.request(PREFIX + '/check-runs', 'POST', body)
-    require(status == 201 and result.get('app', {}).get('id') == 15368, 'check-owner')
-
-
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument('operation', choices=['scope', 'collect', 'check', 'qualification'])
+    parser.add_argument('operation', choices=['scope', 'collect', 'qualification'])
     parser.add_argument('--output', required=True, type=Path)
     parser.add_argument('--run-id', type=int)
-    parser.add_argument('--observer-mode', choices=['bootstrap', 'production'], default='bootstrap')
     args = parser.parse_args()
     require(os.environ.get('GITHUB_REPOSITORY') == REPO and os.environ.get('GITHUB_REF') == 'refs/heads/main', 'controller-context')
     controller = sha(subprocess.check_output(['git', 'rev-parse', 'HEAD'], text=True).strip())
     policy_binding()
     # A publication observer token is distinct from check/signer credentials.
-    api = API(os.environ.get('GH_TOKEN') if args.operation in ('scope', 'check') else os.environ.get('NATIVE_SECRET_OBSERVER_TOKEN'))
-    metadata = MetadataAPI(os.environ.get('GH_TOKEN') if args.operation in ('scope', 'check') else os.environ.get('REPOSITORY_READ_TOKEN'))
+    api = API(os.environ.get('GH_TOKEN') if args.operation == 'scope' else os.environ.get('NATIVE_SECRET_OBSERVER_TOKEN'))
+    metadata = MetadataAPI(os.environ.get('GH_TOKEN') if args.operation == 'scope' else os.environ.get('REPOSITORY_READ_TOKEN'))
     selected = target(metadata, args.run_id, controller)
     if args.operation == 'scope':
         print(json.dumps({'status': 'bound', 'target': selected['sha'], 'kind': selected['kind']}))
-        return
-    if args.operation == 'check':
-        receipt = decode(args.output.read_bytes()) if args.output.exists() else None
-        success = (isinstance(receipt, dict) and receipt.get('status') == 'observed'
-                   and receipt.get('candidateSha') == selected['sha']
-                   and receipt.get('protectedMainSha') == controller
-                   and receipt.get('policySha256') == policy_binding()['policySha256']
-                   and contract.stamp(receipt['expiresAt']) >= datetime.now(timezone.utc))
-        publish_check(api, selected, success, 'observed' if success else 'observer-token-unavailable', mode=args.observer_mode)
         return
     args.output.unlink(missing_ok=True)
     receipt = observe(api, controller, selected, metadata_api=metadata)

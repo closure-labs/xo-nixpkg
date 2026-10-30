@@ -84,7 +84,7 @@ jobs:
     env:
       XO_NIXPKG_BUILD_JOBS: ${{ github.event_name == 'workflow_dispatch' && inputs.build_jobs || '2' }}
       XO_NIXPKG_REUSE_BUILDS: ${{ (github.event_name != 'schedule' && (github.event_name != 'workflow_dispatch' || inputs.reuse_builds)) && 'true' || 'false' }}
-      XO_NIXPKG_EXPORT_REUSE_PAYLOAD: ${{ (github.event_name != 'workflow_dispatch' || inputs.export_reuse_payload) && 'true' || 'false' }}
+      XO_NIXPKG_EXPORT_REUSE_PAYLOAD: ${{ github.event_name != 'pull_request' && (github.event_name != 'workflow_dispatch' || inputs.export_reuse_payload) && 'true' || 'false' }}
       PREPARED_CI_WORKFLOW: ${{ needs.classify.outputs.workflow }}
     steps:
       - name: Audit runner traffic
@@ -146,7 +146,7 @@ jobs:
     env:
       XO_NIXPKG_BUILD_JOBS: ${{ github.event_name == 'workflow_dispatch' && inputs.build_jobs || '2' }}
       XO_NIXPKG_REUSE_BUILDS: ${{ (github.event_name != 'schedule' && (github.event_name != 'workflow_dispatch' || inputs.reuse_builds)) && 'true' || 'false' }}
-      XO_NIXPKG_EXPORT_REUSE_PAYLOAD: ${{ (github.event_name != 'workflow_dispatch' || inputs.export_reuse_payload) && 'true' || 'false' }}
+      XO_NIXPKG_EXPORT_REUSE_PAYLOAD: ${{ github.event_name != 'pull_request' && (github.event_name != 'workflow_dispatch' || inputs.export_reuse_payload) && 'true' || 'false' }}
       PREPARED_CI_WORKFLOW: ${{ needs.classify.outputs.workflow }}
     steps:
       - name: Audit runner traffic
@@ -221,7 +221,7 @@ jobs:
   attest-builds:
     name: Attest reusable build outputs
     needs: validate
-    if: needs.validate.outputs.cache_eligible == 'true'
+    if: github.event_name != 'pull_request' && github.event_name != 'pull_request_review' && needs.validate.outputs.cache_eligible == 'true'
     runs-on: ubuntu-24.04
     timeout-minutes: 10
     permissions:
@@ -239,45 +239,6 @@ jobs:
         uses: actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6 # v4
         with:
           subject-path: build-receipt/receipt.json
-
-  fix-hashes:
-    name: Repair Dependabot Nix hashes
-    needs: validate
-    if: >-
-      always() &&
-      needs.validate.result == 'failure' &&
-      github.event_name == 'pull_request' &&
-      github.event.pull_request.user.login == 'dependabot[bot]' &&
-      !startsWith(github.event.pull_request.head.ref, 'dependabot/nix/') &&
-      github.event.pull_request.head.repo.full_name == github.repository
-    runs-on: ubuntu-24.04
-    timeout-minutes: 20
-    permissions:
-      contents: write
-    steps:
-      - name: Audit runner traffic
-        uses: step-security/harden-runner@dc2769abcc0fcfbadfc1df54081c1608579ef6b2 # v2
-        with:
-          egress-policy: audit
-      - name: Checkout trusted hash-fixer automation
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          persist-credentials: false
-          ref: ${{ github.event.pull_request.base.sha }}
-
-      - name: Set up Nix
-        uses: ./.github/actions/setup-nix # zizmor: ignore[self-repository] -- setup follows the explicitly checked-out source; repair jobs use a trusted base revision.
-        with:
-          github-token: ${{ github.token }}
-
-      - name: Repair and push tracked Nix hashes
-        env:
-          GH_TOKEN: ${{ github.token }}
-          PR_AUTHOR: ${{ github.event.pull_request.user.login }}
-          PR_HEAD_REF: ${{ github.event.pull_request.head.ref }}
-          PR_HEAD_REPOSITORY: ${{ github.event.pull_request.head.repo.full_name }}
-          PR_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
-        run: nix run .#devenv -- tasks run --mode single --option 'packages:pkgs!' '' update:fix-hashes
 
   gate:
     name: CI gate

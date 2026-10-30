@@ -138,28 +138,18 @@ contract declares `preflightTargets`; each selected target runs once. A failed
 preflight emits its evidence and stops the runtime stage. Selection and required
 CI verdicts retain their existing behavior.
 
-For PR and merge-group events, CI's required **Repository security audit** job
-owns the complete introduced-commit `gitleaks git` scan between exact protected
-base and evaluation head, the private pure fixture component
-`lib.ciSecurityFixtures.x86_64-linux`, and selected preflight targets. The shared
-component validates the signal relay, workflows with actionlint/zizmor, Python
-suites and distribution-cache fixtures. `repository-policy` depends on that
-same derivation. It does not execute the shared fixtures again. Standalone
-`ci:security-lint` and `tests/policy.sh` retain complete default coverage.
+For PR and merge-group events, the separate **Repository security audit** Actions
+job runs pinned upstream Gitleaks against the exact introduced-commit range,
+including side histories and explicit merge diffs. It is read-only and executes
+no repository scripts. The **Repository preflight** job owns pure fixtures and
+selected preflight targets; runtime keeps the same run/attempt-bound evidence.
 
-Runtime validation depends on successful preflight. Its bounded artifact is
-named `xo-ci-preflight-RUN-ATTEMPT`; native verification requires matching source
-commit/tree, protected controller, launcher/workflow/plan hashes, run and attempt,
-plus all successful selected target manifests and timings. A missing, stale or
-mutated artifact blocks runtime before any build import. Output attestation
-remains a separate job that executes no candidate code. The required contexts
-remain **Repository security audit** and **CI gate**, each with one owner per
-eligible event. The standalone security workflow retains full-history scanning
-on protected-main pushes, daily schedules and manual runs, plus its separately
-credentialed protection audit. Scheduled/manual CI also scans full history.
-Publication separately requires a successful latest full audit for exact current
-protected main, within 24 hours; a missing, failed or stale audit blocks it.
-Introduced-commit success is not proof of clean historical coverage.
+Daily/manual full-history scans are visible unresolved debt, not a release blocker
+or evidence that historical secrets are absent. No files, commits or findings are
+baselined away. Publication requires a successful exact-source merge-group scanner
+job under the current policy, plus the existing fresh repository-wide native
+zero-open-alert observation. Grype, provenance, exact product review and signing
+remain required. See [the scanner workflow policy](gitleaks-workflow.md).
 
 A proposed CI workflow that differs from its protected controller uses complete
 bootstrap validation with Actions build imports and reuse certification disabled.

@@ -67,6 +67,7 @@ rec {
     ];
     text = ''
       export PYTHONPATH=${../ci/decisions}
+      export XO_NIXPKG_LOCK_SYNC=${../ci/sync-dependabot-lock.py}
       exec python3 ${../ci/decisions/ci_admission.py} --policy ${../ci/ci-admission-policy.json}
     '';
   };
@@ -216,6 +217,8 @@ rec {
       export XO_NATIVE_SECRET_CONTROLLER_SOURCE=${../ci/native-secret-controller.py}
       export XO_NATIVE_SECRET_CONTRACT_SOURCE=${../ci/native-secret-observation.py}
       export XO_NATIVE_SECRET_POLICY_PATH=${../ci/native-secret-policy.json}
+      export XO_INCOMING_SECRET_WORKFLOW_SOURCE=${../.github/workflows/repository-secret-scan.yml}
+      export XO_GITLEAKS_CONFIG_SOURCE=${../.gitleaks.toml}
       export XO_NIXPKG_REFRESHER=${../ci/refresh-products.py}
       export PYTHONPATH=${decisions}/lib/decisions
       export XO_NIXPKG_DISTRIBUTION_CACHE_SOURCE=${../ci/distribution-cache.py}
@@ -376,6 +379,8 @@ rec {
       export XO_NATIVE_SECRET_CONTROLLER_SOURCE=${../ci/native-secret-controller.py}
       export XO_NATIVE_SECRET_CONTRACT_SOURCE=${../ci/native-secret-observation.py}
       export XO_NATIVE_SECRET_POLICY_PATH=${../ci/native-secret-policy.json}
+      export XO_INCOMING_SECRET_WORKFLOW_SOURCE=${../.github/workflows/repository-secret-scan.yml}
+      export XO_GITLEAKS_CONFIG_SOURCE=${../.gitleaks.toml}
       export XO_NIXPKG_QUALIFIER=${../ci/qualify-products.py}
       export PYTHONPATH=${decisions}/lib/decisions
       export XO_NIXPKG_DISTRIBUTION_CACHE_SOURCE=${../ci/distribution-cache.py}
@@ -394,6 +399,8 @@ rec {
       export XO_NATIVE_SECRET_CONTROLLER_SOURCE=${../ci/native-secret-controller.py}
       export XO_NATIVE_SECRET_CONTRACT_SOURCE=${../ci/native-secret-observation.py}
       export XO_NATIVE_SECRET_POLICY_PATH=${../ci/native-secret-policy.json}
+      export XO_INCOMING_SECRET_WORKFLOW_SOURCE=${../.github/workflows/repository-secret-scan.yml}
+      export XO_GITLEAKS_CONFIG_SOURCE=${../.gitleaks.toml}
       export XO_NIXPKG_AUDIT_FRESHNESS_SOURCE=${../ci/audit-freshness.py}
       export PYTHONPATH=${decisions}/lib/decisions
     '';
