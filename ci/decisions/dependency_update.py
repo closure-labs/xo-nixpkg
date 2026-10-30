@@ -133,6 +133,8 @@ def inspect(api, repository, pull, files=None):
     if (comparison.get('base_commit', {}).get('sha') != base
             or not isinstance(merge_base, str) or not SHA.fullmatch(merge_base)):
         raise ValueError('Dependency comparison lacks an authenticated immutable merge base')
+    if merge_base != base:
+        raise UnsupportedFamily('Refresh Dependabot branch: current main must be an ancestor of the head before execution')
     old = {path: value for path, value in tree(api, repository, merge_base).items() if value[0] != 'tree'}
     new = {path: value for path, value in tree(api, repository, head).items() if value[0] != 'tree'}
     actual = {path for path in old.keys() | new.keys() if old.get(path) != new.get(path)}

@@ -13,6 +13,10 @@ change. The controller has its existing scoped Actions-write permission, reads
 metadata and immutable blobs only, and makes at most one native approval request
 for each freshly verified run. It never checks out or executes candidate code.
 
+The current protected base must be an ancestor of the candidate head. Diverged
+branches wait for refresh, so main-only changes cannot appear in an unaudited
+synthetic merge tree. The base/head binding is reread before execution approval.
+
 Supported same-repository updates from the official numeric Dependabot identity:
 
 * Actions updates must pass the existing complete-tree, hash-verified pin-only

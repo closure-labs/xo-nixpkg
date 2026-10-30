@@ -14,7 +14,7 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / 'ci/decisions'))
 import dependency_update as dependency
 
-BASE, HEAD, MERGE_BASE = 'a' * 40, 'b' * 40, 'c' * 40
+BASE, HEAD, MERGE_BASE = 'a' * 40, 'b' * 40, 'a' * 40
 OLD, NEW, TAG = 'd' * 40, 'e' * 40, 'f' * 40
 PATH = '.github/workflows/example.yml'
 BEFORE = 'name: Test\non: push\njobs:\n  test:\n    runs-on: ubuntu-24.04\n    steps:\n      - uses: actions/checkout@' + OLD + ' # v7.0.0\n      - run: echo safe\n'
@@ -473,6 +473,32 @@ class AutomaticBoundaries(Integration):
                 try: self.assertNotEqual(self.admit(), 'approved')
                 except (ValueError, admission.AuthorityError): pass
             self.assertEqual(self.posts, [])
+
+    def test_diverged_main_only_privileged_source_cannot_borrow_head_audit(self):
+        # The native pull_request run executes a synthetic merge, not headTree.
+        # Main-only changes must not be omitted from the execution audit.
+        for path, content in [('.github/workflows/ci.yml', 'permissions: {contents: write}'),
+                              ('.github/actions/setup-nix/action.yml', 'secret credentialed action'),
+                              ('.gitleaks.toml', 'different scanner configuration')]:
+            self.setUp()
+            self.source.pull['base']['sha'] = TAG
+            raw = content.encode()
+            mutation_sha = hashlib.sha1(b'blob ' + str(len(raw)).encode() + b'\0' + raw).hexdigest()
+            self.source.blobs[mutation_sha] = {'sha': mutation_sha, 'size': len(raw), 'encoding': 'base64',
+                                               'content': base64.b64encode(raw).decode()}
+            original = self.api
+            def diverged(endpoint):
+                if endpoint.endswith('/compare/' + TAG + '...' + HEAD):
+                    return {'base_commit': {'sha': TAG}, 'merge_base_commit': {'sha': BASE}}
+                if endpoint.endswith('/git/trees/' + TAG + '?recursive=1'):
+                    return {'truncated': False, 'tree': [{'path': path, 'mode': '100644',
+                            'type': 'blob', 'sha': mutation_sha}]}
+                return original(endpoint)
+            with self.subTest(path=path):
+                self.assertEqual(admission.approve_run(diverged, self.posts.append, POLICY, 40),
+                                 'unsupported-dependency-family')
+                self.assertEqual(self.posts, [])
+                self.assertFalse(any('/git/blobs/' in value for value in self.source.calls))
 
     def test_pr_cannot_export_or_attest_or_repair_hashes(self):
         workflow = (ROOT / '.github/workflows/ci.yml').read_text()
