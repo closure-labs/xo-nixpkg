@@ -52,7 +52,10 @@ Select packages directly from the locked input:
 }
 ```
 
-Xen Orchestra's rebuilt `fuse-native` addon uses libfuse2. Libvhdi's
+Xen Orchestra's upstream `fuse-native` addon still requires libfuse2, supplied
+only to XO through the [pinned compatibility leaf](../nix/fuse2-compat/README.md).
+FUSE 2 is end-of-life; this does not replace the host's FUSE 3 configuration or
+automatically install a privileged mount helper. Libvhdi's
 `vhdimount` uses libfuse3. A host running both should enable the kernel FUSE
 device and grant its service users the required FUSE permissions.
 
