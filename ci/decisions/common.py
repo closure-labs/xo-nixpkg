@@ -447,6 +447,8 @@ def scans(path, cfg, api=None, allow_expired=False):
             and type(database_hours) is int and 0 < database_hours <= 168, 'Invalid native health age policy')
     require(scanned <= now and scanned < expires and expires - scanned <= dt.timedelta(hours=evidence_hours)
             and (allow_expired or now < expires), 'Expired or future native health')
+    if cfg.get('repositorySecretPolicy') and not allow_expired:
+        require(value.get('repositorySecretPolicy') == cfg['repositorySecretPolicy'], 'Old-policy qualification is not current native evidence')
     producer = value.get('producer', {})
     producer_revision, signer = verify_producer(cfg, producer, value['revision'], api)
     attest(path, cfg, producer_revision, signer)
@@ -468,7 +470,7 @@ def scans(path, cfg, api=None, allow_expired=False):
 
 def product(path, cfg, scan, api=None):
     value = load_json(path)
-    require(set(value).issubset({'schema', 'repository', 'revision', 'products', 'assets', 'roots'})
+    require(set(value).issubset({'schema', 'repository', 'revision', 'products', 'assets', 'roots', 'repositorySecretPolicy'})
             and type(value.get('schema')) is int and value['schema'] == 1 and value.get('repository') == cfg['repository']
             and value.get('revision') == scan['revision'], 'Invalid immutable product identity')
     require(isinstance(value.get('products'), dict) and value['products']
@@ -550,6 +552,9 @@ def gate(cfg, scan_path, product_path=None, purpose='rolling', api=None):
     result = admission(cfg, scan, records, api)
     if product_path:
         identity = product(product_path, cfg, scan, api)
+        if cfg.get('repositorySecretPolicy'):
+            require(identity.get('repositorySecretPolicy') == cfg['repositorySecretPolicy']
+                    and scan.get('repositorySecretPolicy') == cfg['repositorySecretPolicy'], 'New policy-bound qualification required')
         digest = canonical_hash(identity)
         result['productHash'] = digest
         release_digest, release = active_release(cfg, records, identity, api)
