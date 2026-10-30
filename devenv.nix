@@ -64,7 +64,7 @@ in
       "nix run .#prewarm-release-candidate -- \"$CHANGED_CHANNELS\" \"$GITHUB_OUTPUT\"";
     "update:rolling-realize".exec = "nix run .#prewarm-rolling-candidate -- \"$GITHUB_OUTPUT\"";
     "update:libvhdi".exec = "nix run .#update-libvhdi -- \"$GITHUB_OUTPUT\"";
-    "update:flake-lock".exec = "nix run .#update-flake-lock -- \"$GITHUB_OUTPUT\"";
+    "update:devenv-modules".exec = "nix run .#update-devenv-modules -- \"$GITHUB_OUTPUT\"";
     "update:open-pr".exec = "nix run .#open-update-pr -- $XO_NIXPKG_UPDATE_PATHS";
     "update:queue-preflight".exec = "nix run .#queue-preflight";
     "update:rolling-failure".exec = "nix run .#rolling-failure";

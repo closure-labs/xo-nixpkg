@@ -3,7 +3,7 @@ name: Check for XO release updates
 
 on:
   schedule:
-    - cron: "0 6 * * *"
+    - cron: "0 6,18 * * *"
   workflow_dispatch:
 
 concurrency:
