@@ -41,85 +41,8 @@ retry() {
   done
 }
 
-github_api() {
-  local url=$1
-  local args=(--fail --location --silent --show-error
-    --header 'Accept: application/vnd.github+json'
-    --header 'X-GitHub-Api-Version: 2022-11-28')
-  if [[ -n ${GITHUB_TOKEN:-} ]]; then
-    args+=(--header "Authorization: Bearer $GITHUB_TOKEN")
-  fi
-  curl "${args[@]}" "$url"
-}
-
-select_releases() {
-  local excluded_stable_versions
-  excluded_stable_versions=$(jq -ce '.excludedStableVersions // []' "$pin_file")
-  jq -ce --argjson excluded_stable_versions "$excluded_stable_versions" '
-    [
-      .[]
-      | .commit.message as $message
-      | ($message | split("\n")[0]) as $subject
-      | ($subject | capture("^feat: release (XO )?(?<version>[0-9]+(\\.[0-9]+)+)( \\(#[0-9]+\\))?$")?) as $release
-      | select($release != null)
-      | {sha: .sha, subject: $subject, version: $release.version}
-    ]
-    | unique_by(.version)
-    | sort_by(.version | split(".") | map(tonumber))
-    | reverse
-    | . as $releases
-    | ($releases[0] // null) as $latest
-    | [
-        $latest,
-        first(
-          $releases[]
-          | select(.version != $latest.version)
-          | select(.version as $version | ($excluded_stable_versions | index($version)) == null)
-        )
-      ]
-    | map(select(. != null))
-  '
-}
-
 find_latest_releases() {
-  local fixture=${XO_NIXPKG_COMMITS_JSON:-}
-  local page selected temporary combined response next
-  if [[ -n $fixture ]]; then
-    jq -e 'type == "array"' "$fixture" >/dev/null
-    selected=$(select_releases <"$fixture")
-    [[ $(jq -r length <<<"$selected") == 2 ]] || return 1
-    printf '%s\n' "$selected"
-    return
-  fi
-
-  temporary=$(mktemp -d)
-  combined=$temporary/combined.json
-  response=$temporary/response.json
-  next=$temporary/next.json
-  printf '[]\n' >"$combined"
-  for page in $(seq 1 "$release_scan_pages"); do
-    printf 'Scanning root CHANGELOG.md commits page %s for XO releases...\n' "$page" >&2
-    if ! retry 3 github_api "https://api.github.com/repos/vatesfr/xen-orchestra/commits?path=CHANGELOG.md&per_page=100&page=$page" >"$response"; then
-      rm -rf "$temporary"
-      return 1
-    fi
-    if ! jq -e 'type == "array"' "$response" >/dev/null; then
-      printf 'GitHub commits page %s is not a JSON array\n' "$page" >&2
-      rm -rf "$temporary"
-      return 1
-    fi
-    [[ $(jq -r length "$response") != 0 ]] || break
-    jq -cs 'add' "$combined" "$response" >"$next"
-    mv "$next" "$combined"
-    selected=$(select_releases <"$combined")
-    if [[ $(jq -r length <<<"$selected") == 2 ]]; then
-      rm -rf "$temporary"
-      printf '%s\n' "$selected"
-      return
-    fi
-  done
-  rm -rf "$temporary"
-  return 1
+  python3 "$repo_root/scripts/discover-xo-releases.py" --pin "$pin_file"
 }
 
 prefetch_source() {
@@ -278,12 +201,6 @@ if [[ $mode == release ]]; then
   stable_rev=$(jq -er '.[1].sha' <<<"$releases")
   current_latest_rev=$(jq -er '.channels.latest.rev' "$pin_file")
   current_stable_rev=$(jq -er '.channels.stable.rev' "$pin_file")
-  current_latest_version=$(jq -er '.channels.latest.version' "$pin_file")
-  highest=$(printf '%s\n%s\n' "$current_latest_version" "$latest_version" | sort -V | tail -n 1)
-  if [[ $highest != "$latest_version" ]]; then
-    printf 'Refusing to downgrade latest XO from %s to %s\n' "$current_latest_version" "$latest_version" >&2
-    exit 1
-  fi
   latest_changed=false
   stable_changed=false
   [[ $latest_rev == "$current_latest_rev" ]] || latest_changed=true
@@ -345,9 +262,7 @@ else
     exit 0
   fi
   if [[ -z $upstream_date ]]; then
-    owner=$(jq -er .owner "$pin_file")
-    repo=$(jq -er .repo "$pin_file")
-    upstream_date=$(retry 3 github_api "https://api.github.com/repos/$owner/$repo/commits/$upstream_rev" | jq -er '.commit.committer.date[0:10]')
+    upstream_date=$(python3 "$repo_root/scripts/discover-xo-releases.py" --rolling-rev "$upstream_rev" | jq -er .date)
   fi
   [[ $upstream_date =~ ^[0-9]{4}-[0-9]{2}-[0-9]{2}$ ]] || { echo 'Invalid upstream commit date' >&2; exit 1; }
   baseline=${XO_NIXPKG_CURRENT_SOURCE:-}

@@ -66,25 +66,16 @@ validate_pr() {
 }
 
 has_exact_head_maintainer_approval() {
-  local reviews reviewers reviewer permission_error permission
+  local reviews reviewers reviewer permission_error permission review_protocol
   if ! reviews=$(gh api --paginate \
     "repos/${GITHUB_REPOSITORY}/pulls/${PR_NUMBER}/reviews?per_page=100" \
     --slurp); then
     return 2
   fi
 
-  if ! reviewers=$(jq -r --arg head "$EXPECTED_HEAD_SHA" '
-    add
-    | map(select(
-        .commit_id == $head and
-        (.state == "APPROVED" or .state == "CHANGES_REQUESTED" or .state == "DISMISSED")
-      ))
-    | group_by(.user.login)
-    | map(max_by(.id))
-    | .[]
-    | select(.state == "APPROVED")
-    | .user.login
-  ' <<<"$reviews"); then
+  review_protocol=${XO_NIXPKG_REVIEW_PROTOCOL:-$(dirname "${BASH_SOURCE[0]}")/decisions/review_protocol.py}
+  if ! reviewers=$(python3 "$review_protocol" \
+    "$EXPECTED_HEAD_SHA" <<<"$reviews"); then
     return 2
   fi
 

@@ -18,7 +18,10 @@ else
     exit 0
   fi
 fi
-selected=$(jq -ce --arg repo "$GITHUB_REPOSITORY" --arg requested "${QUALIFICATION_RUN:-}" '
+if [[ -n ${QUALIFICATION_ATTEMPT:-} ]]; then
+  [[ $QUALIFICATION_ATTEMPT =~ ^[1-9][0-9]{0,9}$ ]]
+fi
+selected=$(jq -ce --arg attempt "${QUALIFICATION_ATTEMPT:-}" --arg repo "$GITHUB_REPOSITORY" --arg requested "${QUALIFICATION_RUN:-}" '
   select(.repository.full_name == $repo and .head_repository.full_name == $repo and
     .path == ".github/workflows/qualification.yml" and .head_branch == "main" and
     .status == "completed" and .conclusion == "success" and
@@ -27,7 +30,8 @@ selected=$(jq -ce --arg repo "$GITHUB_REPOSITORY" --arg requested "${QUALIFICATI
     (.run_attempt | type == "number" and . > 0 and floor == .) and
     (.head_sha | test("^[0-9a-f]{40}$")) and
     (.created_at | test("^[0-9]{4}(-[0-9]{2}){2}T[0-9]{2}(:[0-9]{2}){2}Z$")) and
-    ($requested == "" or (.id | tostring) == $requested))
+    ($requested == "" or (.id | tostring) == $requested) and
+    ($attempt == "" or (.run_attempt | tostring) == $attempt))
 ' <<<"$selected")
 run_id=$(jq -r .id <<<"$selected")
 attempt=$(jq -r .run_attempt <<<"$selected")

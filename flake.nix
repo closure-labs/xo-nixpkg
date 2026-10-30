@@ -89,6 +89,9 @@ rec {
               pin = sourcePins.xenOrchestra.channels.${channel};
             in
             pkgs.callPackage ./default.nix {
+              # Upstream XO still uses fuse-native's FUSE 2 API. Keep the
+              # compatibility leaf private; libvhdi and pkgs.fuse stay on v3.
+              fuse2 = pkgs.callPackage ./nix/fuse2-compat { };
               inherit channel source;
               inherit (pin) docsYarnHash version yarnHash;
               sourceRev = pin.rev;
