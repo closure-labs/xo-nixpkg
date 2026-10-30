@@ -95,8 +95,8 @@ def request(endpoint, body=None, method=None):
     return json.loads(result.stdout)
 
 
-def pr_identity(pr, number, base, head):
-    require(pr.get('number') == number and pr.get('state') == 'open' and pr.get('merged') is False,
+def pr_identity(pr, number, base, head, *, listed=False):
+    require(pr.get('number') == number and pr.get('state') == 'open' and (listed or pr.get('merged') is False),
             'PR must remain open and unmerged')
     user = pr.get('user', {})
     require(user.get('id') == 49699333 and user.get('login') == 'dependabot[bot]' and user.get('type') == 'Bot',
@@ -108,7 +108,8 @@ def pr_identity(pr, number, base, head):
             and pr.get('head', {}).get('sha') == head
             and all(pr.get(part, {}).get('repo', {}).get('full_name') == REPO for part in ('base', 'head')),
             'PR base, head, or repository changed')
-    require(type(pr.get('changed_files')) is int and 1 <= pr['changed_files'] <= 2, 'Unexpected changed file count')
+    if not listed:
+        require(type(pr.get('changed_files')) is int and 1 <= pr['changed_files'] <= 2, 'Unexpected changed file count')
     return branch
 
 
@@ -152,6 +153,42 @@ def plan(number, base, head, api=request):
                          contents('devenv.lock', base), contents('devenv.lock', head))
     require(pr_identity(current(), number, base, head) == branch, 'PR changed during planning')
     return branch, output
+
+
+def discover(base, api=request):
+    """Bound discovery to one complete page; ambiguity or truncation is fatal."""
+    require(isinstance(base, str) and SHA.fullmatch(base), 'Invalid protected base')
+    def current():
+        ref = api('git/ref/heads/main')
+        require(ref.get('ref') == 'refs/heads/main' and ref.get('object', {}).get('type') == 'commit'
+                and ref['object'].get('sha') == base, 'Protected main advanced; rerun on current main')
+    current()
+    prs = api('pulls?state=open&base=main&per_page=100')
+    require(isinstance(prs, list) and len(prs) < 100, 'PR discovery incomplete or malformed')
+    matches, seen = [], set()
+    for pr in prs:
+        require(isinstance(pr, dict) and type(pr.get('number')) is int and pr['number'] > 0
+                and pr['number'] not in seen and pr.get('state') == 'open'
+                and isinstance(pr.get('user'), dict) and type(pr['user'].get('id')) is int
+                and isinstance(pr['user'].get('login'), str) and isinstance(pr['user'].get('type'), str)
+                and all(isinstance(pr.get(part), dict) and isinstance(pr[part].get('ref'), str)
+                        and isinstance(pr[part].get('sha'), str) and SHA.fullmatch(pr[part]['sha'])
+                        and isinstance(pr[part].get('repo'), dict)
+                        and isinstance(pr[part]['repo'].get('full_name'), str) for part in ('base', 'head')),
+                'Malformed PR discovery entry')
+        seen.add(pr['number'])
+        if pr['user']['id'] == 49699333 and pr['head']['ref'].startswith('dependabot/nix/'):
+            pr_identity(pr, pr['number'], base, pr['head']['sha'], listed=True)
+            matches.append(pr)
+    require(len(matches) <= 1, 'Multiple native Nix Dependabot PRs require manual inspection')
+    current()
+    if not matches:
+        return {'changed': False}
+    pr = matches[0]
+    # Fetch the complete immutable candidate again through the existing plan.
+    head = pr['head']['sha']
+    _, output = plan(pr['number'], base, head, api)
+    return {'changed': output is not None, 'number': pr['number'], 'head': head}
 
 
 def execute(number, base, head, api=request):
@@ -205,20 +242,30 @@ def execute(number, base, head, api=request):
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument('--write', action='store_true')
+    mode = parser.add_mutually_exclusive_group()
+    mode.add_argument('--write', action='store_true')
+    mode.add_argument('--discover', action='store_true')
     args = parser.parse_args()
     require(os.environ.get('GITHUB_REPOSITORY') == REPO, 'Unexpected repository')
     base = os.environ['EXPECTED_BASE']
     local = subprocess.check_output(['git', 'rev-parse', 'HEAD'], text=True).strip()
     require(local == base, 'Controller must be exact protected base')
-    number = int(os.environ['PR_NUMBER'])
-    require(number > 0, 'Invalid PR number')
-    head = os.environ['EXPECTED_HEAD']
-    result = execute(number, base, head) if args.write else {'changed': plan(number, base, head)[1] is not None}
+    if args.discover:
+        result = discover(base)
+    else:
+        result = run_selected(args.write, base)
     print(json.dumps(result, sort_keys=True))
     if os.environ.get('GITHUB_OUTPUT'):
         with open(os.environ['GITHUB_OUTPUT'], 'a') as stream:
-            stream.write('changed=' + str(result['changed']).lower() + '\n')
+            for key, value in result.items():
+                stream.write(key + '=' + (str(value).lower() if isinstance(value, bool) else str(value)) + '\n')
+
+
+def run_selected(write, base):
+    number = int(os.environ['PR_NUMBER'])
+    require(number > 0, 'Invalid PR number')
+    head = os.environ['EXPECTED_HEAD']
+    return execute(number, base, head) if write else {'changed': plan(number, base, head)[1] is not None}
 
 
 if __name__ == '__main__':

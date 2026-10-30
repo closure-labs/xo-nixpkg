@@ -39,6 +39,7 @@ class SyncTests(unittest.TestCase):
         self.truncated = False
         self.head_reads = 0
         self.race = False
+        self.discovery = [self.pr]
 
     def synchronize(self):
         return sync.synchronize(*map(raw, (self.flake, self.new, self.native, self.candidate_native)))
@@ -48,6 +49,8 @@ class SyncTests(unittest.TestCase):
             self.writes.append((endpoint, body))
             self.assertEqual(endpoint, 'graphql')
             return {'data': {'createCommitOnBranch': {'commit': {'oid': 'd' * 40}}}}
+        if endpoint == 'pulls?state=open&base=main&per_page=100':
+            return self.discovery
         if endpoint == 'git/ref/heads/main':
             return {'ref': 'refs/heads/main', 'object': {'type': 'commit', 'sha': self.base}}
         if endpoint == 'pulls/9':
@@ -230,10 +233,56 @@ class SyncTests(unittest.TestCase):
             with self.assertRaises(ValueError): sync.execute(9, self.base, self.head, bad)
             self.assertEqual(len(self.writes), 1)
 
+    def test_discovery_zero_and_one(self):
+        self.assertEqual(sync.discover(self.base, self.api),
+                         {'changed': True, 'number': 9, 'head': self.head})
+        self.discovery = []
+        self.assertEqual(sync.discover(self.base, self.api), {'changed': False})
+        self.assertEqual(self.writes, [])
+
+    def test_discovery_multiple_incomplete_malformed(self):
+        other = copy.deepcopy(self.pr); other['number'] = 10
+        for response in ([self.pr, other], [self.pr] * 100, {}, [None], [{}], [self.pr, self.pr]):
+            with self.subTest(response=str(response)[:50]):
+                self.discovery = response
+                with self.assertRaises(ValueError): sync.discover(self.base, self.api)
+        self.assertEqual(self.writes, [])
+
+    def test_discovery_candidate_race(self):
+        self.race = True
+        with self.assertRaises(ValueError): sync.discover(self.base, self.api)
+        self.assertEqual(self.writes, [])
+
+    def test_discovery_main_race_even_when_idle(self):
+        self.discovery = []
+        reads = 0
+        def advancing(endpoint, body=None, method=None):
+            nonlocal reads
+            value = self.api(endpoint, body, method)
+            if endpoint == 'git/ref/heads/main':
+                reads += 1
+                if reads > 1: value['object']['sha'] = 'f' * 40
+            return value
+        with self.assertRaises(ValueError): sync.discover(self.base, advancing)
+        self.assertEqual(self.writes, [])
+
+    def test_discovery_rejects_wrong_candidate_identity(self):
+        for part, key, value in [('base', 'sha', 'f' * 40), ('user', 'login', 'wrong[bot]'),
+                                 ('user', 'type', 'User'), ('head', 'repo', {'full_name': 'other/repo'})]:
+            candidate = copy.deepcopy(self.pr); candidate[part][key] = value
+            self.discovery = [candidate]
+            with self.assertRaises(ValueError): sync.discover(self.base, self.api)
+        self.assertEqual(self.writes, [])
+
     def test_workflow_never_executes_or_checks_out_candidate(self):
         text = (ROOT / '.github/workflows/dependabot-nix-lock.yml').read_text()
-        self.assertIn('pull_request_target:', text)
-        self.assertIn('ref: ${{ github.event.pull_request.base.sha }}', text)
+        self.assertNotIn('pull_request_target', text)
+        self.assertIn('workflow_dispatch:', text)
+        self.assertIn('cron: "17 * * * *"', text)
+        self.assertIn("github.ref == 'refs/heads/main'", text)
+        self.assertIn('run: python3 ci/sync-dependabot-lock.py --discover', text)
+        self.assertIn("if: steps.plan.outputs.changed == 'true'", text)
+        self.assertIn('ref: ${{ github.sha }}', text)
         self.assertNotIn('ref: ${{ github.event.pull_request.head.sha }}', text)
         self.assertNotIn('nix run', text)
         self.assertNotIn('setup-nix', text)

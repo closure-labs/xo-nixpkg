@@ -18,13 +18,18 @@ The CLI follows the repository's Nixpkgs input, with no separate Devenv release
 pin or upstream CLI build graph. Native modules use the CLI's default rolling
 source. Native Dependabot owns the branch-tracked `nixpkgs` input in
 `flake.lock`. Its PR receives a deterministic, exact-identity `devenv.lock`
-synchronization from protected-main code; the synchronizer never resolves a
+synchronization from an hourly (minute 17 UTC) or manually dispatched
+protected-main workflow; the synchronizer never resolves a
 second upstream revision or evaluates candidate Nix. Normal exact-head human
 review and all required checks remain necessary after that additional commit.
 
 Generated paired-lock commits include `[dependabot skip]` so Dependabot can continue
 rebasing its PR. Dependabot may overwrite that generated commit; the protected-base
-synchronizer then deterministically recreates the paired lock. Each resulting head
+synchronizer deterministically recreates the paired lock on its next hourly run.
+There is no privileged pull-request event trigger. Idle discovery mints no App
+token; incomplete or ambiguous discovery fails closed. A changed main snapshot
+requires a new run rather than using a stale controller. Scheduled runs may be
+delayed by GitHub; manual dispatch on main is available when needed. Each resulting head
 still requires normal validation and current-head human approval. A failed commit
 receipt check never retries the write automatically; inspect the live PR first.
 

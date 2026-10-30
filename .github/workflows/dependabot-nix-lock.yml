@@ -1,28 +1,22 @@
 # SPDX-License-Identifier: Apache-2.0
 name: Synchronize native lock for Dependabot
 on:
-  pull_request_target:
-    types: [opened, synchronize, reopened]
-    branches: [main]
+  schedule:
+    - cron: "17 * * * *"
+  workflow_dispatch:
 permissions:
   contents: read
   pull-requests: read
 concurrency:
-  group: dependabot-nix-lock-${{ github.event.pull_request.number }}
+  group: dependabot-nix-lock-main
   cancel-in-progress: false
 jobs:
   synchronize:
-    if: >-
-      github.repository == 'closure-labs/xo-nixpkg' &&
-      github.event.pull_request.user.id == 49699333 &&
-      github.event.pull_request.head.repo.full_name == github.repository &&
-      startsWith(github.event.pull_request.head.ref, 'dependabot/nix/')
+    if: github.repository == 'closure-labs/xo-nixpkg' && github.ref == 'refs/heads/main'
     runs-on: ubuntu-24.04
     timeout-minutes: 5
     env:
-      PR_NUMBER: ${{ github.event.pull_request.number }}
-      EXPECTED_BASE: ${{ github.event.pull_request.base.sha }}
-      EXPECTED_HEAD: ${{ github.event.pull_request.head.sha }}
+      EXPECTED_BASE: ${{ github.sha }}
       REPOSITORY_READ_TOKEN: ${{ github.token }}
     steps:
       - name: Audit runner traffic
@@ -32,11 +26,11 @@ jobs:
       - name: Checkout protected controller only
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          ref: ${{ github.event.pull_request.base.sha }}
+          ref: ${{ github.sha }}
           persist-credentials: false
-      - name: Validate exact JSON-only lock update
+      - name: Discover and validate one exact JSON-only lock update
         id: plan
-        run: python3 ci/sync-dependabot-lock.py
+        run: python3 ci/sync-dependabot-lock.py --discover
       - name: Mint scoped Decider writer after read-only validation
         if: steps.plan.outputs.changed == 'true'
         id: writer
@@ -45,10 +39,12 @@ jobs:
           client-id: ${{ vars.DECIDER_CLIENT }}
           private-key: ${{ secrets.DECIDER_KEY }}
           owner: ${{ github.repository_owner }}
-          repositories: ${{ github.event.repository.name }}
+          repositories: xo-nixpkg
           permission-contents: write
       - name: Revalidate and atomically synchronize only devenv.lock
         if: steps.plan.outputs.changed == 'true'
         env:
           GH_TOKEN: ${{ steps.writer.outputs.token }}
+          PR_NUMBER: ${{ steps.plan.outputs.number }}
+          EXPECTED_HEAD: ${{ steps.plan.outputs.head }}
         run: python3 ci/sync-dependabot-lock.py --write
