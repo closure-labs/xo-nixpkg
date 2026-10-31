@@ -29,13 +29,30 @@ tagged_version=$(git -C "$repo_root" show "$tag:VERSION" | tr -d '\r\n')
   exit 1
 }
 
+# Resolve both lightweight and annotated tags to their immutable commit. A tag
+# object SHA is not a commit SHA. Keep traversal bounded and never move tags.
+remote_tag_commit() {
+  local object kind sha depth
+  object=$(gh api "repos/${GITHUB_REPOSITORY}/git/ref/tags/${tag}" --jq .object) || return
+  for depth in {1..8}; do
+    kind=$(jq -er '.type | select(. == "commit" or . == "tag")' <<<"$object") || return
+    sha=$(jq -er '.sha | select(type == "string" and test("^[0-9a-f]{40}$"))' <<<"$object") || return
+    if [[ $kind == commit ]]; then
+      printf '%s\n' "$sha"
+      return
+    fi
+    object=$(gh api "repos/${GITHUB_REPOSITORY}/git/tags/${sha}" --jq .object) || return
+  done
+  echo 'Remote release tag exceeded bounded tag-object traversal.' >&2
+  return 1
+}
+
 if release_json=$(gh release view "$tag" --repo "$GITHUB_REPOSITORY" \
   --json isDraft,tagName 2>/dev/null); then
   [[ $(jq -er .tagName <<<"$release_json") == "$tag" ]]
   [[ $(jq -er .isDraft <<<"$release_json") == false ]]
   local_tag_commit=$(git -C "$repo_root" rev-parse "$tag^{commit}")
-  remote_tag_commit=$(gh api "repos/${GITHUB_REPOSITORY}/git/ref/tags/${tag}" \
-    --jq .object.sha)
+  remote_tag_commit=$(remote_tag_commit)
   [[ $remote_tag_commit == "$local_tag_commit" ]] || {
     printf 'Published release %s points to %s, expected %s\n' \
       "$tag" "$remote_tag_commit" "$local_tag_commit" >&2
