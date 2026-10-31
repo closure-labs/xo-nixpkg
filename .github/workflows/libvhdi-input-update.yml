@@ -3,8 +3,10 @@ name: Refresh libvhdi source
 
 on:
   schedule:
+    if: github.repository == 'closure-labs/xo-nixpkg'
     - cron: "41 9 * * 0"
   workflow_dispatch:
+    if: github.repository == 'closure-labs/xo-nixpkg'
 
 concurrency:
   group: libvhdi-source-refresh
@@ -16,7 +18,7 @@ permissions:
 
 jobs:
   update:
-    if: github.ref == 'refs/heads/main'
+    if: github.repository == 'closure-labs/xo-nixpkg' && (github.ref == 'refs/heads/main')
     name: Refresh npins libvhdi release
     runs-on: ubuntu-24.04
     timeout-minutes: 45

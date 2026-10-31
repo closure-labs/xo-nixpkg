@@ -3,6 +3,7 @@ name: Observe update reviews
 
 on:
   pull_request_review:
+    if: github.repository == 'closure-labs/xo-nixpkg'
     types: [submitted]
 
 permissions:
@@ -11,7 +12,7 @@ permissions:
 jobs:
   observe:
     name: Signal an approved review
-    if: github.event.review.state == 'approved' && vars.XO_AUTHORITY_WAKEUPS_VALIDATED != 'true'
+    if: github.repository == 'closure-labs/xo-nixpkg' && (github.event.review.state == 'approved' && vars.XO_AUTHORITY_WAKEUPS_VALIDATED != 'true')
     runs-on: ubuntu-slim
     timeout-minutes: 5
     steps:

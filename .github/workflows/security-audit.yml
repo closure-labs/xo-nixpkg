@@ -2,10 +2,13 @@
 name: Audit repository protection
 on:
   push:
+    if: github.repository == 'closure-labs/xo-nixpkg'
     branches: [main]
   schedule:
+    if: github.repository == 'closure-labs/xo-nixpkg'
     - cron: '43 4 * * *'
   workflow_dispatch:
+    if: github.repository == 'closure-labs/xo-nixpkg'
 permissions:
   contents: read
 concurrency:
@@ -14,7 +17,7 @@ concurrency:
 jobs:
   policy:
     name: Audit effective repository protection
-    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+    if: github.repository == 'closure-labs/xo-nixpkg' && (github.event_name == 'schedule' || github.event_name == 'workflow_dispatch')
     runs-on: ubuntu-24.04
     timeout-minutes: 20
     steps:

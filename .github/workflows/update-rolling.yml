@@ -3,8 +3,10 @@ name: Refresh XO rolling channel
 
 on:
   schedule:
+    if: github.repository == 'closure-labs/xo-nixpkg'
     - cron: "40 6 * * *"
   workflow_dispatch:
+    if: github.repository == 'closure-labs/xo-nixpkg'
 
 concurrency:
   group: xo-rolling-update
@@ -16,7 +18,7 @@ permissions:
 
 jobs:
   update:
-    if: github.ref == 'refs/heads/main'
+    if: github.repository == 'closure-labs/xo-nixpkg' && (github.ref == 'refs/heads/main')
     name: Refresh upstream HEAD candidate
     runs-on: ubuntu-24.04
     timeout-minutes: 180

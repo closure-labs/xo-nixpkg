@@ -3,8 +3,10 @@ name: Security inventory review
 
 on:
   schedule:
+    if: github.repository == 'closure-labs/xo-nixpkg'
     - cron: "19 8 * * *"
   workflow_dispatch:
+    if: github.repository == 'closure-labs/xo-nixpkg'
 
 permissions:
   contents: read
@@ -18,7 +20,7 @@ concurrency:
 
 jobs:
   scan:
-    if: github.ref == 'refs/heads/main'
+    if: github.repository == 'closure-labs/xo-nixpkg' && (github.ref == 'refs/heads/main')
     name: Review all channel critical findings
     runs-on: ubuntu-24.04
     timeout-minutes: 180

@@ -3,8 +3,10 @@ name: Check for XO release updates
 
 on:
   schedule:
+    if: github.repository == 'closure-labs/xo-nixpkg'
     - cron: "0 6,18 * * *"
   workflow_dispatch:
+    if: github.repository == 'closure-labs/xo-nixpkg'
 
 concurrency:
   group: xo-release-update
@@ -16,7 +18,7 @@ permissions:
 
 jobs:
   update:
-    if: github.ref == 'refs/heads/main'
+    if: github.repository == 'closure-labs/xo-nixpkg' && (github.ref == 'refs/heads/main')
     name: Refresh Xen Orchestra release
     runs-on: ubuntu-24.04
     timeout-minutes: 180
