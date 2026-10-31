@@ -73,6 +73,40 @@ def link(page=2, origin='https://api.github.com', hidden='true'):
     return f'<{origin}{M.PREFIX}/secret-scanning/alerts?state=open&hide_secret={hidden}&per_page=100&page={page}>; rel="next"'
 
 
+class PolicyBindingTests(unittest.TestCase):
+    def sources(self):
+        return {'XO_NATIVE_SECRET_POLICY_PATH': str(ROOT / 'ci/native-secret-policy.json'),
+                'XO_INCOMING_SECRET_WORKFLOW_SOURCE': str(ROOT / '.github/workflows/repository-secret-scan.yml'),
+                'XO_GITLEAKS_CONFIG_SOURCE': str(ROOT / '.gitleaks.toml')}
+
+    def test_decision_policy_matches_actual_protected_scanner_files(self):
+        with patch.dict(os.environ, self.sources()):
+            computed = M.policy_binding()
+        configured = json.loads((ROOT / 'ci/decision-policy.json').read_text())['repositorySecretPolicy']
+        self.assertEqual(configured, computed,
+                         'Scanner/config changes must update the reviewed decision policy binding')
+
+    def test_either_scanner_file_change_invalidates_unchanged_binding(self):
+        configured = json.loads((ROOT / 'ci/decision-policy.json').read_text())['repositorySecretPolicy']
+        for variable in ('XO_INCOMING_SECRET_WORKFLOW_SOURCE', 'XO_GITLEAKS_CONFIG_SOURCE'):
+            sources = self.sources()
+            with tempfile.TemporaryDirectory() as temporary:
+                changed = Path(temporary) / 'changed-source'
+                changed.write_bytes(Path(sources[variable]).read_bytes() + b'\n# changed scanner contract\n')
+                sources[variable] = str(changed)
+                with patch.dict(os.environ, sources):
+                    self.assertNotEqual(M.policy_binding(), configured)
+                    with self.assertRaisesRegex(M.Blocked, 'old-policy-qualification'):
+                        M.validate_product_policy({'repositorySecretPolicy': configured},
+                                                  {'repositorySecretPolicy': configured})
+
+    def test_previous_config_binding_still_cannot_qualify(self):
+        previous = {'policyId': 'gitleaks-incoming-native-publication-v2',
+                    'policySha256': 'edfc59daaf284da183a59049b2fd2d0232471cb1780d16d9f117edb7bd8e98f3'}
+        with patch.dict(os.environ, self.sources()), self.assertRaisesRegex(M.Blocked, 'old-policy-qualification'):
+            M.validate_product_policy({'repositorySecretPolicy': previous}, {'repositorySecretPolicy': previous})
+
+
 class ControllerTests(unittest.TestCase):
     def setUp(self):
         self.api = FixtureAPI()
