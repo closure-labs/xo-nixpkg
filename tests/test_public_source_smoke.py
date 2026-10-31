@@ -1,5 +1,6 @@
 """Static source-smoke security contract; actual source realization is hosted."""
 from pathlib import Path
+import json
 import unittest
 ROOT = Path(__file__).resolve().parents[1]
 
@@ -24,3 +25,9 @@ class PublicSourceSmoke(unittest.TestCase):
             self.assertIn(required, script)
         self.assertLess(script.index('--realise "${dependencies[@]}"'),
                         script.index('--option substitute false --realise "$drv"'))
+
+    def test_source_smoke_has_explicit_full_validation_without_publication_authority(self):
+        cfg = json.loads((ROOT / 'ci/classifier.json').read_text())
+        rule = next(r for r in cfg['pathRules'] if r['pattern'] == r'^ci/public-source-smoke\.sh$')
+        self.assertEqual(rule['validation'], ['*'])
+        self.assertEqual(rule['publication'], [])
