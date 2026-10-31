@@ -64,7 +64,7 @@ class PublicationResult(unittest.TestCase):
         if args[-1].endswith(':VERSION'): return '0.10.1\n'
         return json.dumps({'channels':{'latest':{'version':'6.9.1','rev':'c'*40}}})
 
-    def execute(self, args=(), fail=False):
+    def execute(self, args=(), fail=False, fail_handoff=False):
         def run(*args, **kwargs):
             self.calls.append(args)
             if fail: raise subprocess.CalledProcessError(27,args)
@@ -74,7 +74,7 @@ class PublicationResult(unittest.TestCase):
                 patch.object(m,'source_descriptor',return_value=self.descriptor), \
                 patch.object(m.destinations,'cache',side_effect=states), \
                 patch.object(m.destinations,'receipt',side_effect=lambda state,product:state), \
-                patch.object(m,'remote_handoff',return_value=self.source), \
+                patch.object(m,'remote_handoff',return_value=self.source, side_effect=RuntimeError('PRIVATE_TOKEN /private/path') if fail_handoff else None), \
                 patch.object(m,'registry',contextlib.nullcontext), \
                 patch.object(packets,'fetch',side_effect=lambda ref,target,digest:(target.mkdir(),(target/'decision-packet.json').write_text('{}'))), \
                 patch.object(m.subprocess,'check_output',side_effect=self.output), \
@@ -102,10 +102,26 @@ class PublicationResult(unittest.TestCase):
         self.assertEqual(result['operations']['cachePublishInvocations'],1)
         self.assertIn(('xo-nixpkg-publish',),self.calls)
 
-    def test_failed_live_gate_removes_stale_success_without_new_artifact(self):
+    def test_failed_live_gate_replaces_stale_success_with_non_authoritative_summary(self):
         self.artifact.write_text('{"status":"verified"}')
         with self.assertRaises(subprocess.CalledProcessError): self.execute(fail=True)
-        self.assertFalse(self.artifact.exists())
+        partial = json.loads(self.artifact.read_text())
+        self.assertEqual(partial['status'], 'incomplete')
+        self.assertFalse(partial['authorityClaim'])
+        self.assertEqual(partial['failedStage'], 'admission')
+        self.assertEqual(partial['completedStages'], [])
+        self.assertNotIn('productHash', partial)
+
+    def test_partial_cache_checkpoint_is_distinguished_from_handoff_attempt(self):
+        with self.assertRaises(RuntimeError): self.execute(fail_handoff=True)
+        partial = json.loads(self.artifact.read_text())
+        self.assertEqual(partial['status'], 'incomplete')
+        self.assertEqual(partial['failedStage'], 'handoff')
+        self.assertEqual(partial['completedStages'], ['cache'])
+        self.assertFalse(partial['authorityClaim'])
+        self.assertNotIn('PRIVATE_TOKEN', self.artifact.read_text())
+        self.assertNotIn('/private/path', self.artifact.read_text())
+
 
     def test_handoff_observation_records_copy_before_execution_only_if_missing(self):
         for missing in (False,True):
