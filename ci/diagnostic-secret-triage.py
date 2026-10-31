@@ -63,6 +63,9 @@ def main():
         report = directory/'report.json'
         env = {k: v for k, v in os.environ.items() if k in ('PATH', 'HOME', 'TMPDIR')}
         env.update(GOMAXPROCS='1', GOMEMLIMIT='256MiB')
+        probe = subprocess.run([sys.argv[1], 'version'], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+                               timeout=10, env=env, preexec_fn=limits, check=False)
+        require(probe.returncode == 0, 'scanner-version-fails-under-address-space-cap')
         process = subprocess.run([sys.argv[1], 'git', '.', '--config', str(directory/'config.toml'),
                                   '--gitleaks-ignore-path', str(directory/'ignore'), '--ignore-gitleaks-allow',
                                   '--redact=100', '--no-banner', '--log-level=error', '--exit-code=2',
@@ -71,7 +74,8 @@ def main():
                                  stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=90,
                                  env=env, preexec_fn=limits, check=False)
         require(process.returncode in (0, 2), 'scanner-runtime-error')
-        require(report.is_file() and not report.is_symlink() and report.stat().st_size <= 2*1024**2, 'report-bound')
+        require(report.is_file(), 'scanner-no-report')
+        require(not report.is_symlink() and report.stat().st_size <= 2*1024**2, 'report-bound')
         rows = sanitize(json.loads(report.read_bytes()), commits)
         require((process.returncode == 2) == bool(rows), 'scanner-result-binding')
         print(json.dumps({'status': 'classified', 'findingValuesEmitted': False, 'findings': rows}, sort_keys=True))
