@@ -14,6 +14,7 @@ sys.path.insert(0, str(Path(__file__).with_name('decisions')))
 import publication_receipts
 import destinations
 import operations
+import attestation_session
 from contextlib import contextmanager
 
 
@@ -287,7 +288,10 @@ def main():
                         xoTagRequired=False)
     progress = {'stage': 'admission', 'completedStages': []}
     try:
-        return publish(result_path, observations, progress)
+        # Only immutable bundles cross child gate invocations. No gate result,
+        # review, membership, freshness or destination admission is retained.
+        with attestation_session.publisher_session():
+            return publish(result_path, observations, progress)
     except Exception:
         # Diagnostics are fixed-schema observations, never admission evidence.
         # Counters represent invocation attempts, not inferred remote success.
