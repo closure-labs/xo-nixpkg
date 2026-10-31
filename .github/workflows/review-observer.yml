@@ -1,5 +1,5 @@
 # SPDX-License-Identifier: Apache-2.0
-name: Observe update reviews
+name: Relay update reviews
 
 on:
   pull_request_review:

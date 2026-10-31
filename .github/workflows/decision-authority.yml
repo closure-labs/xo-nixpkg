@@ -1,8 +1,8 @@
 # SPDX-License-Identifier: Apache-2.0
-name: Verify maintainer decision authority
+name: Verify merge approval
 on:
   workflow_run: # zizmor: ignore[dangerous-triggers] Metadata only; trusted main executes.
-    workflows: [Collect maintainer decision events]
+    workflows: [Collect PR and queue events]
     types: [completed]
 permissions:
   contents: read
