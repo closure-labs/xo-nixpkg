@@ -243,78 +243,30 @@ closure transfers on a verified publication retry, one raw generation for two
 identical job inputs, and one database preparation for three advisory reports.
 These are operation counts, not production percentage savings claims.
 
-## Secret scanning: introduced commits and mandatory full audits
+## Repository secret scanning and publication
 
-This is an explicit gating-policy change, not a claim that incomplete historical
-coverage is clean. PR and merge-queue preflight scan **every newly reachable
-commit** in the immutable evaluation head relative to the protected event base.
-The evaluation head is GitHub's synthetic PR merge commit or merge-group head.
-Side-branch commits are included; there is no first-parent traversal filter.
-Merge commits produce their diff against the first parent, catching merge-only
-resolution additions without treating protected-base content as newly introduced
-relative to a PR's second parent. Secrets added and later deleted in the new
-commit sequence still fail. Missing objects, shallow/grafted/replaced history,
-changed refs/HEAD, invalid endpoint identities and incomplete scans fail closed.
-This preserves Gitleaks' existing Git patch filters and binary/rename behavior;
-it is not a claim that arbitrary binary blob contents are decoded and scanned.
+The current policy is `gitleaks-incoming-native-publication-v2`. The real Actions
+job `Repository security audit` scans incoming PR and merge-group commit ranges
+with checksum-pinned upstream Gitleaks 8.30.1. Side histories and merge-only
+additions remain in scope. Missing or incomplete inputs, findings, scanner errors
+and timeouts fail closed. The protected configuration retains upstream rules and
+the existing narrow canonical public finding-identity exception.
 
-The native `security-lint` owner remains a full scan of all refs, tags and HEADs
-(including linked worktrees), followed by all pure security fixtures. The existing
-security-audit workflow runs on every main push, daily and manually. Engine,
-configuration and scanner-code changes therefore get a full audit when committed
-to main. Scheduled/manual CI also retains full scanning. No suppressed-finding
-baseline, history exclusion, new regex exception or scanner fork is introduced.
-All 222 upstream Gitleaks 8.30.1 detection rules remain enabled. The only local
-rule customization is the existing path-AND-complete-line exception for canonical
-public SHA-256 finding identities.
+The separate daily/manual historical audit remains visible and unresolved. It is
+nonblocking for release publication under the explicitly approved policy; neither
+its failure nor the historical compact-JSON timeout certifies history clean. No
+baseline, history exclusion or new finding exception is introduced.
 
-Both modes freeze their complete required inventory and use eight-commit batches,
-two workers, 600 seconds per batch and 1200 seconds total (1260 seconds at the
-caller). Inventory overflow, findings, scanner errors and timeouts block the
-respective operation. A zero-new-commit receipt is explicitly incremental; it
-cannot certify full history. Protected same-run preflight receipts bind the scan
-scope, exact base/head and controller. They are not reusable full-history proof.
+Publication requires the exact source's successful incoming scan, current run
+attempt, expected Actions check owner and unchanged scanner policy/configuration.
+It also freshly observes enabled GitHub secret scanning and push protection plus
+two matching, complete, hidden-secret zero-open provider/default alert inventories.
+This is a current observation, not an exact-commit or full-history completion
+claim. Generic-pattern and validity settings are unchanged. Product inventories,
+Grype vulnerability decisions, attestations, exact-head human authority and
+signing guards remain independent requirements. Old-policy evidence requires a
+fresh qualification and review; it cannot be relabeled by a rescan.
 
-### Release freshness and unresolved historical debt
-
-Full-history failure no longer blocks every unrelated PR's new-commit validation.
-It **does block publication**. The publication owner requires a successful latest
-full-audit execution for exact current protected main, current attempt, no older
-than 24 hours from its start, and the new full-audit contract step. A failed,
-pending, missing or stale latest audit cannot fall back to an older success.
-Publication source must be an ancestor of that audited main; main and run identity
-are checked again before returning. Existing product admission, qualification,
-review and native App checks remain required. No token permissions are expanded.
-
-The historical compact security proposal timeout remains **unresolved**. Hosted
-run 40977762877 at head 9880b072 passed exact-engine fixtures (1.470s) and security
-fixtures (74.883s), but one eight-commit history batch timed out at 600.025s.
-Batching did not solve that pathological content. That failed run cannot seed a
-clean baseline or unlock publication. Historical false positives and performance
-need separate diagnosis and an explicitly reviewed disposition, never blanket
-same-line fingerprints or a directory exclusion.
-
-### Pinned scanner and read-only proposed-policy validation
-
-`nix/secret-scanner.nix` owns the Gitleaks 8.30.1 source and explicit Go standard
-library regexp build. The Nix lock pins its toolchain; upgrades are reviewed.
-Upstream release binaries use a different regexp backend and are not equivalent
-performance evidence. Native scans, pure fixtures and development tooling share
-the pinned package.
-
-A changed CI workflow transparently validates its proposed policy using
-`secret-scan-evidence`: synthetic exact-finding fixtures (90s), the event-bound
-introduced-commit scan for PR/queue events (full scan for other events, 1260s),
-and all security fixtures (600s), within a 1980s budget. All three stages must
-pass. Its diagnostic receipts deny authority and reuse eligibility and identify
-introduced-history separately from complete-history. This is not protected-base
-certification or a full-audit success. Required runtime validation and the native
-App authority check are unchanged.
-
-Bootstrap uses a clean checkout, fresh HOME and allowlisted environment, empty
-Git/user Nix configuration, no fetch/access tokens, no remote builders, disabled
-flake-config acceptance and enabled sandboxing. No repository/App secrets,
-write permissions, privileged pull-request-target execution or automatic merge
-are introduced. Sanitized artifacts contain only bounded coverage/identity and
-failure counters, never raw findings. Production Gitleaks coverage remains Git
-history; directory-mode tests are synthetic fixtures, not an artifact scan.
+See [the scanner contract](gitleaks-workflow.md) for exact event ranges, redaction,
+limits, upstream sources and publication binding. That document and executable
+workflow/configuration supersede descriptions of retired scanner/controller paths.
