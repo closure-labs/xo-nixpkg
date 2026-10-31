@@ -204,6 +204,8 @@ class Checks(unittest.TestCase):
                     api.reviews[0].update(state='COMMENTED', body='/decider approve ' + HEAD)
                 if change == 'queue':
                     api.collector.update(event='merge_group', head_branch='gh-readonly-queue/main/pr-7-abcdef0', head_sha=MERGE)
+                    api.queue_refs = [{'ref': 'refs/heads/' + api.collector['head_branch'],
+                                       'object': {'type': 'commit', 'sha': MERGE}}]
                 def evaluate(*args):
                     if change == 'dismiss':
                         api.reviews[0]['state'] = 'DISMISSED'
@@ -214,7 +216,7 @@ class Checks(unittest.TestCase):
                     elif change == 'close':
                         api.pr['state'] = 'closed'
                     else:
-                        api.queue_sha = HEAD
+                        api.queue_refs[0]['object']['sha'] = HEAD
                     return {'status': 'authorized', 'head': HEAD}
                 with mock.patch.object(mod, 'check_pr', side_effect=evaluate):
                     if change == 'queue':
