@@ -2,7 +2,7 @@
 name: Admit trusted pull request CI
 on:
   workflow_run: # zizmor: ignore[dangerous-triggers] Metadata only; protected main executes.
-    workflows: [CI, CodeQL Advanced, Scan repository secrets, Collect maintainer decision events, Verify maintainer decision authority]
+    workflows: [Validate packages, CodeQL analysis, Scan repository secrets, Collect PR and queue events, Verify merge approval]
     types: [completed]
   schedule:
     - cron: '*/15 * * * *'
@@ -17,9 +17,9 @@ jobs:
     if: >-
       github.repository == 'closure-labs/xo-nixpkg' && github.ref == 'refs/heads/main' &&
       (github.event_name != 'workflow_run' || github.event.workflow_run.conclusion == 'action_required' ||
-       (github.event.workflow_run.name == 'Collect maintainer decision events' &&
+       (github.event.workflow_run.name == 'Collect PR and queue events' &&
         github.event.workflow_run.event == 'pull_request_review' && github.event.workflow_run.conclusion == 'success') ||
-       (github.event.workflow_run.name == 'Verify maintainer decision authority' &&
+       (github.event.workflow_run.name == 'Verify merge approval' &&
         github.event.workflow_run.head_branch == 'main' &&
         (github.event.workflow_run.conclusion == 'success' || github.event.workflow_run.conclusion == 'failure')))
     runs-on: ubuntu-24.04
