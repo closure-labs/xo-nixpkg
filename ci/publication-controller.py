@@ -262,6 +262,20 @@ def verify_tag(repository, tag, revision):
     raise ValueError('Remote tag has invalid identity')
 
 
+def write_result(result_path, result):
+    if result_path is not None:
+        # Replace the final name atomically; never follow an existing symlink.
+        with tempfile.NamedTemporaryFile(mode='w', dir=result_path.parent, delete=False) as stream:
+            temporary = Path(stream.name)
+            try:
+                json.dump(result, stream, sort_keys=True)
+                stream.write('\n')
+                stream.flush()
+                os.replace(temporary, result_path)
+            finally:
+                temporary.unlink(missing_ok=True)
+
+
 def main():
     # Diagnostics never supply authority or select a publication operation.
     result_path = Path(os.environ['RUNNER_TEMP']) / 'publication-result.json' if os.environ.get('RUNNER_TEMP') else None
@@ -271,6 +285,24 @@ def main():
                         handoffCopyAttempts=0, handoffPushInvocations=0, xoTagLeafInvocations=0,
                         projectTagInvocations=0, releasePublishInvocations=0,
                         xoTagRequired=False)
+    progress = {'stage': 'admission', 'completedStages': []}
+    try:
+        return publish(result_path, observations, progress)
+    except Exception:
+        # Diagnostics are fixed-schema observations, never admission evidence.
+        # Counters represent invocation attempts, not inferred remote success.
+        partial = {'schema': 1, 'status': 'incomplete', 'authorityClaim': False,
+                   'failedStage': progress['stage'],
+                   'completedStages': progress['completedStages'],
+                   'invocationAttempts': observations}
+        try:
+            write_result(result_path, partial)
+        except OSError:
+            print('Could not retain sanitized publication failure summary.', file=sys.stderr)
+        raise
+
+
+def publish(result_path, observations, progress):
     directory=Path(os.environ['XO_NIXPKG_EVIDENCE']).resolve()
     product=json.loads((directory/'product.json').read_text())
     scans=json.loads((directory/'scans.json').read_text())
@@ -300,7 +332,9 @@ def main():
             path=directory/name
             if path.is_symlink() or hashlib.sha256(path.read_bytes()).hexdigest()!=expected:
                 raise ValueError('Publication asset differs from approved immutable bytes')
+    progress['stage'] = 'journal'
     journal=Journal(repository,product,authorize=lambda: run('xo-nixpkg-publication-gate'))
+    progress['stage'] = 'cache'
     state=destinations.cache(product,os.environ['XO_NIXPKG_CACHIX_CACHE_URL'])
     if state['status'] in ('conflict','unavailable'):
         raise ValueError('Public cache '+state['status'])
@@ -321,6 +355,8 @@ def main():
         state=destinations.cache(product,os.environ['XO_NIXPKG_CACHIX_CACHE_URL'])
     proof=destinations.receipt(state,product)
     journal.complete('cache', {'products':product['products'],'roots':product.get('roots',{})},proof)
+    progress['completedStages'].append('cache')
+    progress['stage'] = 'handoff'
     if source:
         packet=remote_handoff(source,descriptor,observations)
     else:
@@ -336,6 +372,8 @@ def main():
             packets.metadata(packet['reference'],packet['sha256'],'product.json',producer=packet['producer'])
         finally: packets.REGISTRY,packets.REFERENCE=old_registry,old_reference
     journal.complete('handoff',packet,destinations.receipt(destinations.result('handoff',packet,packet),product))
+    progress['completedStages'].append('handoff')
+    progress['stage'] = 'xo-tag'
     if os.environ['XO_NIXPKG_PUBLICATION_PURPOSE']=='release':
         observations['xoTagLeafInvocations'] += 1
         run('xo-nixpkg-tag-xo-release')
@@ -348,6 +386,8 @@ def main():
             if not verify_tag(repository,tag,revision):raise ValueError('XO tag readback missing')
             xo_identity['tag']=tag
         journal.complete('xo-tag',{'revision':revision},destinations.receipt(destinations.result('xo-tag',xo_identity,xo_identity),product))
+        progress['completedStages'].append('xo-tag')
+        progress['stage'] = 'project-tag'
         version=subprocess.check_output(['git','show',revision+':VERSION'],text=True).strip();tag='v'+version
         existing=subprocess.run(['git','rev-parse','--verify',tag+'^{commit}'],capture_output=True,text=True)
         if existing.returncode==0 and existing.stdout.strip()!=revision:
@@ -360,29 +400,22 @@ def main():
             if not verify_tag(repository,tag,revision):raise ValueError('Project tag readback missing')
             identity={'tag':tag,'revision':revision}
             journal.complete('project-tag',identity,destinations.receipt(destinations.result('project-tag',identity,identity),product))
+            progress['completedStages'].append('project-tag')
+            progress['stage'] = 'github-release'
             observations['releasePublishInvocations'] += 1
             run('xo-nixpkg-publish-release')
             release=api(repository,'releases/tags/'+tag)
             if release.get('tag_name')!=tag or release.get('draft') is not False or not verify_tag(repository,tag,revision):
                 raise ValueError('GitHub release readback differs')
             journal.complete('github-release',identity,destinations.receipt(destinations.result('github-release',identity,identity),product))
+            progress['completedStages'].append('github-release')
     observations['journalSaveAttempts'] = journal.save_attempts
     result = {'schema':1, 'status':'verified', 'productHash':journal.digest,
               'journalRef':journal.branch, 'sourceRevision':revision,
               'controllerRevision':controller_revision,
               'producer':scans['producer'], 'metadataSourceAvailable':source is not None,
               'operations':observations}
-    if result_path is not None:
-        # Replace the final name atomically; never follow an existing symlink.
-        with tempfile.NamedTemporaryFile(mode='w', dir=result_path.parent, delete=False) as stream:
-            temporary = Path(stream.name)
-            try:
-                json.dump(result, stream, sort_keys=True)
-                stream.write('\n')
-                stream.flush()
-                os.replace(temporary, result_path)
-            finally:
-                temporary.unlink(missing_ok=True)
+    write_result(result_path, result)
     print(json.dumps(result))
 
 
