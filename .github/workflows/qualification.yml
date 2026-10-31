@@ -3,14 +3,11 @@ name: Qualify immutable products
 run-name: ${{ inputs.qualification_run != '' && format('Refresh qualification {0} attempt {1}', inputs.qualification_run, inputs.qualification_attempt || 'current') || 'Qualify immutable products' }}
 on:
   push:
-    if: github.repository == 'closure-labs/xo-nixpkg'
     branches: [main]
     paths-ignore: ['automation/decisions/**', 'docs/**', '*.md']
   schedule:
-    if: github.repository == 'closure-labs/xo-nixpkg'
     - cron: '17 5 * * *'
   workflow_dispatch:
-    if: github.repository == 'closure-labs/xo-nixpkg'
     inputs:
       qualification_run:
         description: Optional retained product run to refresh without changing release identity

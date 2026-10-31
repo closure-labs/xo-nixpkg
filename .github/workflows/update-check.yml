@@ -3,10 +3,8 @@ name: Check for XO release updates
 
 on:
   schedule:
-    if: github.repository == 'closure-labs/xo-nixpkg'
     - cron: "0 6,18 * * *"
   workflow_dispatch:
-    if: github.repository == 'closure-labs/xo-nixpkg'
 
 concurrency:
   group: xo-release-update

@@ -3,7 +3,6 @@ name: Prewarm protected runtime
 
 on:
   workflow_dispatch:
-    if: github.repository == 'closure-labs/xo-nixpkg'
 
 permissions:
   contents: read

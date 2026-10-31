@@ -15,10 +15,8 @@ on:
       - Refresh libvhdi source
     types: [completed]
   schedule:
-    if: github.repository == 'closure-labs/xo-nixpkg'
     - cron: "7 10 * * *"
   workflow_dispatch:
-    if: github.repository == 'closure-labs/xo-nixpkg'
 
 concurrency:
   group: queue-automation

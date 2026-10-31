@@ -3,10 +3,8 @@ name: Refresh XO rolling channel
 
 on:
   schedule:
-    if: github.repository == 'closure-labs/xo-nixpkg'
     - cron: "40 6 * * *"
   workflow_dispatch:
-    if: github.repository == 'closure-labs/xo-nixpkg'
 
 concurrency:
   group: xo-rolling-update

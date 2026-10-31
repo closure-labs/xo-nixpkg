@@ -3,10 +3,8 @@ name: Security inventory review
 
 on:
   schedule:
-    if: github.repository == 'closure-labs/xo-nixpkg'
     - cron: "19 8 * * *"
   workflow_dispatch:
-    if: github.repository == 'closure-labs/xo-nixpkg'
 
 permissions:
   contents: read

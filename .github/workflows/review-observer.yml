@@ -3,7 +3,6 @@ name: Observe update reviews
 
 on:
   pull_request_review:
-    if: github.repository == 'closure-labs/xo-nixpkg'
     types: [submitted]
 
 permissions:

@@ -12,7 +12,8 @@ class MaintenanceScope(unittest.TestCase):
                  'consumer-probe.yml', 'queue-automation.yml', 'security-audit.yml',
                  'review-observer.yml', 'decision-authority.yml']
         for name in files:
-            text = (ROOT / '.github/workflows' / name).read_text().split('\njobs:\n', 1)[1]
+            before, text = (ROOT / '.github/workflows' / name).read_text().split('\njobs:\n', 1)
+            self.assertNotIn('    if:', before)
             for chunk in re.split(r'(?m)(?=^  [a-zA-Z0-9_-]+:\n)', text):
                 if re.match(r'^  [a-zA-Z0-9_-]+:\n', chunk):
                     with self.subTest(name=name, job=chunk.splitlines()[0]):
