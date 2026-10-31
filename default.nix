@@ -244,6 +244,11 @@ stdenv.mkDerivation (
     preBuild = ''
               set -euo pipefail
 
+              # Preserve concurrency for metadata reads, then emit sorted module records.
+              head -n1 node_modules/index-modules/index.js | grep -Eq '^#!/(usr/bin/env node|nix/store/[0123456789abcdfghijklmnpqrsvwxyz]{32}-[A-Za-z0-9._+-]+/bin/node)$'
+              tail -n+2 node_modules/index-modules/index.js | sha256sum | grep -q '^014a05f3a78fee6bf5f7f01acc181222268bc39bea3da3bbd19a831b9aa93970  -$'
+              patch --batch --fuzz=0 -p1 -d node_modules/index-modules < ${./nix/patches/index-modules-deterministic.patch}
+
               vue_tsc_target="$(readlink -f node_modules/.bin/vue-tsc 2>/dev/null || true)"
               if [ -z "$vue_tsc_target" ]; then
                 echo "ERROR: Cannot find vue-tsc in node_modules/.bin" >&2
@@ -373,6 +378,11 @@ stdenv.mkDerivation (
           --non-interactive \
           --offline
         patchShebangs node_modules
+        echo '792c072bf2923791252b10c3dfc9dd6eee5cbd85d80429143fcdd433ef7bad1c  node_modules/docusaurus-lunr-search/src/index.js' | sha256sum --check --status
+        patch --batch --fuzz=0 -p1 -d node_modules/docusaurus-lunr-search < ${./nix/patches/docusaurus-lunr-search-reproducible.patch}
+        # A deterministic cache-buster that changes with the package derivation.
+        docs_output_name="''${out##*/}"
+        export XO_DOCS_BUILD_ID="''${docs_output_name%%-*}"
         yarn --offline run build:xo-server
       )
 
@@ -395,6 +405,9 @@ stdenv.mkDerivation (
 
       mkdir -p $out/libexec/xen-orchestra/docs
       cp -a docs/build-embed $out/libexec/xen-orchestra/docs/
+
+      # Turbo task logs contain per-build timing/cache state and have no runtime role.
+      bash ${./nix/cleanup-turbo-logs.sh} "$out/libexec/xen-orchestra"
 
       # All native compilation is complete. Keep runtime addons/assets while
       # removing verified generated metadata that otherwise captures Python,
