@@ -1,0 +1,103 @@
+{
+"kind": "release-product",
+"payload": {
+"disposition": "accepted",
+"packet": {
+"producer": {
+"repository": "closure-labs/xo-nixpkg",
+"revision": "17cb9ad572686ed6e83b643db803a037cb5c8c94",
+"runAttempt": 1,
+"runId": 41189429105,
+"sourceRevision": "17cb9ad572686ed6e83b643db803a037cb5c8c94",
+"workflow": ".github/workflows/qualification.yml"
+},
+"reference": "ghcr.io/closure-labs/xo-nixpkg-decisions@sha256:0b20fc1db7cc82944a0bf49ada793f59aad558d1eb851dd0162218459d0a2169",
+"sha256": "e9986cf872b69ae7b3ea8ccb87ba0e4fbf327a868898aa5cd72ea78f0577ad37"
+},
+"product": {
+"assets": {
+"libvhdi--closure.json": "553b38f9ed24fd9dadd8a38f34a1ecd78019539fb19c4ce7ed432c3346553079",
+"libvhdi--derivations.json": "b32971bbd87c3259e3db85453d01fac86c8ade28cc81aa88f4aa8a14fdb6c797",
+"libvhdi--inventory.json": "8904f2040f466d1a6940c4cfafd757899b84a35e60f123e6af7f62fb09262977",
+"libvhdi--runtime.cdx.json": "00ae99520fc41057064c7cef4514743bc62c90ed9ed9384555bb411494d8b8f8",
+"xo-latest--closure.json": "a1cd08b7d42f0400aaadcb9550f0cc9188a93ab5caa7d5b6a50b701031c6bf15",
+"xo-latest--derivations.json": "65b751e98cc8ed2bfa2001c59d92dff3d1cf1a9a5a29bb3733b80834c0562a7c",
+"xo-latest--inventory.json": "2f4535ba20610fe4f5f73e837b305c98d69d8337b0e9efc9e5637cc178fde4b6",
+"xo-latest--runtime.cdx.json": "b396488186b143271c61a83b6cc3a0dedfafd34003582d858740d541c2520945",
+"xo-latest--supply-protector--SHA256SUMS": "2eec46600f81ec137cf1528225a11edd97f6d0b272d4d2e884ffa1fb7593afbb",
+"xo-latest--supply-protector--assertion.json": "20c35613084c292830abf89ce89e671049a07c514a38b02d65bf4bb1690b1584",
+"xo-latest--supply-protector--closure.graph": "da826d169664dff4e754f5c8900fc79e0b98ea4e4674738de8a6109b2a917ac5",
+"xo-latest--supply-protector--xen-orchestra.cdx.json": "9f12ba013856a78a82acba17ca7da3535bd2c851935a51744b7042234e6ba8ea",
+"xo-latest--supply-protector--xen-orchestra.spdx.json": "aa92824f77fe653fd2e0606dd7fcf9a9002a37a6e20d09d67834539975c52686",
+"xo-rolling--closure.json": "8d47b5ac8eb7425c7aebb1b8b46acdd31c5e8eef61fa4b966650714ba7f625f5",
+"xo-rolling--derivations.json": "68b9bd319ab496be48a06138037c8eb21eebeab47ba96774e87fc599693aa409",
+"xo-rolling--inventory.json": "d68ca416702a38a2a047cc68b074d2032ee987d9b64b10c543a813ffd649f2df",
+"xo-rolling--runtime.cdx.json": "e2701233199910d7f697df9474a79cd3c3d9c7c9c3f3e5c48c307125a3924691",
+"xo-rolling--supply-protector--SHA256SUMS": "65716901591a2e41ffa1f9795b3696cad784fe05f27a86136dc87c8fc3a67f7f",
+"xo-rolling--supply-protector--assertion.json": "8c1b17a114c37369c4cac4f53273aef0cb4f20df89a5451142abfac5ad91bc3c",
+"xo-rolling--supply-protector--closure.graph": "64fa4d9f55d7b94038fe4f73cf7e785ce13986e42856ec1b699877790cf8d09e",
+"xo-rolling--supply-protector--xen-orchestra.cdx.json": "c7c2c27dc699c1fe63456de138f4d70eda09b1ccdddbada6e9df6f85ac893e73",
+"xo-rolling--supply-protector--xen-orchestra.spdx.json": "d09edeb9928a25d8e993750c1600cb3d1d9f30c0cb9486a5d5077485ae956e9d",
+"xo-stable--closure.json": "9afaf76007a275a44ac7bc6ecd2e63436ea7b2f3332307c4b609f84232f03729",
+"xo-stable--derivations.json": "2769daa9e8a12ef837208fd8cee12827280b265ad8b76e58bca55e8349ebf97d",
+"xo-stable--inventory.json": "7e221edc4f022821212fdf2d664615700bcb45d174ff1238a554d58f576eba01",
+"xo-stable--runtime.cdx.json": "e059058d041a64c2945da1dc288c53e77bf718b67fccd043d4875590323d0c0c",
+"xo-stable--supply-protector--SHA256SUMS": "0b3b9536d11e6150d0d450266b7e2aba0431cdba320c0abc1ab48415449c85db",
+"xo-stable--supply-protector--assertion.json": "4bad01d0abaf68aad248ed65faba21d5241e7e2d53014ad7f2d5d2abee3604ed",
+"xo-stable--supply-protector--closure.graph": "9ebe5693b406906601604cfc9fc319ba24f25fb4fdddb8c581dcde26bb6a20e3",
+"xo-stable--supply-protector--xen-orchestra.cdx.json": "6fada7bf7d3a3f53453d52ae38acdd912c3971b9b0473a5fadf5dba9e38fa77b",
+"xo-stable--supply-protector--xen-orchestra.spdx.json": "3761bf950a0667c51fdc3ffcfd9ee768c840edeabb393ea8ba16b9965f361b66"
+},
+"products": {
+"libvhdi": {
+"narHash": "sha256-ip8mHBq2UMgRL5Uu91EZt+3QnmMRibyOuZ/tV9xub88=",
+"storePath": "/nix/store/8nzizs27j3kyidj2rlffwa1hxx2palvi-libvhdi-20260901"
+},
+"xo-latest": {
+"narHash": "sha256-t2ihM4LkouBUanQrAa+HRb6cad6b7YaqfT5J/B+f4kE=",
+"storePath": "/nix/store/3hxxl14d3ic4gd9vpmaa8hhmcfl8rxxi-xen-orchestra-ce-6.10.0"
+},
+"xo-rolling": {
+"narHash": "sha256-ZeGR73Snn3Ruy6rXfhqa+PjxY24J/qQRhrW8f7fVRYo=",
+"storePath": "/nix/store/shh5mhwc4rc22bc2nl5xhzcn2965xy77-xen-orchestra-ce-unstable-2026-10-29"
+},
+"xo-stable": {
+"narHash": "sha256-jE5/HQF7DBUuwKv1PvD/8pDxSyxRL2a/tPaCLln7QYc=",
+"storePath": "/nix/store/hrkdwfsk087inrxyjxy0zfqjsr86qswd-xen-orchestra-ce-6.9.1"
+}
+},
+"repository": "closure-labs/xo-nixpkg",
+"repositorySecretPolicy": {
+"policyId": "gitleaks-incoming-native-publication-v2",
+"policySha256": "8d3018b387e30992b7f4a85c7627219d56611fb9820a4847e3709aadb33d1178"
+},
+"revision": "17cb9ad572686ed6e83b643db803a037cb5c8c94",
+"roots": {
+"automation-runtime": {
+"narHash": "sha256-90qfO08/HoiaJh0/RlJsGdG8kOrHNVwkLGu4apOCnuw=",
+"profile": "xo-latest",
+"storePath": "/nix/store/8qla6rxs266sq3visn197n6ncwm29gk1-xo-nixpkg-automation-runtime-0.10.1"
+},
+"supply-protector-latest": {
+"narHash": "sha256-SImIweg+Plm5VWEi6cqmTpRvQdvNpXkIyWNKAkD/eo0=",
+"profile": "xo-latest",
+"storePath": "/nix/store/jixrdvkpsny5iz4kc3ghq3s88ydawajx-xo-latest-supply-protector-6.10.0"
+},
+"supply-protector-rolling": {
+"narHash": "sha256-WmLvZBqW4j0+H+zEVBIysVv0op2pS8UI3/vcQz2hMTU=",
+"profile": "xo-rolling",
+"storePath": "/nix/store/6lxz3klrvprvm03nmzig6pyqb2rnz03w-xo-rolling-supply-protector-unstable-2026-10-29"
+},
+"supply-protector-stable": {
+"narHash": "sha256-pxBxKGfYgyuhN125cq2K3ZnD8z01typohdqvJ0LhMGE=",
+"profile": "xo-stable",
+"storePath": "/nix/store/vshmgzzssnkjr0rarg4649gl3dyrn5pm-xo-stable-supply-protector-6.9.1"
+}
+},
+"schema": 1
+},
+"rationale": "Review the complete authenticated native evidence and exact proposed scope.",
+"supersedes": []
+},
+"schema": 1
+}
