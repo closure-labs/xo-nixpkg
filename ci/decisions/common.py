@@ -13,6 +13,7 @@ import time
 
 import operations
 import observability
+import attestation_session
 import decision_authority as authority
 import decision_packets as packets
 from security_decisions import (canonical_hash, load_json, evaluate, validate_normalized,
@@ -380,18 +381,22 @@ def bounded_attestation_command(arguments):
         raise ValueError('Invalid attestation verifier JSON output') from None
 
 
-def attest(path, cfg, revision, workflow):
-    return attestation_command(['gh', 'attestation', 'verify', str(path), '--repo', cfg['repository'],
-                               '--signer-workflow', cfg['repository'] + '/' + workflow,
-                               '--source-digest', revision, '--source-ref', 'refs/heads/main',
-                               '--deny-self-hosted-runners', '--format', 'json'])
+def attest(path, cfg, revision, workflow, *, producer=None, api=None):
+    arguments = ['gh', 'attestation', 'verify', str(path), '--repo', cfg['repository'],
+                 '--signer-workflow', cfg['repository'] + '/' + workflow,
+                 '--source-digest', revision, '--source-ref', 'refs/heads/main',
+                 '--hostname', 'github.com', '--cert-oidc-issuer', attestation_session.ISSUER,
+                 '--predicate-type', attestation_session.PREDICATE,
+                 '--deny-self-hosted-runners', '--format', 'json']
+    return attestation_session.verify(path, cfg, revision, workflow, producer, arguments,
+                                      attestation_command, api or authority.github_api)
 
 
-def attest_product(path, cfg, revision):
+def attest_product(path, cfg, revision, *, producer=None, api=None):
     """Original product bytes may have a different producer than a later rescan."""
     for workflow in cfg['producerWorkflows']:
         try:
-            return attest(path, cfg, revision, workflow)
+            return attest(path, cfg, revision, workflow, producer=producer, api=api)
         except subprocess.CalledProcessError:
             continue
     raise ValueError('Product has no trusted original producer attestation')
@@ -459,7 +464,7 @@ def scans(path, cfg, api=None, allow_expired=False):
         require(value.get('repositorySecretPolicy') == cfg['repositorySecretPolicy'], 'Old-policy qualification is not current native evidence')
     producer = value.get('producer', {})
     producer_revision, signer = verify_producer(cfg, producer, value['revision'], api)
-    attest(path, cfg, producer_revision, signer)
+    attest(path, cfg, producer_revision, signer, producer=producer, api=api)
     for profile, native in value['profiles'].items():
         require(native.get('status') == 'complete' and native.get('scannerHealth') == 'healthy', 'Native scanner unhealthy')
         required_coverage = cfg.get('requiredCoverage', {}).get(profile)
@@ -517,9 +522,11 @@ def product(path, cfg, scan, api=None):
         original = scan['productProducer']
         require(isinstance(original, dict) and isinstance(original.get('revision'), str), 'Original product producer revision required')
         revision, signer = verify_producer(cfg, original, value['revision'], api, require_main=True)
-        attest(path, cfg, revision, signer)
+        attest(path, cfg, revision, signer, producer=original, api=api)
     else:
-        attest_product(path, cfg, value['revision'])
+        # Legacy rescans without an original producer keep online verification.
+        producer = scan['producer'] if scan['producer'].get('revision', scan['revision']) == value['revision'] else None
+        attest_product(path, cfg, value['revision'], producer=producer, api=api)
     return value
 
 
