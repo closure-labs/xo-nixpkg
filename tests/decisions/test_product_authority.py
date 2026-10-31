@@ -71,9 +71,9 @@ class PublicationAPI:
             return {'truncated': False, 'tree': [
                 dict(type='blob', mode='100644', path=path,
                      **{key: self.blob(value)[key] for key in ('sha', 'size')})
-                for path, value in self.records.items()]}
+                for path, value in {**self.records, self.policy['policyPath']: self.policy}.items()]}
         if '/git/blobs/' in endpoint:
-            return next(self.blob(value) for value in self.records.values()
+            return next(self.blob(value) for value in [*self.records.values(), self.policy]
                         if endpoint.endswith('/' + self.blob(value)['sha']))
         if '/contents/' + self.policy['policyPath'] + '?' in endpoint:
             return self.blob(self.policy)

@@ -26,3 +26,22 @@ def stage(name, started, *, cache=None, transferred_bytes=0, freshness=None, que
             stream.write(f'- {name}: {value["elapsedSeconds"]}s; cache {cache or "n/a"}; transferred {transferred_bytes} bytes; '
                          f'freshness {freshness or "n/a"}; remote {remote or "n/a"}.\n')
     return value
+
+
+def authority_requests(count, status):
+    """Count only calls through the authority API callback, not all HTTP traffic."""
+    import stat
+    if type(count) is not int or not 0 <= count <= 100000 or status not in ('passed', 'blocked'):
+        raise ValueError('Invalid authority request-count observation')
+    value = {'schema': 1, 'scope': 'publication-authority-callback',
+             'calls': count, 'status': status, 'authorityClaim': False}
+    if os.environ.get('RUNNER_TEMP'):
+        path = Path(os.environ['RUNNER_TEMP']) / 'authority-api-requests.jsonl'
+        descriptor = os.open(path, os.O_WRONLY | os.O_APPEND | os.O_CREAT | os.O_NOFOLLOW | os.O_NONBLOCK, 0o600)
+        try:
+            if not stat.S_ISREG(os.fstat(descriptor).st_mode):
+                raise OSError('Request-count diagnostic target is not a regular file')
+            os.write(descriptor, (json.dumps(value, sort_keys=True) + '\n').encode())
+        finally:
+            os.close(descriptor)
+    return value
