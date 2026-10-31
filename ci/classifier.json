@@ -169,6 +169,13 @@
   ],
   "pathRules": [
     {
+      "pattern": "^ci/public-source-smoke\\.sh$",
+      "validation": [
+        "*"
+      ],
+      "publication": []
+    },
+    {
       "pattern": "^ci/diagnostic-secret-triage\\.py$",
       "validation": [
         "*"
