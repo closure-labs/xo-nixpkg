@@ -176,6 +176,13 @@
       "publication": []
     },
     {
+      "pattern": "^ci/public-source-smoke\\.sh$",
+      "validation": [
+        "*"
+      ],
+      "publication": []
+    },
+    {
       "pattern": "^ci/native-secret-(?:policy\\.json|controller\\.py|observation\\.py)$",
       "validation": [
         "repository-policy",
