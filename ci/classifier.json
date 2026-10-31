@@ -169,14 +169,14 @@
   ],
   "pathRules": [
     {
-      "pattern": "^ci/compare-retained-nars\\.py$",
+      "pattern": "^ci/diagnostic-secret-triage\\.py$",
       "validation": [
         "*"
       ],
       "publication": []
     },
     {
-      "pattern": "^ci/public-source-smoke\\.sh$",
+      "pattern": "^ci/compare-retained-nars\\.py$",
       "validation": [
         "*"
       ],
