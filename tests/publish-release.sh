@@ -46,7 +46,16 @@ if [[ $1 == release && $2 == view ]]; then
   exit
 fi
 if [[ $1 == api ]]; then
-  git -C "$XO_NIXPKG_SOURCE_ROOT" rev-parse v0.8.0^{commit}
+  sha=$(git -C "$XO_NIXPKG_SOURCE_ROOT" rev-parse v0.8.0^{commit})
+  if [[ ${FIXTURE_TAG_MODE:-commit} == malformed ]]; then
+    printf '{"type":"blob","sha":"invalid"}\n'
+  elif [[ ${FIXTURE_TAG_MODE:-commit} == cycle || ( ${FIXTURE_TAG_MODE:-commit} == annotated && $2 == */git/ref/tags/* ) ]]; then
+    printf '{"type":"tag","sha":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"}\n'
+  elif [[ ${FIXTURE_TAG_MODE:-commit} == conflict ]]; then
+    printf '{"type":"commit","sha":"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"}\n'
+  else
+    printf '{"type":"commit","sha":"%s"}\n' "$sha"
+  fi
   exit
 fi
 printf '%s\n' "$*" >>"$FIXTURE_GH_LOG"
@@ -99,3 +108,20 @@ FIXTURE_RELEASE_NOTES="$temporary/notes.md" \
   echo 'Draft release was accepted as immutable publication' >&2
   exit 1
 fi
+
+# Existing releases accept annotated tags only after exact commit normalization.
+PATH="$temporary/bin:$PATH" GH_TOKEN=fixture GITHUB_REPOSITORY=example/repository \
+XO_NIXPKG_SOURCE_ROOT="$repository" FIXTURE_RELEASE_EXISTS=true FIXTURE_TAG_MODE=annotated \
+FIXTURE_GH_LOG="$temporary/gh.log" FIXTURE_RELEASE_NOTES="$temporary/notes.md" \
+  bash "$root/ci/publish-release.sh"
+[[ ! -s $temporary/gh.log ]]
+for mode in conflict cycle malformed; do
+  if PATH="$temporary/bin:$PATH" GH_TOKEN=fixture GITHUB_REPOSITORY=example/repository \
+  XO_NIXPKG_SOURCE_ROOT="$repository" FIXTURE_RELEASE_EXISTS=true FIXTURE_TAG_MODE="$mode" \
+  FIXTURE_GH_LOG="$temporary/gh.log" FIXTURE_RELEASE_NOTES="$temporary/notes.md" \
+    bash "$root/ci/publish-release.sh" >/dev/null 2>&1; then
+    echo "Invalid remote tag identity passed: $mode" >&2
+    exit 1
+  fi
+  [[ ! -s $temporary/gh.log ]]
+done
