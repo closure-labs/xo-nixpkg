@@ -335,8 +335,15 @@ def content_facts(path, raw):
     def canonical(value):
         return json.dumps(value, sort_keys=True, separators=(',', ':'), ensure_ascii=True).encode()
     if local == GENERATOR_FILE:
+        first, separator, body = raw.partition(b'\n')
+        shebang = 'unrecognized'
+        if first == b'#!/usr/bin/env node':
+            shebang = 'upstream-env-node'
+        elif re.fullmatch(rb'#!/nix/store/[0123456789abcdfghijklmnpqrsvwxyz]{32}-[A-Za-z0-9._+-]+/bin/node', first):
+            shebang = 'nix-node'
         return {'kind': 'index-modules-source', 'matchesPinned043': hashed(raw) == GENERATOR_DIGEST,
-                'sourceSha256': hashed(raw)}
+                'sourceSha256': hashed(raw), 'shebangClass': shebang,
+                'matchesPinned043AfterSupportedShebangNormalization': bool(separator) and shebang != 'unrecognized' and hashed(b'#!/usr/bin/env node\n'+body) == GENERATOR_DIGEST}
     if local == 'node_modules/index-modules/package.json':
         value = decode(raw)
         require(isinstance(value, dict) and value.get('name') == 'index-modules'
@@ -378,9 +385,12 @@ def content_facts(path, raw):
     if local.startswith('docs/build-embed/') and (local.endswith('.html') or re.fullmatch(r'docs/build-embed/assets/js/main\.[a-f0-9]{8}\.js', local)):
         guid_normalized, guids = re.subn(rb'((?:search-doc|lunr-index)-)[0-9]{13}(\.json)', rb'\1<BUILD_ID>\2', raw)
         asset_normalized, assets = re.subn(rb'(assets/(?:js|css)/[^/"\s<>]+?)\.[a-f0-9]{8}\.(js|css)', rb'\1<CONTENT_HASH>.\2', guid_normalized)
+        self_normalized, self_refs = re.subn(rb'\b(main)\.[a-f0-9]{8}(\.js(?:\.LICENSE\.txt)?)', rb'\1<CONTENT_HASH>\2', asset_normalized)
         return {'kind': 'documentation-text', 'timestampedSearchReferences': guids,
-                'assetHashReferences': assets, 'searchGuidNormalizedSha256': hashed(guid_normalized),
-                'searchGuidAndAssetReferencesNormalizedSha256': hashed(asset_normalized)}
+                'assetHashReferences': assets, 'selfAssetReferences': self_refs,
+                'searchGuidNormalizedSha256': hashed(guid_normalized),
+                'searchGuidAndAssetReferencesNormalizedSha256': hashed(asset_normalized),
+                'searchGuidAssetAndSelfReferencesNormalizedSha256': hashed(self_normalized)}
     if local in RUNTIME_FILES:
         lines = raw.splitlines(keepends=True)
         normalized, count = re.subn(rb'/build/[A-Za-z0-9_./@+-]+', b'/build/<PATH>', raw)

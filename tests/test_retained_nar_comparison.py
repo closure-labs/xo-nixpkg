@@ -212,12 +212,25 @@ class GuardTests(unittest.TestCase):
         self.assertEqual(old['searchGuidNormalizedSha256'], new['searchGuidNormalizedSha256'])
         changed = m.content_facts(js, b'"search-doc-1793411292876.json"; extra')
         self.assertNotEqual(old['searchGuidNormalizedSha256'], changed['searchGuidNormalizedSha256'])
+        old = m.content_facts(js, b'/* main.123abc45.js.LICENSE.txt */;"search-doc-1793403503498.json"')
+        new = m.content_facts(js, b'/* main.456abc78.js.LICENSE.txt */;"search-doc-1793411292876.json"')
+        self.assertEqual(old['searchGuidAssetAndSelfReferencesNormalizedSha256'], new['searchGuidAssetAndSelfReferencesNormalizedSha256'])
+        self.assertEqual(old['selfAssetReferences'], 1)
         html = m.ROOT_PREFIX+'docs/build-embed/index.html'
         old = m.content_facts(html, b'<script src="/assets/js/main.123abc45.js"></script>')
         new = m.content_facts(html, b'<script src="/assets/js/main.456abc78.js"></script>')
         self.assertEqual(old['searchGuidAndAssetReferencesNormalizedSha256'], new['searchGuidAndAssetReferencesNormalizedSha256'])
         with self.assertRaises(m.Blocked):
             m.content_facts(path, b'{"other":[]}')
+
+    def test_supported_shebang_classification_never_accepts_arbitrary_interpreters(self):
+        path = m.ROOT_PREFIX+m.GENERATOR_FILE
+        facts = m.content_facts(path, b'#!/bin/sh\nnot the pinned generator')
+        self.assertEqual(facts['shebangClass'], 'unrecognized')
+        self.assertFalse(facts['matchesPinned043AfterSupportedShebangNormalization'])
+        facts = m.content_facts(path, b'#!/nix/store/'+b'a'*32+b'-nodejs-22.0.0/bin/node\nnot the pinned generator')
+        self.assertEqual(facts['shebangClass'], 'nix-node')
+        self.assertFalse(facts['matchesPinned043AfterSupportedShebangNormalization'])
 
     def test_no_authority_or_publication(self):
         workflow = (Path(__file__).resolve().parents[1]/'.github/workflows/compare-retained-nars.yml').read_text()
