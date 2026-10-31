@@ -13,6 +13,7 @@ import resource
 import stat
 import subprocess
 import operations
+import github_retry
 import sys
 import tempfile
 import time
@@ -95,13 +96,16 @@ def github_api(endpoint):
     # the child output before allocating or parsing it, including on API errors.
     def bound_output():
         resource.setrlimit(resource.RLIMIT_FSIZE, (MAX_API_BYTES, MAX_API_BYTES))
-    for attempt in range(1, 4):
-        details = ''
+    retry = github_retry.RetryBudget(total=operations.remaining(45))
+    for attempt in range(1, retry.attempts + 1):
+        details, headers, status, category = '', {}, None, None
         with tempfile.TemporaryFile() as output:
             try:
                 result = operations.run(['gh', 'api', '--method', 'GET', '--include', endpoint],
                                         stdout=output, stderr=subprocess.DEVNULL,
-                                        timeout=30, check=False, preexec_fn=bound_output)
+                                        timeout=retry.remaining(), check=False, preexec_fn=bound_output)
+            except github_retry.RetryDeadline:
+                raise AuthorityError('GitHub authority GET retry deadline exhausted') from None
             except OSError as error:
                 raise AuthorityError('GitHub authority API unavailable') from error
             except subprocess.TimeoutExpired:
@@ -140,14 +144,18 @@ def github_api(endpoint):
                         except (ValueError, UnicodeError) as error:
                             raise AuthorityError('Invalid GitHub API response') from error
                     details = api_failure_details(status, headers, output)
-                    if status not in (408, 429, 500, 502, 503, 504):
-                        raise AuthorityError('GitHub authority API failed: ' + endpoint.split('?')[0]
-                                             + f' ({failure}; attempt {attempt}{details})')
-        # Retry only fresh read requests. No response or authority is cached.
-        if attempt == 3:
+                    category_match = re.search(r'; category=([a-z-]+)', details)
+                    category = category_match[1] if category_match else None
+        # Server-directed delays are minimums, never shortened to fit this
+        # operation. No credentials, response body or authority is cached.
+        try:
+            again = retry.wait(attempt, status, headers, category)
+        except github_retry.RetryDeadline:
+            raise AuthorityError('GitHub authority GET retry deadline exhausted') from None
+        if not again:
+            attempts = '3 attempts' if attempt == retry.attempts else f'attempt {attempt}'
             raise AuthorityError('GitHub authority API failed: ' + endpoint.split('?')[0]
-                                 + f' ({failure}; 3 attempts{details})')
-        time.sleep(attempt)
+                                 + f' ({failure}; {attempts}{details})')
 
 
 def collection(api, endpoint):
