@@ -14,7 +14,7 @@ else
   discovered=$(gh api "repos/$GITHUB_REPOSITORY/actions/workflows/qualification.yml/runs?branch=main&status=success&per_page=1")
   selected=$(jq -c '.workflow_runs | if type != "array" or length > 1 then error("Invalid qualification discovery") else .[0] end' <<<"$discovered")
   if [[ $selected == null ]]; then
-    echo 'No successful qualification is available.'
+    echo 'No current candidate: awaiting successful qualification; no evidence authority claimed.'
     exit 0
   fi
 fi
@@ -86,8 +86,11 @@ if [[ $publication_state == complete ]]; then
   # observation expiry has been inspected. This is never an admission cache.
   printf '%s' "$REGISTRY_TOKEN" | oras login ghcr.io --username "$GITHUB_ACTOR" --password-stdin
   observation=$(QUALIFICATION_RUN="$run_id" QUALIFICATION_ATTEMPT="$attempt" QUALIFICATION_SOURCE_SHA="$(jq -r .head_sha <<<"$selected")" xo-nixpkg-inspect-qualification)
-  observation_state=$(jq -er '.status | select(. == "current" or . == "expired" or . == "unretained")' <<<"$observation")
-  if [[ $observation_state == current ]]; then
+  observation_state=$(jq -er '.status | select(. == "current" or . == "expired" or . == "unretained" or . == "awaiting-current-evidence")' <<<"$observation")
+  if [[ $observation_state == awaiting-current-evidence ]]; then
+    printf '%s\n' "$observation"
+    exit 0
+  elif [[ $observation_state == current ]]; then
     printf '%s\n' "$observation"
     exit 0
   elif [[ $observation_state == expired ]]; then
@@ -107,7 +110,15 @@ fi
 jq -e --argjson run "$run_id" --argjson attempt "$attempt" \
   '.producer.runId == $run and .producer.runAttempt == $attempt' \
   "$XO_NIXPKG_EVIDENCE/scans.json" >/dev/null
-if [[ $(date -u +%s) -ge $(date -u --date="$(jq -er .expiresAt "$XO_NIXPKG_EVIDENCE/scans.json")" +%s) ]]; then
+# Authenticate scans AND product before treating policy mismatch as scheduling
+# debt. This also validates Actions-download evidence, not just retained packets.
+observation=$(XO_NIXPKG_INSPECT_LOCAL_EVIDENCE=true QUALIFICATION_RUN="$run_id" QUALIFICATION_ATTEMPT="$attempt" QUALIFICATION_SOURCE_SHA="$(jq -r .head_sha <<<"$selected")" xo-nixpkg-inspect-qualification)
+observation_state=$(jq -er '.status | select(. == "current" or . == "expired" or . == "awaiting-current-evidence")' <<<"$observation")
+if [[ $observation_state == awaiting-current-evidence ]]; then
+  printf '%s\n' "$observation"
+  exit 0
+fi
+if [[ $observation_state == expired ]]; then
   refresh_state=$(workflow_state qualification.yml "Refresh qualification $run_id attempt $attempt")
   if [[ $refresh_state != active ]]; then
     gh workflow run qualification.yml --repo "$GITHUB_REPOSITORY" --ref main \

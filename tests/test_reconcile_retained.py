@@ -101,6 +101,24 @@ elif name == 'xo-nixpkg-decision-publication' and not fixture['admitted']:
     def dispatches(calls):
         return [call for call in calls if call[:3] == ['gh', 'workflow', 'run']]
 
+    def test_authenticated_obsolete_policy_waits_without_refresh_or_publication(self):
+        for published in [False, True]:
+            self.calls.unlink(missing_ok=True)
+            self.fixture.update(observation_state='awaiting-current-evidence',
+                publish=[self.workflow(status='completed', conclusion='success')] if published else [])
+            result, calls = self.run_scheduler()
+            self.assertEqual(result.returncode, 0, result.stderr)
+            self.assertIn('awaiting-current-evidence', result.stdout)
+            self.assertEqual(self.dispatches(calls), [])
+            self.assertFalse(any(c[0].startswith('xo-nixpkg-decision') for c in calls))
+
+    def test_policy_authentication_failure_never_becomes_wait_or_dispatch(self):
+        self.fixture['inspection_failure'] = True
+        result, calls = self.run_scheduler()
+        self.assertNotEqual(result.returncode, 0)
+        self.assertEqual(self.dispatches(calls), [])
+        self.assertFalse(any(c[0].startswith('xo-nixpkg-decision') for c in calls))
+
     def test_explicit_trigger_identity_avoids_latest_success_discovery(self):
         result, calls = self.run_scheduler(QUALIFICATION_RUN='123', QUALIFICATION_ATTEMPT='2')
         self.assertEqual(result.returncode, 0, result.stderr)
@@ -197,6 +215,8 @@ elif name == 'xo-nixpkg-decision-publication' and not fixture['admitted']:
         result, calls = self.run_scheduler()
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertFalse(self.dispatches(calls))
+        self.assertIn('awaiting successful qualification; no evidence authority claimed', result.stdout)
+        self.assertFalse(any(c[0].startswith('xo-nixpkg-') for c in calls))
 
     def test_discovery_failure_and_invalid_inputs_fail_before_side_effects(self):
         for changes, environment in [({'api_failure': 'qualification.yml/runs'}, {}),

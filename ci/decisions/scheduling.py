@@ -4,7 +4,7 @@ import re
 
 ACTIONS = {'inspect', 'materialize', 'refresh', 'publish', 'wait', 'none'}
 REASONS = {'producer-active', 'publication-active', 'publication-observed', 'observations-expired',
-           'evidence-required', 'no-candidate', 'not-admitted', 'destinations-verified'}
+           'evidence-required', 'obsolete-policy', 'no-candidate', 'not-admitted', 'destinations-verified'}
 
 
 def result(repository, source, controller, run_id, attempt, action, reason, product_hash=None, packet=None):
@@ -56,3 +56,37 @@ def observation_expiry(native, cfg):
             raise ValueError('Invalid observation database metadata')
         deadlines.append(built + dt.timedelta(hours=database_hours))
     return min(deadlines)
+
+
+def authenticated_policy_observation(directory, cfg):
+    """Scheduling classification AFTER producer/attestation/schema validation.
+
+    Historical expiry is permitted only for inspecting scheduling state. No
+    outcome from this function grants current evidence or publication authority.
+    """
+    from pathlib import Path
+    import common
+    root = Path(directory)
+    native = common.scans(root / 'scans.json', cfg, allow_expired=True)
+    identity = common.product(root / 'product.json', cfg, native)
+    expires = observation_expiry(native, cfg)
+    current = cfg.get('repositorySecretPolicy')
+    observed = [native.get('repositorySecretPolicy'), identity.get('repositorySecretPolicy')]
+    def valid(binding):
+        return (isinstance(binding, dict) and set(binding) == {'policyId', 'policySha256'}
+                and isinstance(binding['policyId'], str)
+                and re.fullmatch(r'[a-z][a-z0-9-]{0,127}', binding['policyId']) is not None
+                and isinstance(binding['policySha256'], str)
+                and re.fullmatch(r'[a-f0-9]{64}', binding['policySha256']) is not None)
+    if not valid(current) or any(b is not None and not valid(b) for b in observed):
+        raise ValueError('Malformed repository secret policy binding')
+    if observed[0] != observed[1]:
+        raise ValueError('Scan/product policy binding mismatch')
+    # Both absent is the authenticated legacy schema; never current evidence.
+    if observed[0] != current:
+        return native, expires, 'awaiting-current-evidence'
+    # Historical authentication permits old coverage. Current-policy candidates
+    # must additionally satisfy the present coverage contract before scheduling.
+    for profile, contract in cfg.get('requiredCoverage', {}).items():
+        common.coverage_roots(native['profiles'][profile], contract)
+    return native, expires, 'current-policy'
