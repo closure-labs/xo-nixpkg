@@ -54,6 +54,23 @@ def inputs(derivation, roots):
     return result
 
 
+def exact_derivation(raw, drv, output):
+    """The current CLI wraps its path map in a versioned envelope."""
+    require(isinstance(raw, dict))
+    if "derivations" in raw or "version" in raw:
+        require(set(raw) == {"version", "derivations"} and type(raw["version"]) is int and raw["version"] == 4)
+        raw = raw["derivations"]
+    require(isinstance(raw, dict) and len(raw) == 1)
+    key = next(iter(raw))
+    require(store_path(key) == drv)
+    description = raw[key]
+    require(isinstance(description, dict))
+    require(isinstance(description.get("outputs"), dict) and set(description["outputs"]) == {"out"})
+    require(store_path(description["outputs"]["out"]["path"]) == output)
+    require(description["env"].get("out") == output and description["env"].get("doInstallCheck") == "1")
+    return description
+
+
 def absent(paths):
     for path in paths:
         try:
@@ -113,6 +130,8 @@ def build(leg, destination):
     deadline = time.monotonic() + 225 * 60
     require(command(["git", "rev-parse", "HEAD"], deadline) == revision)
     nix = ["nix", *OPTIONS]
+    nix_version = command(["nix", "--version"], deadline)
+    print("engine: " + nix_version, flush=True)
     plan = {}
     print("stage: immutable-plan", flush=True)
     for profile in PROFILES:
@@ -121,9 +140,7 @@ def build(leg, destination):
         output = store_path(command(nix + ["eval", "--raw", "--no-write-lock-file", attr + ".outPath"], deadline))
         require(drv.endswith(".drv") and output not in OLD)
         raw = json.loads(command(nix + ["derivation", "show", drv], deadline))
-        require(len(raw) == 1)
-        description = next(iter(raw.values()))
-        require(description["env"].get("doInstallCheck") == "1")
+        description = exact_derivation(raw, drv, output)
         plan[profile] = {"drv": drv, "output": output, "description": description}
     root_drvs = {item["drv"] for item in plan.values()}
     root_outputs = [item["output"] for item in plan.values()]
@@ -142,8 +159,9 @@ def build(leg, destination):
                 deadline, 50 * 60, False)
         require(command(["nix-store", "--query", "--deriver", item["output"]], deadline) == item["drv"])
         actual_hash, size = nar_hash(item["output"], deadline)
-        info = json.loads(command(nix + ["path-info", "--json", item["output"]], deadline))
-        entry = info[0] if isinstance(info, list) else next(iter(info.values()))
+        info = json.loads(command(nix + ["path-info", "--json", "--json-format", "1", item["output"]], deadline))
+        require(isinstance(info, dict) and set(info) == {item["output"]})
+        entry = info[item["output"]]
         require(entry["narHash"] == actual_hash and entry["narSize"] == size)
         results[profile] = {"drv": item["drv"], "output": item["output"], "narHash": actual_hash,
                             "narSize": size, "freshOfflineBuild": True, "installChecks": True}
@@ -154,7 +172,7 @@ def build(leg, destination):
     receipt = {"schema": 1, "authorityClaim": False, "leg": leg, "revision": revision,
                "runId": os.environ["GITHUB_RUN_ID"], "runAttempt": os.environ["GITHUB_RUN_ATTEMPT"],
                "bootId": Path("/proc/sys/kernel/random/boot_id").read_text().strip(),
-               "nixVersion": command(["nix", "--version"], deadline),
+               "nixVersion": nix_version,
                "serviceTest": leg == "A", "profiles": results}
     Path(destination).write_text(json.dumps(receipt, sort_keys=True) + "\n")
 

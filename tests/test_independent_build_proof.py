@@ -13,6 +13,33 @@ DRV = "/nix/store/" + "a" * 32 + "-dependency.drv"
 
 
 class Guards(unittest.TestCase):
+    def test_versioned_envelope_and_legacy_exact_path_map(self):
+        output = DRV.removesuffix(".drv")
+        description = {"version": 4, "outputs": {"out": {"path": output.removeprefix('/nix/store/')}},
+                       "env": {"out": output, "doInstallCheck": "1"}}
+        mapping = {DRV.removeprefix('/nix/store/'): description}
+        self.assertEqual(proof.exact_derivation({"version": 4, "derivations": mapping}, DRV, output), description)
+        self.assertEqual(proof.exact_derivation({DRV: description}, DRV, output), description)
+
+    def test_wrong_version_identity_extra_derivation_or_output_rejected(self):
+        output = DRV.removesuffix(".drv")
+        description = {"version": 4, "outputs": {"out": {"path": output}},
+                       "env": {"out": output, "doInstallCheck": "1"}}
+        good = {"version": 4, "derivations": {DRV: description}}
+        bad = [dict(good, version=5), dict(good, extra=True),
+               dict(good, derivations={}), dict(good, derivations={DRV + "x": description}),
+               dict(good, derivations={DRV: description, DRV + "x": description})]
+        for field in ("outputs", "env"):
+            changed = copy.deepcopy(good)
+            if field == "outputs":
+                changed["derivations"][DRV][field]["out"]["path"] = output + "x"
+            else:
+                changed["derivations"][DRV][field]["out"] = output + "x"
+            bad.append(changed)
+        for raw in bad:
+            with self.assertRaises(ValueError):
+                proof.exact_derivation(raw, DRV, output)
+
     def test_precise_input_output_selection_legacy_and_v4(self):
         expected = [DRV + "^dev", DRV + "^out"]
         self.assertEqual(proof.inputs({"inputDrvs": {DRV: ["dev", "out"]}}, set()), expected)
