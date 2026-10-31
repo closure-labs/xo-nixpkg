@@ -16,7 +16,7 @@ permissions:
 
 jobs:
   update:
-    if: github.ref == 'refs/heads/main'
+    if: github.repository == 'closure-labs/xo-nixpkg' && (github.ref == 'refs/heads/main')
     name: Refresh Xen Orchestra release
     runs-on: ubuntu-24.04
     timeout-minutes: 180

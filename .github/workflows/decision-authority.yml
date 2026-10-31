@@ -10,7 +10,7 @@ permissions:
   packages: read
 jobs:
   discover:
-    if: github.event.workflow_run.conclusion == 'success'
+    if: github.repository == 'closure-labs/xo-nixpkg' && (github.event.workflow_run.conclusion == 'success')
     runs-on: ubuntu-24.04
     timeout-minutes: 5
     permissions:
@@ -44,7 +44,7 @@ jobs:
           PYTHON
   authority:
     needs: discover
-    if: needs.discover.outputs.has-targets == 'true'
+    if: github.repository == 'closure-labs/xo-nixpkg' && (needs.discover.outputs.has-targets == 'true')
     strategy:
       fail-fast: false
       matrix: ${{ fromJSON(needs.discover.outputs.matrix) }}

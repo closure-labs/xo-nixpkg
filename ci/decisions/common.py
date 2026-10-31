@@ -12,6 +12,7 @@ import tempfile
 import time
 
 import operations
+import observability
 import decision_authority as authority
 import decision_packets as packets
 from security_decisions import (canonical_hash, load_json, evaluate, validate_normalized,
@@ -95,7 +96,7 @@ def main_revision(cfg, api=None):
     return revision
 
 
-def ledger(cfg, api=None):
+def ledger(cfg, api=None, *, with_policy=False):
     """Fetch every immutable canonical decision from an untruncated current-main tree."""
     api = api or authority.github_api
     revision = main_revision(cfg, api)
@@ -117,6 +118,13 @@ def ledger(cfg, api=None):
         proposal = authority.document_blob(api, cfg['repository'], item.get('sha'), item.get('size'))
         require(authority.proposal_path(proposal) == path, 'Decision content hash/path mismatch')
         records[canonical_hash(proposal)] = proposal
+    if with_policy:
+        entries = [entry for entry in tree['tree'] if entry.get('path') == cfg['policyPath']]
+        require(len(entries) == 1 and entries[0].get('type') == 'blob'
+                and entries[0].get('mode') == '100644', 'Current policy must be one regular Git blob')
+        entry = entries[0]
+        policy = authority.document_blob(api, cfg['repository'], entry.get('sha'), entry.get('size'))
+        return revision, records, policy
     return revision, records
 
 
@@ -538,7 +546,24 @@ def required_check(cfg, api=None):
 
 
 def gate(cfg, scan_path, product_path=None, purpose='rolling', api=None):
-    api = api or authority.github_api
+    raw_api = api or authority.github_api
+    calls, state = 0, 'blocked'
+    def counted(endpoint):
+        nonlocal calls
+        calls += 1
+        return raw_api(endpoint)
+    try:
+        result = _gate(cfg, scan_path, product_path, purpose, counted)
+        state = 'passed'
+        return result
+    finally:
+        try:
+            observability.authority_requests(calls, state)
+        except OSError:
+            print('Could not retain authority request-count diagnostics.', file=sys.stderr)
+
+
+def _gate(cfg, scan_path, product_path, purpose, api):
     require(cfg['enabled'], 'Publication disabled')
     required_check(cfg, api)
     revision, records = ledger(cfg, api)
@@ -561,12 +586,14 @@ def gate(cfg, scan_path, product_path=None, purpose='rolling', api=None):
         require(release is not None and release['payload'].get('disposition') == 'accepted',
                 'Exact immutable product approval required')
     # Final complete-ledger refresh catches concurrent additions/revocations.
-    _, current = ledger(cfg, api)
+    current_revision, current, policy = ledger(cfg, api, with_policy=True)
     require(current == records, 'Current-main ledger changed during admission')
     active_security(cfg, current, api)
     if product_path:
         authorize(cfg, release, api)
-    policy = authority.document_at(api, cfg['repository'], cfg['policyPath'], main_revision(cfg, api))
+    # The freshly read complete tree already binds policy to a verified blob.
+    # Reuse hash-verified immutable bytes, never cache live authority conclusions.
+    require(main_revision(cfg, api) == current_revision, 'Protected main moved during final admission')
     require(policy == cfg and policy['enabled'], 'Publication policy changed during admission')
     required_check(cfg, api)
     return result

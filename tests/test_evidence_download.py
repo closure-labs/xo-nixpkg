@@ -48,7 +48,7 @@ elif name == 'gh' and args[0] == 'api':
     else:
         print(json.dumps({'workflow_runs': []}))
 elif name == 'xo-nixpkg-inspect-qualification':
-    print(json.dumps({'schema': 1, 'status': 'unretained'}))
+    print(json.dumps({'schema': 1, 'status': 'current' if os.environ.get('XO_NIXPKG_INSPECT_LOCAL_EVIDENCE') == 'true' else 'unretained'}))
 elif name == 'gh' and args[:2] == ['run', 'download']:
     directory = pathlib.Path(args[args.index('--dir') + 1])
     if fixture.get('real_deadline'):

@@ -23,7 +23,7 @@ class WorkflowContracts(unittest.TestCase):
                           ('libvhdi-input-update.yml', 'update')]:
             with self.subTest(workflow=name):
                 source = (WORKFLOWS / name).read_text()
-                self.assertRegex(source, rf"  {job}:\n    if: github.ref == 'refs/heads/main'")
+                self.assertRegex(source, rf"  {job}:\n    if: github.repository == 'closure-labs/xo-nixpkg' && \(github.ref == 'refs/heads/main'\)")
 
     def test_native_dependabot_owns_nixpkgs_schedule(self):
         self.assertFalse((WORKFLOWS / 'update-flake-lock.yml').exists())

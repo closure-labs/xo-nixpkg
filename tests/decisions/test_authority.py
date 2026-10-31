@@ -86,6 +86,12 @@ def verify(api, **kwargs):
 
 
 class Authority(unittest.TestCase):
+    def assert_retry_delays(self, sleep, minimums):
+        self.assertEqual(sleep.call_count, len(minimums))
+        for call, minimum in zip(sleep.call_args_list, minimums):
+            self.assertGreaterEqual(call.args[0], minimum + .05)
+            self.assertLessEqual(call.args[0], minimum + .25)
+
     def setUp(self):
         # Independent fake transports must not share previously verified bytes
         # when this suite inherits a complete hosted-job environment.
@@ -479,7 +485,7 @@ class Authority(unittest.TestCase):
              self.assertRaises(mod.AuthorityError):
             mod.github_api('repos/example/repository')
         self.assertEqual(run.call_count, 3)
-        self.assertEqual(sleep.call_args_list, [unittest.mock.call(1), unittest.mock.call(2)])
+        self.assert_retry_delays(sleep, [1, 2])
 
     def test_github_api_retries_temporary_read_failures(self):
         for transient in (408, 429, 500, 502, 503, 504, 'transport', 'timeout'):
@@ -491,14 +497,15 @@ class Authority(unittest.TestCase):
                     raise subprocess.TimeoutExpired('gh', 60)
                 if status == 'transport':
                     return subprocess.CompletedProcess(arguments, 1)
-                kwargs['stdout'].write(f'HTTP/2.0 {status}\r\n\r\n{{"fresh":true}}'.encode())
+                headers = 'Retry-After: 1\r\n' if status == 429 else ''
+                kwargs['stdout'].write(f'HTTP/2.0 {status}\r\n{headers}\r\n{{"fresh":true}}'.encode())
                 return subprocess.CompletedProcess(arguments, 0 if status == 200 else 1)
             with self.subTest(transient=transient), \
                  patch.object(mod.operations, 'run', side_effect=request) as run, \
                  patch.object(mod.time, 'sleep') as sleep:
                 self.assertEqual(mod.github_api('repos/example/repository'), {'fresh': True})
                 self.assertEqual(run.call_count, 2)
-                sleep.assert_called_once_with(1)
+                self.assert_retry_delays(sleep, [1])
 
     def test_github_api_permanent_errors_never_retry_or_expose_response(self):
         for status in (301, 400, 401, 403, 404, 409, 422):
@@ -630,7 +637,7 @@ class Authority(unittest.TestCase):
         self.assertEqual(str(error.exception), 'GitHub authority API failed: repos/example/repository '
                          '(HTTP 503; 3 attempts; retry-after=7)')
         self.assertEqual(run.call_count, 3)
-        self.assertEqual(sleep.call_args_list, [unittest.mock.call(1), unittest.mock.call(2)])
+        self.assert_retry_delays(sleep, [7, 7])
 
     def test_github_api_invalid_credentials_category_does_not_echo_body(self):
         def request(arguments, **kwargs):
@@ -657,7 +664,7 @@ class Authority(unittest.TestCase):
         self.assertEqual(str(error.exception), 'GitHub authority API failed: repos/example/repository '
                          '(HTTP 403; attempt 2)')
         self.assertEqual(run.call_count, 2)
-        sleep.assert_called_once_with(1)
+        self.assert_retry_delays(sleep, [7])
 
     def test_large_blob_metadata_encoding_size_and_object_hash_must_agree(self):
         _, metadata, original = self.large_blob()
