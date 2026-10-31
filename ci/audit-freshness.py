@@ -80,6 +80,32 @@ def verify(controller, product, scans, api, now=None, metadata_api=None):
     return receipt
 
 
+
+EVIDENCE_LIMITS = {'product.json': 16 * 1024**2, 'scans.json': 128 * 1024**2}
+SAFE_FAILURE_CODES = frozenset({
+    'evidence-file', 'json-schema', 'duplicate-json-key',
+    'observer-token-unavailable', 'alerts-permission-unavailable',
+    'alerts-unavailable', 'protected-main-moved',
+})
+
+
+def read_evidence(directory, name):
+    native.require(name in EVIDENCE_LIMITS, 'evidence-file')
+    path = directory / name
+    native.require(path.is_file() and not path.is_symlink()
+                   and path.stat().st_size <= EVIDENCE_LIMITS[name], 'evidence-file')
+    return native.decode(path.read_bytes())
+
+
+def failure_message(error):
+    # Only fixed guard codes may reach logs; never expose arbitrary API errors,
+    # response bodies, report content, paths or credential-bearing exceptions.
+    code = str(error) if isinstance(error, native.Blocked) else ''
+    if code not in SAFE_FAILURE_CODES:
+        code = 'validation-failed'
+    return 'Publication blocked: security prerequisite failed (' + code + ')'
+
+
 def main():
     native.require(os.environ.get('GITHUB_REPOSITORY') == native.REPO
                    and os.environ.get('GITHUB_REF') == 'refs/heads/main', 'controller-context')
@@ -87,9 +113,7 @@ def main():
     directory = Path(os.environ['XO_NIXPKG_EVIDENCE'])
     values = []
     for name in ('product.json', 'scans.json'):
-        p = directory / name
-        native.require(p.is_file() and not p.is_symlink() and p.stat().st_size <= 16 * 1024 * 1024, 'evidence-file')
-        values.append(native.decode(p.read_bytes()))
+        values.append(read_evidence(directory, name))
     receipt = verify(controller, *values, native.API(os.environ.get('NATIVE_SECRET_OBSERVER_TOKEN')),
                      metadata_api=native.MetadataAPI(os.environ.get('GH_TOKEN')))
     print(json.dumps({'status': 'observed', 'policyId': receipt['policyId'],
@@ -99,6 +123,6 @@ def main():
 if __name__ == '__main__':
     try:
         main()
-    except Exception:
-        print('Publication blocked: fresh native secret observation and new-policy qualification required', file=sys.stderr)
+    except Exception as error:
+        print(failure_message(error), file=sys.stderr)
         raise SystemExit(1)
