@@ -47,6 +47,10 @@ def inputs(derivation, roots):
     for path, outputs in sorted(data.items()):
         path = store_path(path)
         require(path.endswith(".drv") and path not in roots)
+        if isinstance(outputs, dict):
+            require(derivation.get("version") == 4 and set(outputs) == {"outputs", "dynamicOutputs"})
+            require(outputs["dynamicOutputs"] == {})
+            outputs = outputs["outputs"]
         require(isinstance(outputs, list) and 0 < len(outputs) <= 32)
         for output in outputs:
             require(isinstance(output, str) and re.fullmatch(r"[A-Za-z][A-Za-z0-9_-]*", output))

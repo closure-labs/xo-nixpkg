@@ -44,11 +44,14 @@ class Guards(unittest.TestCase):
         expected = [DRV + "^dev", DRV + "^out"]
         self.assertEqual(proof.inputs({"inputDrvs": {DRV: ["dev", "out"]}}, set()), expected)
         self.assertEqual(proof.inputs({"version": 4, "inputs": {"drvs": {DRV.removeprefix('/nix/store/'): ["dev", "out"]}}}, set()), expected)
+        self.assertEqual(proof.inputs({"version": 4, "inputs": {"drvs": {
+            DRV.removeprefix('/nix/store/'): {"outputs": ["dev", "out"], "dynamicOutputs": {}}}}}, set()), expected)
 
     def test_roots_dynamic_and_unknown_inputs_rejected(self):
         for value, roots in [({"inputDrvs": {DRV: ["out"]}}, {DRV}),
                              ({"version": 5, "inputDrvs": {}}, set()),
                              ({"version": 4, "inputs": {"drvs": {DRV: {"dynamicOutputs": {}}}}}, set()),
+                             ({"version": 4, "inputs": {"drvs": {DRV: {"outputs": ["out"], "dynamicOutputs": {"out": {}}}}}}, set()),
                              ({"inputDrvs": {DRV: ["out;echo"]}}, set())]:
             with self.assertRaises(ValueError):
                 proof.inputs(value, roots)
