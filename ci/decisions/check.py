@@ -116,7 +116,7 @@ def check_pr(repository, number, expected_bot, target_sha=None, github=None):
             'governedPaths': sensitive, 'status': 'authorized' if sensitive else 'not-required'}
 
 
-def queue_targets(api, repository, number):
+def queue_targets(api, repository, number, *, branch=None):
     refs = api(f'repos/{repository}/git/matching-refs/heads/gh-readonly-queue/main/pr-{number}-')
     if not isinstance(refs, list) or len(refs) > 16:
         raise authority.AuthorityError('Invalid bounded current queue inventory')
@@ -128,7 +128,8 @@ def queue_targets(api, repository, number):
         if (not match or int(match[1]) != number or not isinstance(sha, str)
                 or not authority.SHA.fullmatch(sha) or ref.get('object', {}).get('type') != 'commit'):
             raise authority.AuthorityError('Invalid current queue ref')
-        targets.append(sha)
+        if branch is None or name == branch:
+            targets.append(sha)
     return sorted(set(targets))
 
 
@@ -144,9 +145,11 @@ def collector_targets(run, repository, github=None):
         match = QUEUE.fullmatch(run.get('head_branch', ''))
         if not match:
             raise authority.AuthorityError('Merge queue requires strict single-PR main queue identity')
-        branch = api(f'repos/{repository}/git/ref/heads/{run["head_branch"]}')
-        if branch.get('object', {}).get('sha') != run['head_sha']:
-            raise authority.AuthorityError('Collector merge-group SHA is no longer the exact queue ref')
+        # An authenticated complete matching-ref inventory distinguishes an
+        # obsolete queue event from API failure. No 404/error is interpreted as
+        # absence, and an obsolete event never publishes a replacement check.
+        if run['head_sha'] not in queue_targets(api, repository, int(match[1]), branch=run['head_branch']):
+            return []
         return [(int(match[1]), run['head_sha'])]
     pulls = run.get('pull_requests', [])
     if not isinstance(pulls, list):

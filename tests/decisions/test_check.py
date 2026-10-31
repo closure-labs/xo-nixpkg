@@ -111,16 +111,42 @@ class Checks(unittest.TestCase):
         with self.assertRaises(mod.authority.AuthorityError):
             mod.collector_targets(api.collector, REPO, api)
 
-    def test_queue_identity_and_changed_ref_rejected(self):
+    def test_queue_identity_and_verified_obsolete_ref(self):
         api = GitHub()
         api.collector.update(event='merge_group', head_branch='gh-readonly-queue/main/pr-7-abcdef0', head_sha=MERGE)
+        api.queue_refs = [{'ref': 'refs/heads/' + api.collector['head_branch'],
+                           'object': {'type': 'commit', 'sha': MERGE}}]
         self.assertEqual(mod.collector_targets(api.collector, REPO, api), [(7, MERGE)])
-        api.queue_sha = HEAD
-        with self.assertRaises(mod.authority.AuthorityError):
-            mod.collector_targets(api.collector, REPO, api)
+        api.queue_refs[0]['object']['sha'] = HEAD
+        self.assertEqual(mod.collector_targets(api.collector, REPO, api), [])
+        api.queue_refs[0]['ref'] = 'refs/heads/gh-readonly-queue/main/pr-7-fedcba0'
+        api.queue_refs[0]['object']['sha'] = MERGE
+        self.assertEqual(mod.collector_targets(api.collector, REPO, api), [])
+        api.queue_refs = []
+        post = mock.Mock()
+        self.assertEqual(mod.resolve_targets(REPO, 1, api), {'include': []})
+        mod.run_checks(REPO, 1, BOT, 123, api, post)
+        post.assert_not_called()
         api.collector['head_branch'] = 'attacker/pr-7-abcdef0'
         with self.assertRaises(mod.authority.AuthorityError):
             mod.collector_targets(api.collector, REPO, api)
+
+    def test_queue_inventory_errors_malformed_and_overflow_still_fail(self):
+        for inventory in [None, {}, [{'ref': 'invalid'}],
+                          [{'ref': 'refs/heads/gh-readonly-queue/main/pr-8-abcdef0',
+                            'object': {'type': 'commit', 'sha': MERGE}}], [{}] * 17]:
+            api = GitHub()
+            api.collector.update(event='merge_group', head_branch='gh-readonly-queue/main/pr-7-abcdef0', head_sha=MERGE)
+            api.queue_refs = inventory
+            with self.assertRaises(mod.authority.AuthorityError):
+                mod.collector_targets(api.collector, REPO, api)
+        api = GitHub()
+        api.collector.update(event='merge_group', head_branch='gh-readonly-queue/main/pr-7-abcdef0', head_sha=MERGE)
+        for code in [403, 404, 429, 500]:
+            def unavailable(path):
+                raise mod.authority.AuthorityError('API unavailable ' + str(code))
+            with self.assertRaises(mod.authority.AuthorityError):
+                mod.collector_targets(api.collector, REPO, unavailable)
 
     def test_app_origin_checked_and_missing_approval_posts_failure(self):
         api = GitHub()
