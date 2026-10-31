@@ -10,6 +10,7 @@ from pathlib import Path
 import subprocess
 import tempfile
 import unittest
+import yaml
 from unittest.mock import Mock, patch
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -465,6 +466,78 @@ class RestoreTests(ReuseFixture):
     def restore(self):
         return reuse.restore(self.directory / 'candidate', self.controller,
                              self.directory / 'result.json', ['xo-latest'])
+
+    def pinned_workflow(self):
+        fixture = ROOT / 'tests/fixtures/reuse/ci-pr-export-disabled.yml'
+        (self.controller / reuse.WORKFLOW).write_bytes(fixture.read_bytes())
+        self.receipt['workflowSha256'] = reuse.digest(fixture)
+
+    def queue_candidate(self):
+        self.receipt.update(event='merge_group', ref='refs/heads/gh-readonly-queue/main/pr-97-' + CONTROLLER)
+        self.run.update(event='merge_group', head_sha=SOURCE,
+                        head_branch=self.receipt['ref'].removeprefix('refs/heads/'))
+
+    def test_pinned_contract_cannot_export_or_attest_pr_receipts(self):
+        path = ROOT / 'tests/fixtures/reuse/ci-pr-export-disabled.yml'
+        self.assertIn(reuse.digest(path), reuse.NO_PR_RECEIPT_WORKFLOWS)
+        workflow = yaml.safe_load(path.read_text())
+        disabled = "${{ github.event_name != 'pull_request' && (github.event_name != 'workflow_dispatch' || inputs.export_reuse_payload) && 'true' || 'false' }}"
+        for job in ('preflight', 'validate'):
+            self.assertEqual(workflow['jobs'][job]['env']['XO_NIXPKG_EXPORT_REUSE_PAYLOAD'], disabled)
+        self.assertEqual(workflow['jobs']['attest-builds']['if'],
+                         "github.event_name != 'pull_request' && github.event_name != 'pull_request_review' && needs.validate.outputs.cache_eligible == 'true'")
+        receipts = [s for s in workflow['jobs']['validate']['steps']
+                    if s.get('with', {}).get('name', '').startswith('xo-ci-reuse-')]
+        self.assertEqual(len(receipts), 2)
+        self.assertTrue(all(s['if'] == "steps.trusted.outputs.cache_eligible == 'true'" for s in receipts))
+
+    def test_thirty_impossible_pr_runs_use_one_listing_zero_artifact_calls(self):
+        self.pinned_workflow()
+        self.runs = [dict(self.run, id=200 + i) for i in range(30)]
+        with patch.object(reuse, 'api', side_effect=self.api) as calls, \
+             patch.object(reuse, 'digest', wraps=reuse.digest) as digests:
+            self.assertEqual(self.restore()['status'], 'miss')
+        self.assertEqual(len(calls.call_args_list), 1)
+        self.assertIn('/actions/workflows/ci.yml/runs?', calls.call_args.args[0])
+        self.assertEqual(digests.call_count, 1)
+        self.download.assert_not_called()
+        self.attestation.assert_not_called()
+        self.transport.restore.assert_not_called()
+
+    def test_mixed_pr_runs_still_reach_authenticated_queue_hit(self):
+        self.pinned_workflow()
+        skipped = [dict(self.run, id=200 + i) for i in range(12)]
+        self.queue_candidate()
+        self.runs = skipped + [self.run]
+        with patch.object(reuse, 'api', side_effect=self.api) as calls:
+            result = self.restore()
+        self.assertEqual(result['status'], 'hit')
+        listings = [c.args[0] for c in calls.call_args_list if c.args[0].endswith('/artifacts')]
+        self.assertEqual(listings, ['repos/' + reuse.REPOSITORY + '/actions/runs/101/artifacts'])
+        self.attestation.assert_called_once()
+        self.transport.restore.assert_called_once()
+        self.native.assert_called_once()
+
+    def test_unknown_workflow_keeps_historical_pr_discovery_and_validation(self):
+        self.assertNotIn(reuse.digest(self.controller / reuse.WORKFLOW), reuse.NO_PR_RECEIPT_WORKFLOWS)
+        with patch.object(reuse, 'api', side_effect=self.api) as calls:
+            self.assertEqual(self.restore()['status'], 'hit')
+        self.assertTrue(any(c.args[0].endswith('/actions/runs/101/artifacts') for c in calls.call_args_list))
+        self.attestation.assert_called_once()
+        self.transport.restore.assert_called_once()
+
+    def test_selected_queue_malformed_output_or_signature_still_fails(self):
+        self.pinned_workflow()
+        self.queue_candidate()
+        self.attestation.side_effect = ValueError('signature invalid')
+        with self.assertRaisesRegex(ValueError, 'signature invalid'):
+            self.restore()
+        self.attestation.side_effect = None
+        self.receipt['outputs']['xo-latest']['storePath'] = '/tmp/forged'
+        with self.assertRaisesRegex(ValueError, 'Invalid authenticated output'):
+            self.restore()
+        self.transport.restore.assert_not_called()
+        self.native.assert_not_called()
 
     def test_explicitly_disabled_imports_do_not_discover_or_evaluate_artifacts(self):
         with patch.dict(os.environ, {'XO_NIXPKG_REUSE_BUILDS': 'false'}), \
