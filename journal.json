@@ -1,5 +1,82 @@
 {
   "productHash": "b4a4e65ee0cfab2d59b7bccd70a9eb08284be449ebc79cc0aa9c39db983d278b",
-  "schema": 1,
-  "steps": []
+  "receipts": {
+    "cache": {
+      "destination": "cache",
+      "expected": {
+        "/nix/store/3hxxl14d3ic4gd9vpmaa8hhmcfl8rxxi-xen-orchestra-ce-6.10.0": "sha256-t2ihM4LkouBUanQrAa+HRb6cad6b7YaqfT5J/B+f4kE=",
+        "/nix/store/6lxz3klrvprvm03nmzig6pyqb2rnz03w-xo-rolling-supply-protector-unstable-2026-10-29": "sha256-WmLvZBqW4j0+H+zEVBIysVv0op2pS8UI3/vcQz2hMTU=",
+        "/nix/store/8nzizs27j3kyidj2rlffwa1hxx2palvi-libvhdi-20260901": "sha256-ip8mHBq2UMgRL5Uu91EZt+3QnmMRibyOuZ/tV9xub88=",
+        "/nix/store/hrkdwfsk087inrxyjxy0zfqjsr86qswd-xen-orchestra-ce-6.9.1": "sha256-jE5/HQF7DBUuwKv1PvD/8pDxSyxRL2a/tPaCLln7QYc=",
+        "/nix/store/jixrdvkpsny5iz4kc3ghq3s88ydawajx-xo-latest-supply-protector-6.10.0": "sha256-SImIweg+Plm5VWEi6cqmTpRvQdvNpXkIyWNKAkD/eo0=",
+        "/nix/store/shh5mhwc4rc22bc2nl5xhzcn2965xy77-xen-orchestra-ce-unstable-2026-10-29": "sha256-ZeGR73Snn3Ruy6rXfhqa+PjxY24J/qQRhrW8f7fVRYo=",
+        "/nix/store/vshmgzzssnkjr0rarg4649gl3dyrn5pm-xo-stable-supply-protector-6.9.1": "sha256-pxBxKGfYgyuhN125cq2K3ZnD8z01typohdqvJ0LhMGE=",
+        "/nix/store/xxsykmwcznh9bcshw2cf7g1pmw4xfqh9-xo-nixpkg-automation-runtime-0.10.2": "sha256-90qfO08/HoiaJh0/RlJsGdG8kOrHNVwkLGu4apOCnuw="
+      },
+      "observed": {
+        "/nix/store/3hxxl14d3ic4gd9vpmaa8hhmcfl8rxxi-xen-orchestra-ce-6.10.0": "sha256-t2ihM4LkouBUanQrAa+HRb6cad6b7YaqfT5J/B+f4kE=",
+        "/nix/store/6lxz3klrvprvm03nmzig6pyqb2rnz03w-xo-rolling-supply-protector-unstable-2026-10-29": "sha256-WmLvZBqW4j0+H+zEVBIysVv0op2pS8UI3/vcQz2hMTU=",
+        "/nix/store/8nzizs27j3kyidj2rlffwa1hxx2palvi-libvhdi-20260901": "sha256-ip8mHBq2UMgRL5Uu91EZt+3QnmMRibyOuZ/tV9xub88=",
+        "/nix/store/hrkdwfsk087inrxyjxy0zfqjsr86qswd-xen-orchestra-ce-6.9.1": "sha256-jE5/HQF7DBUuwKv1PvD/8pDxSyxRL2a/tPaCLln7QYc=",
+        "/nix/store/jixrdvkpsny5iz4kc3ghq3s88ydawajx-xo-latest-supply-protector-6.10.0": "sha256-SImIweg+Plm5VWEi6cqmTpRvQdvNpXkIyWNKAkD/eo0=",
+        "/nix/store/shh5mhwc4rc22bc2nl5xhzcn2965xy77-xen-orchestra-ce-unstable-2026-10-29": "sha256-ZeGR73Snn3Ruy6rXfhqa+PjxY24J/qQRhrW8f7fVRYo=",
+        "/nix/store/vshmgzzssnkjr0rarg4649gl3dyrn5pm-xo-stable-supply-protector-6.9.1": "sha256-pxBxKGfYgyuhN125cq2K3ZnD8z01typohdqvJ0LhMGE=",
+        "/nix/store/xxsykmwcznh9bcshw2cf7g1pmw4xfqh9-xo-nixpkg-automation-runtime-0.10.2": "sha256-90qfO08/HoiaJh0/RlJsGdG8kOrHNVwkLGu4apOCnuw="
+      },
+      "productHash": "b4a4e65ee0cfab2d59b7bccd70a9eb08284be449ebc79cc0aa9c39db983d278b",
+      "schema": 1,
+      "status": "verified",
+      "verifiedAt": "2026-10-31T18:04:13.030512+00:00",
+      "verifier": "b7573547249bb8fc7359d29ebaea7dfab5f6d67f8c74361ce6eb1cf277fcd187"
+    }
+  },
+  "schema": 2,
+  "steps": [
+    {
+      "identity": {
+        "products": {
+          "libvhdi": {
+            "narHash": "sha256-ip8mHBq2UMgRL5Uu91EZt+3QnmMRibyOuZ/tV9xub88=",
+            "storePath": "/nix/store/8nzizs27j3kyidj2rlffwa1hxx2palvi-libvhdi-20260901"
+          },
+          "xo-latest": {
+            "narHash": "sha256-t2ihM4LkouBUanQrAa+HRb6cad6b7YaqfT5J/B+f4kE=",
+            "storePath": "/nix/store/3hxxl14d3ic4gd9vpmaa8hhmcfl8rxxi-xen-orchestra-ce-6.10.0"
+          },
+          "xo-rolling": {
+            "narHash": "sha256-ZeGR73Snn3Ruy6rXfhqa+PjxY24J/qQRhrW8f7fVRYo=",
+            "storePath": "/nix/store/shh5mhwc4rc22bc2nl5xhzcn2965xy77-xen-orchestra-ce-unstable-2026-10-29"
+          },
+          "xo-stable": {
+            "narHash": "sha256-jE5/HQF7DBUuwKv1PvD/8pDxSyxRL2a/tPaCLln7QYc=",
+            "storePath": "/nix/store/hrkdwfsk087inrxyjxy0zfqjsr86qswd-xen-orchestra-ce-6.9.1"
+          }
+        },
+        "roots": {
+          "automation-runtime": {
+            "narHash": "sha256-90qfO08/HoiaJh0/RlJsGdG8kOrHNVwkLGu4apOCnuw=",
+            "profile": "xo-latest",
+            "storePath": "/nix/store/xxsykmwcznh9bcshw2cf7g1pmw4xfqh9-xo-nixpkg-automation-runtime-0.10.2"
+          },
+          "supply-protector-latest": {
+            "narHash": "sha256-SImIweg+Plm5VWEi6cqmTpRvQdvNpXkIyWNKAkD/eo0=",
+            "profile": "xo-latest",
+            "storePath": "/nix/store/jixrdvkpsny5iz4kc3ghq3s88ydawajx-xo-latest-supply-protector-6.10.0"
+          },
+          "supply-protector-rolling": {
+            "narHash": "sha256-WmLvZBqW4j0+H+zEVBIysVv0op2pS8UI3/vcQz2hMTU=",
+            "profile": "xo-rolling",
+            "storePath": "/nix/store/6lxz3klrvprvm03nmzig6pyqb2rnz03w-xo-rolling-supply-protector-unstable-2026-10-29"
+          },
+          "supply-protector-stable": {
+            "narHash": "sha256-pxBxKGfYgyuhN125cq2K3ZnD8z01typohdqvJ0LhMGE=",
+            "profile": "xo-stable",
+            "storePath": "/nix/store/vshmgzzssnkjr0rarg4649gl3dyrn5pm-xo-stable-supply-protector-6.9.1"
+          }
+        }
+      },
+      "name": "cache",
+      "state": "complete"
+    }
+  ]
 }
