@@ -1,0 +1,31 @@
+--- a/index.js
++++ b/index.js
+@@ -118,8 +118,8 @@
+   const entries = yield readdir(dir);
+   const index = join(dir, indexFile);
+   try {
+-    yield Promise.all(
+-      entries.map(
++    const modules = yield Promise.all(
++      entries.sort().map(
+         asyncFn(function* (entry) {
+           if (entry === indexFile || entry[0] === "." || entry[0] === "_") {
+             return;
+@@ -140,13 +140,16 @@
+               return;
+             }
+ 
+-            generator.addModule(content, "./" + path, camelCase(identifier));
++            return ["./" + path, camelCase(identifier)];
+           } catch (error) {
+             warn("failed to read " + dir, error);
+           }
+         })
+       )
+     );
++    for (const module of modules) {
++      if (module !== undefined) generator.addModule(content, ...module);
++    }
+     yield writeFile(index, generator.compile(content)).then(
+       function () {
+         log("index generated " + index);
