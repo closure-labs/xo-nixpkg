@@ -1,0 +1,271 @@
+# SPDX-License-Identifier: Apache-2.0
+name: Validate packages
+
+on:
+  pull_request:
+    branches: [main]
+  merge_group:
+    types: [checks_requested]
+  schedule:
+    - cron: '11 4 * * 0'
+  workflow_dispatch:
+    inputs:
+      build_jobs:
+        description: Bounded runtime-build concurrency for matched performance measurements
+        type: choice
+        options: ['1', '2']
+        default: '2'
+      reuse_builds:
+        description: Import authenticated Actions build artifacts when available
+        type: boolean
+        default: true
+      export_reuse_payload:
+        description: Export reusable output payloads independently of artifact imports; disable for audit-only validation
+        type: boolean
+        default: true
+
+concurrency:
+  group: ci-${{ github.event.pull_request.number || github.event.merge_group.head_ref || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' || github.event_name == 'merge_group' }}
+
+permissions:
+  contents: read
+
+jobs:
+  classify:
+    name: Classify CI paths
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    outputs:
+      workflow: ${{ steps.classify.outputs.workflow || steps.bootstrap_classify.outputs.workflow }}
+    steps:
+      - name: Audit runner traffic
+        uses: step-security/harden-runner@dc2769abcc0fcfbadfc1df54081c1608579ef6b2 # v2
+        with:
+          egress-policy: audit
+      - name: Checkout protected controller
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.event.pull_request.base.sha || github.event.merge_group.base_sha || 'main' }}
+          path: controller
+          persist-credentials: false
+      - name: Checkout candidate data
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          path: candidate
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Set up protected native toolchain
+        uses: ./controller/.github/actions/setup-nix # zizmor: ignore[self-repository] -- protected controller checkout, never the candidate action.
+        with:
+          github-token: ${{ github.token }}
+      - name: Classify candidate paths using protected code
+        id: classify
+        if: hashFiles('controller/.github/workflows/ci.yml') == hashFiles('candidate/.github/workflows/ci.yml')
+        working-directory: controller
+        env:
+          XO_NIXPKG_SOURCE_ROOT: ${{ github.workspace }}/candidate
+        run: nix run .#devenv -- tasks run --mode single --option 'packages:pkgs!' '' ci:classify
+      - name: Validate proposed workflow bootstrap without cache authority
+        id: bootstrap_classify
+        if: hashFiles('controller/.github/workflows/ci.yml') != hashFiles('candidate/.github/workflows/ci.yml')
+        working-directory: candidate
+        run: nix run .#devenv -- tasks run --mode single --option 'packages:pkgs!' '' ci:classify
+
+  preflight:
+    name: Repository preflight
+    needs: classify
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    permissions:
+      contents: read
+      actions: read
+      attestations: read
+    env:
+      XO_NIXPKG_BUILD_JOBS: ${{ github.event_name == 'workflow_dispatch' && inputs.build_jobs || '2' }}
+      XO_NIXPKG_REUSE_BUILDS: ${{ (github.event_name != 'schedule' && (github.event_name != 'workflow_dispatch' || inputs.reuse_builds)) && 'true' || 'false' }}
+      XO_NIXPKG_EXPORT_REUSE_PAYLOAD: ${{ github.event_name != 'pull_request' && (github.event_name != 'workflow_dispatch' || inputs.export_reuse_payload) && 'true' || 'false' }}
+      PREPARED_CI_WORKFLOW: ${{ needs.classify.outputs.workflow }}
+    steps:
+      - name: Audit runner traffic
+        uses: step-security/harden-runner@dc2769abcc0fcfbadfc1df54081c1608579ef6b2 # v2
+        with:
+          egress-policy: audit
+      - name: Checkout protected controller
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.event.pull_request.base.sha || github.event.merge_group.base_sha || 'main' }}
+          path: controller
+          persist-credentials: false
+      - name: Checkout candidate data
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          path: candidate
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Set up protected native toolchain
+        uses: ./controller/.github/actions/setup-nix # zizmor: ignore[self-repository] -- protected controller checkout, never candidate setup code.
+        with:
+          github-token: '' # No fetch token is installed into candidate-readable Nix configuration.
+      - name: Scan event-bound new commits and run pure preflight through protected code
+        if: hashFiles('controller/.github/workflows/ci.yml') == hashFiles('candidate/.github/workflows/ci.yml')
+        working-directory: controller
+        env:
+          CI_CONTROLLER_ROOT: ${{ github.workspace }}/controller
+          CI_CANDIDATE_ROOT: ${{ github.workspace }}/candidate
+        run: nix run .#devenv -- tasks run --mode single --option 'packages:pkgs!' '' ci:preflight
+      - name: Validate proposed native contract without credentials or authority
+        if: hashFiles('controller/.github/workflows/ci.yml') != hashFiles('candidate/.github/workflows/ci.yml')
+        working-directory: candidate
+        env:
+          PYTHONDONTWRITEBYTECODE: '1'
+        run: python3 -m unittest discover -s tests -p 'test_native_secret*.py'
+      - name: Retain bounded same-execution preflight evidence
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: xo-ci-preflight-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/xo-nixpkg-ci-evidence/preflight*.json
+          if-no-files-found: ignore
+          retention-days: 7
+
+  validate:
+    name: Flake-defined validation
+    needs: [classify, preflight]
+    if: >-
+      needs.classify.result == 'success' && needs.preflight.result == 'success' &&
+      fromJSON(needs.classify.outputs.workflow).jobs.validate.enabled
+    runs-on: ubuntu-24.04
+    timeout-minutes: 180
+    permissions:
+      contents: read
+      actions: read
+      attestations: read
+    outputs:
+      cache_eligible: ${{ steps.trusted.outputs.cache_eligible }}
+    env:
+      XO_NIXPKG_BUILD_JOBS: ${{ github.event_name == 'workflow_dispatch' && inputs.build_jobs || '2' }}
+      XO_NIXPKG_REUSE_BUILDS: ${{ (github.event_name != 'schedule' && (github.event_name != 'workflow_dispatch' || inputs.reuse_builds)) && 'true' || 'false' }}
+      XO_NIXPKG_EXPORT_REUSE_PAYLOAD: ${{ github.event_name != 'pull_request' && (github.event_name != 'workflow_dispatch' || inputs.export_reuse_payload) && 'true' || 'false' }}
+      PREPARED_CI_WORKFLOW: ${{ needs.classify.outputs.workflow }}
+    steps:
+      - name: Audit runner traffic
+        uses: step-security/harden-runner@dc2769abcc0fcfbadfc1df54081c1608579ef6b2 # v2
+        with:
+          egress-policy: audit
+      - name: Checkout protected controller
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.event.pull_request.base.sha || github.event.merge_group.base_sha || 'main' }}
+          path: controller
+          persist-credentials: false
+      - name: Checkout candidate data
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          path: candidate
+          persist-credentials: false
+      - name: Set up protected native toolchain
+        uses: ./controller/.github/actions/setup-nix # zizmor: ignore[self-repository] -- protected controller checkout, never candidate setup code.
+        with:
+          github-token: ${{ github.token }}
+      - name: Download successful preflight from this run and attempt
+        if: hashFiles('controller/.github/workflows/ci.yml') == hashFiles('candidate/.github/workflows/ci.yml')
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: xo-ci-preflight-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/xo-nixpkg-ci-evidence
+      - name: Run runtime targets after verifying protected preflight
+        id: trusted
+        if: hashFiles('controller/.github/workflows/ci.yml') == hashFiles('candidate/.github/workflows/ci.yml')
+        working-directory: controller
+        env:
+          XO_NIXPKG_PREFLIGHT_DIRECTORY: ${{ runner.temp }}/xo-nixpkg-ci-evidence
+          GH_TOKEN: ${{ github.token }}
+          CI_CONTROLLER_ROOT: ${{ github.workspace }}/controller
+          CI_CANDIDATE_ROOT: ${{ github.workspace }}/candidate
+        run: nix run .#devenv -- tasks run --mode single --option 'packages:pkgs!' '' ci:runtime
+      - name: Validate proposed workflow bootstrap without reuse certification
+        if: hashFiles('controller/.github/workflows/ci.yml') != hashFiles('candidate/.github/workflows/ci.yml')
+        working-directory: candidate
+        run: nix run .#devenv -- tasks run --mode single --option 'packages:pkgs!' '' ci:bootstrap-validate
+      - name: Retain selected-target manifests and timings
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: xo-ci-evidence
+          path: |
+            ${{ runner.temp }}/xo-nixpkg-ci-evidence/preflight*.json
+            ${{ runner.temp }}/xo-nixpkg-ci-evidence/runtime*.json
+            ${{ runner.temp }}/xo-nixpkg-ci-evidence/reuse-restore.json
+            ${{ runner.temp }}/xo-nixpkg-ci-evidence/reuse-transport.json
+          if-no-files-found: ignore
+          retention-days: 30
+      - name: Retain exact sandboxed output bytes
+        if: steps.trusted.outputs.cache_eligible == 'true'
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: xo-ci-reuse-payload-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/xo-nixpkg-ci-evidence/reuse-payload/
+          if-no-files-found: error
+          compression-level: 0
+          retention-days: 7
+      - name: Retain independently signable output receipt
+        if: steps.trusted.outputs.cache_eligible == 'true'
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: xo-ci-reuse-receipt-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/xo-nixpkg-ci-evidence/reuse-receipt/receipt.json
+          if-no-files-found: error
+          retention-days: 7
+
+  attest-builds:
+    name: Attest reusable build outputs
+    needs: validate
+    if: github.event_name != 'pull_request' && github.event_name != 'pull_request_review' && needs.validate.outputs.cache_eligible == 'true'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      actions: read
+      attestations: write
+      id-token: write
+    steps:
+      - name: Download the exact same-run builder receipt
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: xo-ci-reuse-receipt-${{ github.run_id }}-${{ github.run_attempt }}
+          path: build-receipt
+      - name: Attest data without checking out or executing candidate code
+        uses: actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6 # v4
+        with:
+          subject-path: build-receipt/receipt.json
+
+  gate:
+    name: CI gate
+    if: always()
+    needs: [classify, preflight, validate, attest-builds]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    env:
+      PREFLIGHT_RESULT: ${{ needs.preflight.result }}
+      CLASSIFY_RESULT: ${{ needs.classify.result }}
+      VALIDATE_RESULT: ${{ needs.validate.result }}
+      VALIDATE_ENABLED: ${{ needs.classify.result == 'success' && fromJSON(needs.classify.outputs.workflow).jobs.validate.enabled || false }}
+    steps:
+      - name: Audit runner traffic
+        uses: step-security/harden-runner@dc2769abcc0fcfbadfc1df54081c1608579ef6b2 # v2
+        with:
+          egress-policy: audit
+      - name: Checkout protected verdict controller
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.event.pull_request.base.sha || github.event.merge_group.base_sha || 'main' }}
+          path: controller
+          persist-credentials: false
+      - name: Set up Nix
+        uses: ./controller/.github/actions/setup-nix # zizmor: ignore[self-repository] -- local setup follows the explicitly checked-out trusted revision.
+        with:
+          github-token: ${{ github.token }}
+      - name: Enforce the classified lifecycle
+        working-directory: controller
+        run: nix run .#devenv -- tasks run --mode single --option 'packages:pkgs!' '' ci:verdict

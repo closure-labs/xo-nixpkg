@@ -19,6 +19,9 @@ import operations
 
 REPOSITORY = 'closure-labs/xo-nixpkg'
 WORKFLOW = '.github/workflows/ci.yml'
+# This exact reviewed workflow disables PR receipt export and PR attestation.
+# New workflow versions conservatively retain historical discovery until reviewed.
+NO_PR_RECEIPT_WORKFLOWS = frozenset({'9bb58a9672874320546752f5f3f19264a465d9bd858fb2f1274ce69527f35282'})
 SHA = re.compile(r'[a-f0-9]{40}')
 STORE = re.compile(r'/nix/store/[a-z0-9]{32}-[^/\s]+')
 ATTRIBUTES = {
@@ -276,6 +279,18 @@ def restore(candidate, controller, output, names):
         return result
 
 
+def discover_reuse_runs(controller):
+    # A usable receipt must match this exact protected workflow in
+    # compatible_producer(). The pinned contract cannot export/attest PR
+    # receipts, so even historical PR artifacts cannot be usable under it.
+    # This negative availability filter grants no reuse or admission authority.
+    workflow_sha256 = digest(controller / WORKFLOW)
+    runs = api(f'repos/{REPOSITORY}/actions/workflows/ci.yml/runs?status=success&per_page=30')['workflow_runs']
+    if workflow_sha256 not in NO_PR_RECEIPT_WORKFLOWS:
+        return runs  # Preserve full historical PR validation for unknown versions.
+    return [run for run in runs if run.get('event') != 'pull_request']
+
+
 def restore_available(candidate, controller, output, names, state=None):
     state = state if state is not None else {'importStarted': False}
     """An authentic cache hit imports bytes, never a validation/admission verdict."""
@@ -299,7 +314,7 @@ def restore_available(candidate, controller, output, names, state=None):
         preimport_deadline = operations.DEADLINE.get()
         operations.DEADLINE.set(min(preimport_deadline, time.monotonic() + 90))
         discovery_deadline = time.monotonic() + 90
-        runs = api(f'repos/{REPOSITORY}/actions/workflows/ci.yml/runs?status=success&per_page=30')['workflow_runs']
+        runs = discover_reuse_runs(controller)
         for run in runs:
             if time.monotonic() >= discovery_deadline:
                 raise subprocess.TimeoutExpired(['optional-discovery'], 90)
