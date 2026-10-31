@@ -1,0 +1,110 @@
+name: XO independent builds
+
+on:
+  pull_request:
+    paths:
+      - default.nix
+      - nix/patches/**
+      - nix/cleanup-turbo-logs.sh
+      - nix/independent-build-proof.py
+      - tests/test_independent_build_proof.py
+      - .github/workflows/reproducible-builds.yml
+
+permissions:
+  contents: read
+
+concurrency:
+  group: independent-builds-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    name: Independent build ${{ matrix.leg }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 240
+    strategy:
+      fail-fast: false
+      matrix:
+        leg: [A, B]
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          persist-credentials: false
+      - name: Boundary fixtures
+        run: python3 tests/test_independent_build_proof.py
+      - uses: DeterminateSystems/nix-installer-action@61cbfe2efc2d4e7a8a6d56967c3c1058e846c858 # v3.21.9
+        with:
+          github-token: ''
+          extra-conf: |
+            accept-flake-config = false
+            access-tokens =
+            substituters = https://cache.nixos.org
+            extra-substituters =
+            builders =
+            max-jobs = 1
+            cores = 2
+            sandbox = true
+      - name: Bound disposable runner resources
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$RUNNER_ENVIRONMENT" = github-hosted
+          # Only preinstalled toolchains unrelated to this experiment, on a disposable VM.
+          sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc
+          test "$(df --output=avail -B1 /nix/store | tail -1)" -ge 25000000000
+          sudo systemctl is-active --quiet nix-daemon.service
+          sudo systemctl set-property --runtime nix-daemon.service \
+            MemoryMax=4294967296 MemorySwapMax=0 CPUQuota=200% TasksMax=2048
+          group=$(systemctl show nix-daemon.service -p ControlGroup --value)
+          test "$(cat "/sys/fs/cgroup$group/memory.max")" = 4294967296
+          test "$(cat "/sys/fs/cgroup$group/memory.swap.max")" = 0
+          test "$(cat "/sys/fs/cgroup$group/cpu.max")" = '200000 100000'
+      - name: Fresh builds and runtime checks
+        env:
+          PROOF_REVISION: ${{ github.event.pull_request.head.sha }}
+          PROOF_LEG: ${{ matrix.leg }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/reproducibility"
+          # The daemon and its builders have a separate enforced 4 GiB / 2 CPU cap.
+          # This client gets 2 GiB / 1 CPU; aggregate ceiling is 6 GiB / 3 CPU, no swap.
+          sudo systemd-run --wait --pipe --collect --unit=xo-independent-client \
+            -p "User=$(id -u)" -p "Group=$(id -g)" \
+            -p "WorkingDirectory=$GITHUB_WORKSPACE" \
+            -p MemoryMax=2147483648 -p MemorySwapMax=0 -p CPUQuota=100% \
+            -p TasksMax=256 -p RuntimeMaxSec=13500 -p NoNewPrivileges=true \
+            --setenv="PATH=$PATH" --setenv="HOME=$HOME" \
+            --setenv=NIX_REMOTE=daemon --setenv=RUNNER_ENVIRONMENT=github-hosted \
+            --setenv="PROOF_REVISION=$PROOF_REVISION" \
+            --setenv="GITHUB_RUN_ID=$GITHUB_RUN_ID" --setenv="GITHUB_RUN_ATTEMPT=$GITHUB_RUN_ATTEMPT" \
+            python3 nix/independent-build-proof.py build "$PROOF_LEG" \
+            "$RUNNER_TEMP/reproducibility/receipt.json"
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: independent-${{ matrix.leg }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/reproducibility/receipt.json
+          if-no-files-found: error
+          retention-days: 7
+
+  compare:
+    name: Compare independent NARs
+    needs: build
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          persist-credentials: false
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: independent-A-${{ github.run_attempt }}
+          path: proof-A
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: independent-B-${{ github.run_attempt }}
+          path: proof-B
+      - name: Compare actual NAR streams
+        run: python3 nix/independent-build-proof.py compare proof-A/receipt.json proof-B/receipt.json

@@ -197,6 +197,7 @@ let
           bash source/tests/security-scan.sh
           node source/tests/isolated-file-restore.mjs
           node source/tests/reproducible-generators.cjs
+          PYTHONDONTWRITEBYTECODE=1 python3 source/tests/test_independent_build_proof.py
           bash source/tests/trusted-update.sh
           bash source/tests/fix-nix-hashes.sh
           bash source/tests/open-update-pr.sh
