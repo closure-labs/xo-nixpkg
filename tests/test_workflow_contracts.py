@@ -36,7 +36,7 @@ class WorkflowContracts(unittest.TestCase):
         for variable, field in [('QUALIFICATION_RUN', 'id'), ('QUALIFICATION_ATTEMPT', 'run_attempt')]:
             line = next(line for line in source.splitlines() if line.strip().startswith(variable + ':'))
             self.assertIn("github.event_name == 'workflow_run'", line)
-            self.assertIn("github.event.workflow_run.name == 'Qualify immutable products'", line)
+            self.assertIn("github.event.workflow_run.name == 'Qualify release products'", line)
             self.assertIn('github.event.workflow_run.' + field, line)
 
     def test_referenced_workflow_tasks_are_declared(self):

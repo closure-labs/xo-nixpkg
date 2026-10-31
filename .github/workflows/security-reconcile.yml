@@ -1,8 +1,8 @@
 # SPDX-License-Identifier: Apache-2.0
-name: Reconcile security and release decisions
+name: Reconcile release decisions
 on:
   workflow_run: # zizmor: ignore[dangerous-triggers] Only completed producer metadata and attested data are read.
-    workflows: [Qualify immutable products, Verify maintainer decision authority]
+    workflows: [Qualify release products, Verify merge approval]
     types: [completed]
   push:
     branches: [main]
@@ -58,8 +58,8 @@ jobs:
         env:
           GH_TOKEN: ${{ steps.proposer.outputs.token }}
           REGISTRY_TOKEN: ${{ github.token }}
-          QUALIFICATION_RUN: ${{ inputs.qualification_run || (github.event_name == 'workflow_run' && github.event.workflow_run.name == 'Qualify immutable products' && github.event.workflow_run.id) || '' }}
-          QUALIFICATION_ATTEMPT: ${{ github.event_name == 'workflow_run' && github.event.workflow_run.name == 'Qualify immutable products' && github.event.workflow_run.run_attempt || '' }}
+          QUALIFICATION_RUN: ${{ inputs.qualification_run || (github.event_name == 'workflow_run' && github.event.workflow_run.name == 'Qualify release products' && github.event.workflow_run.id) || '' }}
+          QUALIFICATION_ATTEMPT: ${{ github.event_name == 'workflow_run' && github.event.workflow_run.name == 'Qualify release products' && github.event.workflow_run.run_attempt || '' }}
         run: nix run .#devenv -- tasks run --mode single --option 'packages:pkgs!' '' security:resume
       - name: Retain immutable decision byte reuse observations
         if: always()

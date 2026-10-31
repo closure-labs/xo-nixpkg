@@ -1,5 +1,5 @@
 # SPDX-License-Identifier: Apache-2.0
-name: Publish admitted products
+name: Publish approved products
 run-name: ${{ format('Publish {0} qualification {1} attempt {2}', inputs.purpose, inputs.qualification_run, inputs.qualification_attempt || 'current') }}
 on:
   workflow_dispatch:
