@@ -15,3 +15,10 @@ regexTarget = "line"
 paths = ['''^automation/decisions/security/[a-f0-9]{64}\.json$''']
 # Gitleaks may retain the preceding newline in its line target.
 regexes = ['''^\n?          "key": "[a-f0-9]{64}",$''']
+
+[[rules.allowlists]]
+description = "Exact public Cachix verification key in temporary diagnostic"
+condition = "AND"
+regexTarget = "secret"
+paths = ['''^ci/compare-retained-nars\.py$''']
+regexes = ['''^WAOajkFLXWTaFiwMbLidlGa5kWB7Icu29eJnYbeMG7E=$''']
