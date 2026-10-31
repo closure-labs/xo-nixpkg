@@ -2,7 +2,7 @@
 # xo-nixpkg
 
 Reproducible Nix packages for Xen Orchestra Community Edition and libvhdi.
-The project releases independently as `v0.10.0`; each package keeps its own
+The project version is recorded in [`VERSION`](VERSION); each package keeps its own
 upstream version.
 
 ## Quick start
@@ -105,7 +105,7 @@ environment.systemPackages = [
 ```
 
 Two independent kinds of immutable `v*` tag remain available: project release
-tags come from `VERSION` (for example, `v0.10.0`), while XO package tags come
+tags come from `VERSION`, while XO package tags come
 from the gated `latest` upstream pin (for example, upstream `6.8` becomes
 `v6.8.0`). Both point to downstream commits in this repository, and XO package
 tags are additive rather than replacements for project releases. The `latest`,
@@ -147,3 +147,16 @@ helpers and nonzero exits fail the operation. The manual host partition-mount
 API is disabled while this backend is configured. Client cancellation stops the
 helper and releases the underlying VHD mount. The helper should also enforce
 its own resource and runtime limits. Maestro provides this backend.
+
+## Supported platforms and public builds
+
+The flake currently exports `x86_64-linux` packages and checks. Other Linux
+architectures in package metadata are potential ports, not validated flake
+outputs. No macOS or cross-compilation support is claimed.
+
+Ordinary package builds use public upstream sources and need no Decider key,
+organization membership or Cachix write token. Organization release, decision and
+publication workflows are separate maintenance services. The public cache probe
+checks download/signature availability; it does not prove an independent source
+build. See [development](docs/development.md) and the
+[Nixpkgs porting checklist](docs/nixpkgs-submission.md).

@@ -50,11 +50,31 @@ git remote add upstream https://github.com/NixOS/nixpkgs.git
 mkdir -p pkgs/by-name/xe/xen-orchestra-ce
 ```
 
-### Step 3: Copy Package Files
+### Step 3: Port the complete package expression
 
-```bash
-cp /path/to/xen-orchestra-ce-nix/default.nix pkgs/by-name/xe/xen-orchestra-ce/package.nix
-```
+Copying `default.nix` alone is insufficient: it imports sibling files and expects
+repository-specific arguments. This is a porting checklist, not a ready-to-submit
+Nixpkgs expression. In the new package directory:
+
+- Port `default.nix` to `package.nix`, preserving or adapting
+  `nix/runtime-node.nix` and `nix/yarn-platform-tools.nix` and their relative imports.
+- Replace the injected `source` with a fixed-output source fetcher. Bind
+  `sourceRev`, `version`, `yarnHash` and `docsYarnHash` to the selected immutable
+  channel entry in `nix/sources/xen-orchestra.json`; `channel` is an explicit
+  repository argument, not an automatic Nixpkgs dependency.
+- Resolve the explicit `fuse2` dependency. The local `nix/fuse2-compat` directory
+  includes the compatibility expression and supporting files; copying only XO's
+  expression will not provide it. FUSE 2's EOL status is an upstream acceptance
+  and maintenance concern requiring discussion, not evidence of a categorical
+  Nixpkgs ban. Do not replace libvhdi's FUSE 3 dependency.
+- Verify every remaining `callPackage` argument against the target Nixpkgs
+  revision; repository channel/source inputs are not supplied automatically.
+- Start with the repository's exercised `x86_64-linux` target. Broader platform
+  claims require builds and runtime validation on those platforms.
+
+Do not submit the repository's automation credentials, private evidence registry,
+release controller or Cachix write setup as package build dependencies. They are
+not required to build the ordinary package from public sources.
 
 ### Step 4: Finalize Maintainers
 
