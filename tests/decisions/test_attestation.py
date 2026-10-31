@@ -41,6 +41,9 @@ class Attestation(unittest.TestCase):
             'gh', 'attestation', 'verify', '/private/evidence.json', '--repo', 'closure-labs/xo-nixpkg',
             '--signer-workflow', 'closure-labs/xo-nixpkg/.github/workflows/qualification.yml',
             '--source-digest', 'a' * 40, '--source-ref', 'refs/heads/main',
+            '--hostname', 'github.com',
+            '--cert-oidc-issuer', 'https://token.actions.githubusercontent.com',
+            '--predicate-type', 'https://slsa.dev/provenance/v1',
             '--deny-self-hosted-runners', '--format', 'json'])
         run.assert_called_once()
 
