@@ -101,7 +101,9 @@ jobs:
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: xo-decision-byte-reuse-${{ github.job }}
-          path: ${{ runner.temp }}/decision-git-blobs/*/observations.jsonl
+          path: |
+            ${{ runner.temp }}/decision-git-blobs/*/observations.jsonl
+            ${{ runner.temp }}/authority-api-requests.jsonl
           if-no-files-found: ignore
           retention-days: 30
       - name: Retain exact publication operation summary
