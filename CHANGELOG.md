@@ -8,9 +8,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## Unreleased
 
-- Admit official same-repository Dependabot Actions-pin CI only after immutable
-  diff verification and current-head Super Admin review. Reconcile late review
-  wakeups and delegate Dependabot execution holds to the single CI controller.
+## [0.10.2] - 2026-10-31
+
+### Highlights
+
+- Make generated XO module indexes, documentation identifiers and search assets
+  deterministic, and remove transient Turbo logs. Independent hosted builds
+  produced matching NAR hashes for latest, stable and rolling.
+- Use required incoming-change Gitleaks scans and fresh native GitHub alert
+  observations for publication. Keep the unresolved historical audit visible
+  without claiming that repository history is clean.
+- Improve contributor documentation, fork maintenance guards, source-build smoke
+  coverage and publication recovery diagnostics.
+
+- Admit official same-repository Dependabot Actions and paired Nix-lock CI
+  after complete immutable diff and execution-content verification. Keep candidate
+  jobs unprivileged and retain current-head human review for merge.
 
 - Automatically admit pending CI for draft and ready PRs from the pinned Decider
   bot or live Super Admins, without granting review, merge or publication authority.
