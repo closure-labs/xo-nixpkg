@@ -3,6 +3,8 @@
 """Hosted-only retained NAR comparison. Never imports or executes package output."""
 import base64
 import gc
+import errno
+import time
 import hashlib
 import io
 import json
@@ -20,6 +22,7 @@ import tarfile
 import tempfile
 import zipfile
 import urllib.request
+import urllib.error
 
 REPO = 'closure-labs/xo-nixpkg'
 CASES = [
@@ -41,6 +44,63 @@ ROOTS = {
     'xo-stable': '/nix/store/kqf8wj1xwjkqvjwpaipcx393hil2c2fv-xen-orchestra-ce-6.9.1',
     'xo-rolling': '/nix/store/zh2pvbiwadzsxz5i3h7wp5x1wl44y5w0-xen-orchestra-ce-unstable-2026-10-29',
 }
+
+
+STAGE = 'initialization'
+STARTED = time.monotonic()
+FAILURE_RESERVE = bytearray(64 * 1024)
+STAGES = frozenset(('initialization', 'resource-guards', 'producer-metadata', 'artifact-metadata',
+                    'artifact-download', 'artifact-digest', 'archive-metadata', 'metadata-attestation',
+                    'metadata-json', 'product-json', 'scans-json', 'public-cache-signatures', 'offline-setup', 'transport-digests',
+                    'narinfo-inventory', 'compressed-nar-read', 'compressed-nar-digest', 'nar-decompress',
+                    'nar-content-digest', 'nar-listing', 'nar-listing-json', 'file-inventory',
+                    'source-recipes', 'summary'))
+
+
+def mark(stage, case=None, profile=None):
+    global STAGE
+    require(stage in STAGES and (case is None or case in [c['run'] for c in CASES])
+            and (profile is None or profile in PROFILES), 'diagnostic-stage-schema')
+    STAGE = stage
+    print(json.dumps({'status': 'progress', 'stage': stage, 'case': case, 'profile': profile,
+                      'elapsedSeconds': round(time.monotonic()-STARTED, 3)}), flush=True)
+
+
+def failure(error):
+    # Never emit error text, filenames, URLs, subprocess arguments or payloads.
+    category = 'unexpected'
+    if isinstance(error, MemoryError):
+        category = 'memory-limit'
+    elif isinstance(error, subprocess.TimeoutExpired):
+        category = 'tool-timeout'
+    elif isinstance(error, json.JSONDecodeError):
+        category = 'json-format'
+    elif isinstance(error, zipfile.BadZipFile):
+        category = 'zip-format'
+    elif isinstance(error, tarfile.TarError):
+        category = 'tar-format'
+    elif isinstance(error, urllib.error.HTTPError):
+        category = 'http-response'
+    elif isinstance(error, urllib.error.URLError):
+        category = 'network'
+    elif isinstance(error, OSError):
+        category = {errno.ENOMEM: 'memory-limit', errno.ENOSPC: 'disk-space',
+                    errno.EFBIG: 'file-size-limit'}.get(error.errno, 'io-error')
+    elif isinstance(error, (KeyError, TypeError, AttributeError, ValueError)):
+        category = 'data-schema'
+    frames = []
+    trace = error.__traceback__
+    allowed = {'main', 'prepare', 'run', 'api', 'decode', 'zip_members', 'transport_parts',
+               'tar_members', 'narinfo', 'sri', 'verify_public_metadata', 'compare_case',
+               'inventory', 'visit', 'differences'}
+    while trace is not None:
+        name = trace.tb_frame.f_code.co_name
+        if trace.tb_frame.f_code.co_filename == __file__ and name in allowed:
+            frames.append({'function': name, 'line': trace.tb_lineno})
+        trace = trace.tb_next
+    return {'status': 'blocked', 'code': str(error) if type(error) is Blocked else 'diagnostic-failed',
+            'category': 'guard' if type(error) is Blocked else category, 'stage': STAGE,
+            'frames': frames[-5:], 'authorityClaim': False}
 
 
 class Blocked(ValueError):
@@ -125,6 +185,7 @@ def zip_members(archive):
 
 
 def prepare(case, work):
+    mark('producer-metadata', case['run'])
     run_meta = api(f'repos/{REPO}/actions/runs/{case["run"]}')
     require(run_meta.get('id') == case['run'] and run_meta.get('run_attempt') == case['attempt']
             and run_meta.get('head_sha') == case['source'] and run_meta.get('head_branch') == 'main'
@@ -132,6 +193,7 @@ def prepare(case, work):
             and run_meta.get('repository', {}).get('full_name') == REPO
             and run_meta.get('head_repository', {}).get('full_name') == REPO
             and run_meta.get('status') == 'completed' and run_meta.get('conclusion') == 'success', 'producer-binding')
+    mark('artifact-metadata', case['run'])
     artifact = api(f'repos/{REPO}/actions/artifacts/{case["artifact"]}')
     require(artifact.get('id') == case['artifact'] and artifact.get('name') == f'qualified-products-{case["run"]}-{case["attempt"]}'
             and artifact.get('workflow_run', {}).get('id') == case['run']
@@ -142,10 +204,13 @@ def prepare(case, work):
     destination = work / str(case['run'])
     destination.mkdir(mode=0o700)
     archive_path = destination / 'artifact.zip'
+    mark('artifact-download', case['run'])
     with archive_path.open('xb') as output:
         run(['gh', 'api', f'repos/{REPO}/actions/artifacts/{case["artifact"]}/zip'], timeout=600, output=output, limit=case['bytes'])
+    mark('artifact-digest', case['run'])
     require(archive_path.stat().st_size == case['bytes'] and digest(archive_path) == case['digest'], 'artifact-digest')
     values = {}
+    mark('archive-metadata', case['run'])
     with zipfile.ZipFile(archive_path) as archive:
         members = zip_members(archive)
         for name, limit in [('product.json', 16 * 1024**2), ('scans.json', 128 * 1024**2)]:
@@ -154,10 +219,12 @@ def prepare(case, work):
             with archive.open(members[name]) as source, path.open('xb') as output:
                 shutil.copyfileobj(source, output, 1024**2)
             # Signed exact file digest + immutable workflow/source/ref, not an artifact-name claim.
+            mark('metadata-attestation', case['run'])
             run(['gh', 'attestation', 'verify', str(path), '--repo', REPO,
                  '--signer-workflow', REPO + '/.github/workflows/qualification.yml',
                  '--source-digest', case['source'], '--source-ref', 'refs/heads/main',
                  '--deny-self-hosted-runners', '--format', 'json'], timeout=180)
+            mark('product-json' if name == 'product.json' else 'scans-json', case['run'])
             values[name] = decode(path.read_bytes())
     product, scans = values['product.json'], values['scans.json']
     producer = scans.get('producer', {})
@@ -269,7 +336,7 @@ def verify_public_metadata(product, work):
                 and info.get('NarSize', '').isdigit() and 0 < int(info['NarSize']) <= MAX_NAR, 'public-metadata-identity')
         references = info.get('References', '').split()
         require(len(references) <= 10000 and references == sorted(set(references))
-                and all(re.fullmatch('[a-z0-9]{32}-[^/\\\s]+', r) for r in references), 'public-reference-schema')
+                and all(re.fullmatch(r'[a-z0-9]{32}-[^/\\\s]+', r) for r in references), 'public-reference-schema')
         signatures = [s[len(KEY_NAME)+1:] for s in info.get('Sig', []) if s.startswith(KEY_NAME+':')]
         require(len(signatures) == 1, 'public-signature-inventory')
         signature = base64.b64decode(signatures[0], validate=True)
@@ -334,7 +401,9 @@ def inventory(db, case, profile, nar, listing):
 def compare_case(case, prepared, work, db, env):
     results = {}
     with zipfile.ZipFile(prepared['archive']) as archive:
+        mark('transport-digests', case['run'])
         names = transport_parts(archive, prepared['transport'])
+        mark('narinfo-inventory', case['run'])
         infos = {}
         targets = {Path(prepared['product']['products'][p]['storePath']).name[:32] + '.narinfo': p for p in PROFILES}
         for name, member, tar in tar_members(archive, names):
@@ -349,6 +418,7 @@ def compare_case(case, prepared, work, db, env):
             require(info.get('NarSize', '').isdigit() and 0 < int(info['NarSize']) <= MAX_NAR, 'nar-size-bound')
             with tempfile.TemporaryDirectory(dir=work, prefix='nar-data-') as temporary:
                 temporary = Path(temporary); compressed, nar = temporary/'data.zst', temporary/'data.nar'
+                mark('compressed-nar-read', case['run'], profile)
                 found = False
                 for name, member, tar in tar_members(archive, names):
                     if name == url:
@@ -358,16 +428,23 @@ def compare_case(case, prepared, work, db, env):
                         found = True
                 require(found and info.get('FileSize', '').isdigit()
                         and compressed.stat().st_size == int(info['FileSize']), 'nar-file-size')
+                mark('compressed-nar-digest', case['run'], profile)
                 require(sri(info.get('FileHash')) == 'sha256-' + base64.b64encode(bytes.fromhex(digest(compressed))).decode(), 'nar-compressed-digest')
+                mark('nar-decompress', case['run'], profile)
                 with nar.open('xb') as output:
                     run(['zstd', '--decompress', '--stdout', str(compressed)], timeout=180, output=output, env=env, limit=int(info['NarSize']))
+                mark('nar-content-digest', case['run'], profile)
                 require(nar.stat().st_size == int(info['NarSize'])
                         and 'sha256-' + base64.b64encode(bytes.fromhex(digest(nar))).decode() == sri(expected['narHash']), 'nar-content-digest')
+                mark('nar-listing', case['run'], profile)
                 listing = temporary/'listing.json'
                 with listing.open('xb') as output:
                     run(['nix', '--offline', 'nar', 'ls', '--json', '--recursive', str(nar), '/'], timeout=180, output=output, env=env, limit=256 * 1024**2)
                 require(listing.stat().st_size <= 256 * 1024**2, 'nar-listing-bound')
-                tree = decode(listing.read_bytes()); count = inventory(db, case['run'], profile, nar, tree)
+                mark('nar-listing-json', case['run'], profile)
+                tree = decode(listing.read_bytes())
+                mark('file-inventory', case['run'], profile)
+                count = inventory(db, case['run'], profile, nar, tree)
                 del tree; gc.collect()
                 deriver = info.get('Deriver', 'unknown-deriver')
                 require(re.fullmatch(r'(?:[a-z0-9]{32}-[^/\s]+\.drv|unknown-deriver)', deriver), 'deriver-schema')
@@ -399,6 +476,7 @@ def differences(db):
 
 def main():
     require(os.environ.get('GITHUB_ACTIONS') == 'true' and os.environ.get('GITHUB_REPOSITORY') == REPO, 'hosted-context-required')
+    mark('resource-guards')
     resource.setrlimit(resource.RLIMIT_AS, (3 * GIB, 3 * GIB))
     resource.setrlimit(resource.RLIMIT_FSIZE, (6 * GIB, 6 * GIB))
     resource.setrlimit(resource.RLIMIT_CPU, (1800, 1800))
@@ -407,9 +485,11 @@ def main():
     work.mkdir(mode=0o700); output.mkdir(mode=0o755)
     require(shutil.disk_usage(work).free >= 12 * GIB, 'insufficient-hosted-disk')
     prepared = [prepare(case, work) for case in CASES]
+    mark('public-cache-signatures')
     cache_signatures = verify_public_metadata(prepared[0]['product'], work)
     # No credential is passed to NAR parsing, decompression or metadata tools.
     os.environ.pop('GH_TOKEN', None); os.environ.pop('GITHUB_TOKEN', None)
+    mark('offline-setup')
     home = work/'offline-home'; home.mkdir(mode=0o700)
     env = {'PATH': os.environ['PATH'], 'HOME': str(home), 'NIX_USER_CONF_FILES': '/dev/null',
            'NIX_CONFIG': 'experimental-features = nix-command\naccept-flake-config = false\naccess-tokens =\nsubstituters =\nbuilders =\n'}
@@ -419,9 +499,11 @@ def main():
     for case, data in zip(CASES, prepared):
         identities.append(compare_case(case, data, work, db, env))
         data['archive'].unlink()
+    mark('source-recipes')
     sources = {}
     for path in ['default.nix', 'flake.nix', 'flake.lock', 'devenv.lock', 'nix/sources/xen-orchestra.json', 'nix/runtime-node.nix', 'nix/yarn-platform-tools.nix']:
         sources[path] = [hashlib.sha256(run(['git', 'show', case['source']+':'+path], env=env)).hexdigest() for case in CASES]
+    mark('summary')
     result = {'schema': 1, 'status': 'compared', 'authorityClaim': False, 'cases': CASES,
               'publicCacheSignatures': cache_signatures, 'identities': identities, 'recipeFileHashes': sources, 'differences': differences(db),
               'packageCodeExecuted': False, 'storeImported': False, 'cacheMutated': False,
@@ -436,6 +518,6 @@ if __name__ == '__main__':
     try:
         main()
     except Exception as error:
-        code = str(error) if type(error) is Blocked else 'diagnostic-failed'
-        print(json.dumps({'status': 'blocked', 'code': code, 'authorityClaim': False}))
+        FAILURE_RESERVE = None
+        print(json.dumps(failure(error)), flush=True)
         raise SystemExit(1)

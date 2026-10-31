@@ -145,6 +145,26 @@ class GuardTests(unittest.TestCase):
             with self.assertRaises(m.subprocess.TimeoutExpired):
                 m.run(['uninvoked'], timeout=1)
 
+    def test_failure_diagnostics_are_fixed_and_do_not_leak(self):
+        marker = 'PRIVATE_TOKEN_CONTENT_URL'
+        examples = [(MemoryError(marker), 'memory-limit'),
+                    (OSError(m.errno.ENOSPC, marker), 'disk-space'),
+                    (OSError(m.errno.EFBIG, marker), 'file-size-limit'),
+                    (m.subprocess.TimeoutExpired([marker], 1), 'tool-timeout'),
+                    (m.zipfile.BadZipFile(marker), 'zip-format'),
+                    (m.tarfile.ReadError(marker), 'tar-format'),
+                    (m.json.JSONDecodeError(marker, marker, 0), 'json-format'),
+                    (KeyError(marker), 'data-schema'),
+                    (RuntimeError(marker), 'unexpected')]
+        for error, category in examples:
+            result = m.failure(error)
+            self.assertEqual(result['category'], category)
+            self.assertIn(result['stage'], m.STAGES)
+            self.assertNotIn(marker, json.dumps(result))
+            self.assertFalse(result['authorityClaim'])
+        with self.assertRaises(m.Blocked):
+            m.mark(marker)
+
     def test_no_authority_or_publication(self):
         workflow = (Path(__file__).resolve().parents[1]/'.github/workflows/compare-retained-nars.yml').read_text()
         self.assertNotIn('write', workflow)
