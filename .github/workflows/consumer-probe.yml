@@ -11,7 +11,7 @@ concurrency:
   cancel-in-progress: false
 jobs:
   consumer:
-    if: github.ref == 'refs/heads/main'
+    if: github.repository == 'closure-labs/xo-nixpkg' && (github.ref == 'refs/heads/main')
     runs-on: ubuntu-24.04
     timeout-minutes: 35
     steps:
