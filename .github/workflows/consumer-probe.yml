@@ -1,5 +1,5 @@
 # SPDX-License-Identifier: Apache-2.0
-name: Public consumer verification
+name: Verify public cache
 on:
   schedule:
     - cron: "23 10 * * 0"

@@ -6,12 +6,11 @@ on:
   # revalidates current candidate identity, SHA, paths, approval and CI itself.
   workflow_run: # zizmor: ignore[dangerous-triggers] -- observer completion only wakes trusted-main reconciliation.
     workflows:
-      - CI
-      - Verify maintainer decision authority
-      - Observe update reviews
+      - Validate packages
+      - Verify merge approval
+      - Relay update reviews
       - Check for XO release updates
       - Refresh XO rolling channel
-      - Refresh flake inputs
       - Refresh libvhdi source
     types: [completed]
   schedule:
@@ -29,7 +28,7 @@ permissions:
 
 jobs:
   enqueue:
-    if: github.ref == format('refs/heads/{0}', github.event.repository.default_branch) && (github.event_name != 'workflow_run' || (github.event.workflow_run.conclusion == 'success' && (github.event.workflow_run.name != 'Observe update reviews' || vars.XO_AUTHORITY_WAKEUPS_VALIDATED != 'true')))
+    if: github.ref == format('refs/heads/{0}', github.event.repository.default_branch) && (github.event_name != 'workflow_run' || (github.event.workflow_run.conclusion == 'success' && (github.event.workflow_run.name != 'Relay update reviews' || vars.XO_AUTHORITY_WAKEUPS_VALIDATED != 'true')))
     name: Reconcile trusted updates
     runs-on: ubuntu-24.04
     timeout-minutes: 20

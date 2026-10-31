@@ -4,7 +4,7 @@ from pathlib import Path
 import sys
 
 RELAY='''# SPDX-License-Identifier: Apache-2.0
-name: Collect maintainer decision events
+name: Collect PR and queue events
 on:
   pull_request:
     types: [opened, synchronize, reopened, ready_for_review, edited]
