@@ -169,6 +169,13 @@
   ],
   "pathRules": [
     {
+      "pattern": "^ci/compare-retained-nars\\.py$",
+      "validation": [
+        "*"
+      ],
+      "publication": []
+    },
+    {
       "pattern": "^ci/native-secret-(?:policy\\.json|controller\\.py|observation\\.py)$",
       "validation": [
         "repository-policy",

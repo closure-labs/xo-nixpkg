@@ -1,0 +1,61 @@
+# SPDX-License-Identifier: Apache-2.0
+name: Compare retained XO outputs
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - .github/workflows/compare-retained-nars.yml
+      - ci/compare-retained-nars.py
+      - tests/test_retained_nar_comparison.py
+permissions:
+  contents: read
+concurrency:
+  group: retained-nar-diagnostic-${{ github.event.pull_request.number }}
+  cancel-in-progress: false
+jobs:
+  compare:
+    if: github.repository == 'closure-labs/xo-nixpkg' && github.event.pull_request.head.repo.full_name == github.repository && github.event.pull_request.head.ref == 'diagnostic/retained-nar-comparison'
+    name: Compare retained NAR data
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    permissions:
+      contents: read
+      actions: read
+      attestations: read
+    steps:
+      - name: Checkout diagnostic revision
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Validate bounded diagnostic fixtures
+        run: python3 -m unittest discover -s tests -p test_retained_nar_comparison.py
+      - name: Install trusted archive reader
+        uses: DeterminateSystems/determinate-nix-action@61cbfe2efc2d4e7a8a6d56967c3c1058e846c858 # v3.21.9
+        with:
+          github-token: ''
+          extra-conf: |
+            accept-flake-config = false
+            access-tokens =
+      - name: Compare fixed retained evidence
+        env:
+          GH_TOKEN: ${{ github.token }}
+          WORK_DIRECTORY: ${{ runner.temp }}/retained-nar-data
+          OUTPUT_DIRECTORY: ${{ runner.temp }}/retained-nar-summary
+        run: |
+          umask 077
+          timeout --signal=TERM --kill-after=15s 2700s python3 ci/compare-retained-nars.py "$WORK_DIRECTORY" "$OUTPUT_DIRECTORY"
+      - name: Upload bounded comparison summary
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: retained-nar-comparison-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/retained-nar-summary/summary.json
+          if-no-files-found: error
+          retention-days: 7
+      - name: Remove private temporary evidence
+        if: always()
+        env:
+          WORK_DIRECTORY: ${{ runner.temp }}/retained-nar-data
+          OUTPUT_DIRECTORY: ${{ runner.temp }}/retained-nar-summary
+        run: rm -rf -- "$WORK_DIRECTORY" "$OUTPUT_DIRECTORY"
