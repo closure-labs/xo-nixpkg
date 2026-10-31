@@ -29,6 +29,22 @@
       "verifiedAt": "2026-10-31T18:04:13.030512+00:00",
       "verifier": "b7573547249bb8fc7359d29ebaea7dfab5f6d67f8c74361ce6eb1cf277fcd187"
     },
+    "github-release": {
+      "destination": "github-release",
+      "expected": {
+        "revision": "03faa34fb4486ea8171022cb6ba06b5252089ffe",
+        "tag": "v0.10.2"
+      },
+      "observed": {
+        "revision": "03faa34fb4486ea8171022cb6ba06b5252089ffe",
+        "tag": "v0.10.2"
+      },
+      "productHash": "b4a4e65ee0cfab2d59b7bccd70a9eb08284be449ebc79cc0aa9c39db983d278b",
+      "schema": 1,
+      "status": "verified",
+      "verifiedAt": "2026-10-31T18:57:13.405413+00:00",
+      "verifier": "b7573547249bb8fc7359d29ebaea7dfab5f6d67f8c74361ce6eb1cf277fcd187"
+    },
     "handoff": {
       "destination": "handoff",
       "expected": {
@@ -171,6 +187,14 @@
         "tag": "v0.10.2"
       },
       "name": "project-tag",
+      "state": "complete"
+    },
+    {
+      "identity": {
+        "revision": "03faa34fb4486ea8171022cb6ba06b5252089ffe",
+        "tag": "v0.10.2"
+      },
+      "name": "github-release",
       "state": "complete"
     }
   ]
