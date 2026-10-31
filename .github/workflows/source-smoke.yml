@@ -1,0 +1,37 @@
+# SPDX-License-Identifier: Apache-2.0
+name: Build public sources
+on:
+  schedule:
+    - cron: '47 9 * * 0'
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: public-source-smoke
+  cancel-in-progress: false
+jobs:
+  source:
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 120
+    steps:
+      - name: Checkout immutable public sources
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+      - name: Install pinned Nix without fetch credentials
+        uses: DeterminateSystems/determinate-nix-action@61cbfe2efc2d4e7a8a6d56967c3c1058e846c858 # v3.21.9
+        with:
+          github-token: ''
+          extra-conf: |
+            accept-flake-config = false
+            access-tokens =
+      - name: Build product roots from public sources without credentials
+        run: |
+          set -euo pipefail
+          smoke_home=$(mktemp -d "$RUNNER_TEMP/source-home.XXXXXX")
+          trap 'rm -rf -- "$smoke_home"' EXIT
+          env -i HOME="$smoke_home" PATH="$PATH" TMPDIR="$RUNNER_TEMP" \
+            NIX_USER_CONF_FILES=/dev/null \
+            bash --noprofile --norc ci/public-source-smoke.sh

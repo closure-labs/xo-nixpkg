@@ -423,3 +423,18 @@ inputs. It does not rewrite or exempt already-published compact history, repair
 its scanner findings, or remove the need for exact-head approval on a new commit.
 
 Repository secret policy migration: see [native-secret-migration-proposal.md](native-secret-migration-proposal.md). The draft separates pure PR checks from protected-main native observation and requires staged bootstrap; it makes no exact-head/full-history completion claim.
+
+### Independent public source smoke
+
+`Build public sources` is a bounded weekly/manual hosted smoke, separate from
+`Public consumer verification` (cache availability). It builds the default XO
+channel and libvhdi; it is not qualification of all production profiles or a
+replacement for runtime security/release decisions. It uses no App credentials,
+persisted checkout credentials or private package/cache access. The build process
+has a fresh home and allowlisted environment. Public dependencies may substitute
+only from cache.nixos.org; flake cache configuration and fetch access tokens are
+disabled. Product outputs must be absent before realization, and substitution is
+disabled for their final source build. An existing output is an explicit failure,
+not a claimed independent build. The hosted job is limited to 120 minutes, one
+concurrent Nix build and two cores. Initial hosted source realization is pending;
+a timeout remains a failure and must be diagnosed rather than called a pass.
