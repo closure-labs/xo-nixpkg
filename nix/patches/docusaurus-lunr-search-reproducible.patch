@@ -1,0 +1,31 @@
+--- a/src/index.js
++++ b/src/index.js
+@@ -12,7 +12,10 @@
+   options = options || {};
+   let languages = undefined;
+ 
+-  const guid = String(Date.now())
++  const guid = process.env.XO_DOCS_BUILD_ID
++  if (!/^[0123456789abcdfghijklmnpqrsvwxyz]{32}$/.test(guid || '')) {
++    throw new Error('Expected immutable Nix output identity for embedded docs')
++  }
+   const fileNames = {
+     searchDoc: `search-doc-${guid}.json`,
+     lunrIndex: `lunr-index-${guid}.json`,
+@@ -97,6 +100,7 @@
+         searchDocuments.push(d);
+       }
+ 
++      files.sort((a, b) => a.url < b.url ? -1 : a.url > b.url ? 1 : a.path < b.path ? -1 : a.path > b.path ? 1 : 0)
+       const indexedDocuments = await buildSearchData(files, addToSearchData, loadedVersions)
+       const lunrIndex = lunrBuilder.build()
+       console.timeEnd('docusaurus-lunr-search:: Indexing time')
+@@ -137,7 +141,7 @@
+     return Promise.resolve()
+   }
+   let activeWorkersCount = 0
+-  const workerCount = Math.max(2, os.cpus().length)
++  const workerCount = 1 // Assign document IDs in deterministic sorted-page order
+ 
+   console.log(`docusaurus-lunr-search:: Start scanning documents in ${Math.min(workerCount, files.length)} threads`)
+   const gauge = new Guage()
