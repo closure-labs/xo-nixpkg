@@ -21,7 +21,6 @@ import sys
 import tarfile
 import tempfile
 import zipfile
-import urllib.request
 import urllib.error
 
 REPO = 'closure-labs/xo-nixpkg'
@@ -37,8 +36,6 @@ PROFILES = ('xo-latest', 'xo-stable', 'xo-rolling')
 GIB = 1024**3
 MAX_NAR = 3 * GIB
 ALPHABET = '0123456789abcdfghijklmnpqrsvwxyz'
-KEY_NAME = 'xen-orchestra-ce.cachix.org-1'
-KEY = 'WAOajkFLXWTaFiwMbLidlGa5kWB7Icu29eJnYbeMG7E='
 ROOTS = {
     'xo-latest': '/nix/store/7vqm49jj6y11r8axlhr6rf3ms7hqlvn4-xen-orchestra-ce-6.10.0',
     'xo-stable': '/nix/store/kqf8wj1xwjkqvjwpaipcx393hil2c2fv-xen-orchestra-ce-6.9.1',
@@ -91,7 +88,7 @@ def failure(error):
     frames = []
     trace = error.__traceback__
     allowed = {'main', 'prepare', 'run', 'api', 'decode', 'zip_members', 'transport_parts',
-               'tar_members', 'narinfo', 'sri', 'verify_public_metadata', 'compare_case',
+               'tar_members', 'narinfo', 'sri', 'compare_case',
                'inventory', 'visit', 'differences'}
     while trace is not None:
         name = trace.tb_frame.f_code.co_name
@@ -315,43 +312,6 @@ def narinfo(raw):
 
 
 
-def verify_public_metadata(product, work):
-    # Only fixed public narinfo metadata; never fetch or execute the public NAR.
-    class NoRedirect(urllib.request.HTTPRedirectHandler):
-        def redirect_request(self, req, fp, code, msg, headers, newurl):
-            raise Blocked('public-metadata-redirect')
-    opener = urllib.request.build_opener(NoRedirect())
-    results = {}
-    key = work/'cache-key.der'
-    key.write_bytes(bytes.fromhex('302a300506032b6570032100') + base64.b64decode(KEY, validate=True))
-    for profile in PROFILES:
-        path = ROOTS[profile]
-        url = 'https://xen-orchestra-ce.cachix.org/' + Path(path).name[:32] + '.narinfo'
-        with opener.open(url, timeout=30) as response:
-            require(response.status == 200 and response.geturl() == url, 'public-metadata-response')
-            raw = response.read(65537)
-        require(len(raw) <= 65536, 'public-metadata-bound')
-        info = narinfo(raw)
-        require(info.get('StorePath') == path and sri(info.get('NarHash')) == sri(product['products'][profile]['narHash'])
-                and info.get('NarSize', '').isdigit() and 0 < int(info['NarSize']) <= MAX_NAR, 'public-metadata-identity')
-        references = info.get('References', '').split()
-        require(len(references) <= 10000 and references == sorted(set(references))
-                and all(re.fullmatch(r'[a-z0-9]{32}-[^/\\\s]+', r) for r in references), 'public-reference-schema')
-        signatures = [s[len(KEY_NAME)+1:] for s in info.get('Sig', []) if s.startswith(KEY_NAME+':')]
-        require(len(signatures) == 1, 'public-signature-inventory')
-        signature = base64.b64decode(signatures[0], validate=True)
-        require(len(signature) == 64, 'public-signature-schema')
-        message = ('1;' + path + ';' + info['NarHash'] + ';' + info['NarSize'] + ';'
-                   + ','.join('/nix/store/'+r for r in references)).encode()
-        (work/'signature').write_bytes(signature); (work/'fingerprint').write_bytes(message)
-        run(['openssl', 'pkeyutl', '-verify', '-pubin', '-keyform', 'DER', '-rawin',
-             '-inkey', str(key), '-sigfile', str(work/'signature'), '-in', str(work/'fingerprint')],
-            env={'PATH': os.environ['PATH']})
-        results[profile] = {'signatureVerified': True, 'matchesEarlierQualification': True,
-                            'narHash': sri(info['NarHash']), 'narSize': int(info['NarSize'])}
-    return results
-
-
 def inventory(db, case, profile, nar, listing):
     size = nar.stat().st_size
     count = 0
@@ -382,7 +342,12 @@ def inventory(db, case, profile, nar, listing):
                 if path.endswith('.pyc') and length >= 16:
                     source.seek(offset); raw = source.read(16)
                     flags, word1, word2 = struct.unpack('<III', raw[4:])
-                    header = {'magic': raw[:4].hex(), 'flags': flags}
+                    payload_hasher = hashlib.sha256(); payload_left = length - 16
+                    while payload_left:
+                        payload = source.read(min(1024**2, payload_left))
+                        require(payload, 'nar-file-truncated')
+                        payload_hasher.update(payload); payload_left -= len(payload)
+                    header = {'magic': raw[:4].hex(), 'flags': flags, 'payloadSha256': payload_hasher.hexdigest()}
                     if flags == 0:
                         header.update(timestamp=word1, sourceSize=word2)
             elif kind == 'symlink':
@@ -485,8 +450,6 @@ def main():
     work.mkdir(mode=0o700); output.mkdir(mode=0o755)
     require(shutil.disk_usage(work).free >= 12 * GIB, 'insufficient-hosted-disk')
     prepared = [prepare(case, work) for case in CASES]
-    mark('public-cache-signatures')
-    cache_signatures = verify_public_metadata(prepared[0]['product'], work)
     # No credential is passed to NAR parsing, decompression or metadata tools.
     os.environ.pop('GH_TOKEN', None); os.environ.pop('GITHUB_TOKEN', None)
     mark('offline-setup')
@@ -505,7 +468,7 @@ def main():
         sources[path] = [hashlib.sha256(run(['git', 'show', case['source']+':'+path], env=env)).hexdigest() for case in CASES]
     mark('summary')
     result = {'schema': 1, 'status': 'compared', 'authorityClaim': False, 'cases': CASES,
-              'publicCacheSignatures': cache_signatures, 'identities': identities, 'recipeFileHashes': sources, 'differences': differences(db),
+              'publicCacheVerification': {'status': 'unavailable', 'reasonCode': 'previous-access-denied', 'previouslyObservedHttpStatus': 403, 'requestedDuringThisRun': False}, 'identities': identities, 'recipeFileHashes': sources, 'differences': differences(db),
               'packageCodeExecuted': False, 'storeImported': False, 'cacheMutated': False,
               'nixVersion': run(['nix','--version'], env=env).decode().strip()}
     raw = json.dumps(result, sort_keys=True, indent=2).encode()

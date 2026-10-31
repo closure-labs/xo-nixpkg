@@ -40,13 +40,34 @@ def sanitize(value, commits):
     return rows
 
 
+
+def verify_cgroup(root=Path('/sys/fs/cgroup'), membership=None):
+    membership = Path('/proc/self/cgroup').read_text() if membership is None else membership
+    rows = membership.strip().splitlines()
+    require(len(rows) == 1 and rows[0].startswith('0::/'), 'cgroup-v2-required')
+    path = rows[0][3:]
+    require(path == str(PurePosixPath(path)) and '..' not in path.split('/'), 'cgroup-path-schema')
+    directory = root/path.lstrip('/')
+    def value(name):
+        raw = (directory/name).read_text()
+        require(len(raw) <= 64, 'cgroup-control-bound')
+        return raw.strip()
+    memory, swap, tasks = value('memory.max'), value('memory.swap.max'), value('pids.max')
+    cpu = value('cpu.max').split()
+    require(memory.isdigit() and 0 < int(memory) <= 3*1024**3 and swap == '0', 'physical-memory-cap-required')
+    require(tasks.isdigit() and 0 < int(tasks) <= 128, 'process-cap-required')
+    require(len(cpu) == 2 and all(v.isdigit() for v in cpu) and 0 < int(cpu[0]) <= int(cpu[1]), 'cpu-cap-required')
+    return {'physicalMemoryMaxBytes': int(memory), 'swapMaxBytes': 0, 'cpuQuota': int(cpu[0]), 'cpuPeriod': int(cpu[1]), 'processMax': int(tasks)}
+
+
 def main():
     require(os.environ.get('GITHUB_ACTIONS') == 'true' and os.environ.get('GITHUB_REPOSITORY') == REPO, 'hosted-context')
     base, head = os.environ['BASE_SHA'], os.environ['HEAD_SHA']
     require(re.fullmatch('[0-9a-f]{40}', base) and re.fullmatch('[0-9a-f]{40}', head) and base != head, 'range-schema')
+    caps = verify_cgroup()
+    print(json.dumps({'status': 'resource-guards', 'caps': caps}), flush=True)
     os.sched_setaffinity(0, sorted(os.sched_getaffinity(0))[:1])
     def limits():
-        resource.setrlimit(resource.RLIMIT_AS, (3*1024**3, 3*1024**3))
         resource.setrlimit(resource.RLIMIT_CPU, (90, 90))
         resource.setrlimit(resource.RLIMIT_FSIZE, (2*1024**2, 2*1024**2))
     def git(*args):
@@ -65,7 +86,7 @@ def main():
         env.update(GOMAXPROCS='1', GOMEMLIMIT='256MiB')
         probe = subprocess.run([sys.argv[1], 'version'], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
                                timeout=10, env=env, preexec_fn=limits, check=False)
-        require(probe.returncode == 0, 'scanner-version-fails-under-address-space-cap')
+        require(probe.returncode == 0, 'scanner-version-fails-under-physical-cap')
         process = subprocess.run([sys.argv[1], 'git', '.', '--config', str(directory/'config.toml'),
                                   '--gitleaks-ignore-path', str(directory/'ignore'), '--ignore-gitleaks-allow',
                                   '--redact=100', '--no-banner', '--log-level=error', '--exit-code=2',

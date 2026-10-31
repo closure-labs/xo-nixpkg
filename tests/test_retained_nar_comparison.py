@@ -108,6 +108,18 @@ class GuardTests(unittest.TestCase):
                 with self.assertRaises(m.Blocked):
                     m.inventory(db, 2, 'test', nar, bad)
 
+    def test_bytecode_payload_hash_distinguishes_header_only_changes(self):
+        with tempfile.TemporaryDirectory() as temp:
+            nar = Path(temp)/'nar'
+            payload = b'public synthetic bytecode body'
+            nar.write_bytes(b'ABCD' + m.struct.pack('<III', 0, 123, 7) + payload)
+            db = sqlite3.connect(':memory:')
+            db.execute('CREATE TABLE files(caseid,profile,path,kind,size,executable,hash,header)')
+            m.inventory(db, 1, 'test', nar, {'type': 'directory', 'entries': {'fixture.pyc': {'type': 'regular', 'size': nar.stat().st_size, 'narOffset': 0}}})
+            header = json.loads(db.execute("SELECT header FROM files WHERE path='fixture.pyc'").fetchone()[0])
+            self.assertEqual(header['timestamp'], 123)
+            self.assertEqual(header['payloadSha256'], hashlib.sha256(payload).hexdigest())
+
     def test_subprocess_failure_is_allowlisted_and_output_limited(self):
         with patch.object(m.subprocess, 'run', return_value=type('Result', (), {'returncode': 1})()):
             with self.assertRaisesRegex(m.Blocked, '^trusted-tool-failed$'):
@@ -164,6 +176,13 @@ class GuardTests(unittest.TestCase):
             self.assertFalse(result['authorityClaim'])
         with self.assertRaises(m.Blocked):
             m.mark(marker)
+
+    def test_retained_comparison_makes_no_public_cache_request(self):
+        source = Path(m.__file__).read_text()
+        self.assertNotIn('opener.open', source)
+        self.assertNotIn('urllib.request', source)
+        self.assertIn("'requestedDuringThisRun': False", source)
+        self.assertIn("'publicCacheVerification': {'status': 'unavailable'", source)
 
     def test_no_authority_or_publication(self):
         workflow = (Path(__file__).resolve().parents[1]/'.github/workflows/compare-retained-nars.yml').read_text()
