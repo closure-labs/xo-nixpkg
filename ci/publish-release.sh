@@ -34,7 +34,7 @@ tagged_version=$(git -C "$repo_root" show "$tag:VERSION" | tr -d '\r\n')
 remote_tag_commit() {
   local object kind sha depth
   object=$(gh api "repos/${GITHUB_REPOSITORY}/git/ref/tags/${tag}" --jq .object) || return
-  for depth in {1..8}; do
+  for (( depth=0; depth<8; depth++ )); do
     kind=$(jq -er '.type | select(. == "commit" or . == "tag")' <<<"$object") || return
     sha=$(jq -er '.sha | select(type == "string" and test("^[0-9a-f]{40}$"))' <<<"$object") || return
     if [[ $kind == commit ]]; then
