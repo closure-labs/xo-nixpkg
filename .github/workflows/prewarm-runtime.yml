@@ -13,7 +13,7 @@ concurrency:
 
 jobs:
   prewarm:
-    if: github.ref == 'refs/heads/main'
+    if: github.repository == 'closure-labs/xo-nixpkg' && (github.ref == 'refs/heads/main')
     runs-on: ubuntu-24.04
     timeout-minutes: 180
     steps:
