@@ -28,6 +28,38 @@
       "status": "verified",
       "verifiedAt": "2026-11-01T22:20:03.292505+00:00",
       "verifier": "b7573547249bb8fc7359d29ebaea7dfab5f6d67f8c74361ce6eb1cf277fcd187"
+    },
+    "handoff": {
+      "destination": "handoff",
+      "expected": {
+        "producer": {
+          "repository": "closure-labs/xo-nixpkg",
+          "revision": "fc2b8f692a990948d3fa8e64bb7431e0a994a172",
+          "runAttempt": 1,
+          "runId": 41350789571,
+          "sourceRevision": "fc2b8f692a990948d3fa8e64bb7431e0a994a172",
+          "workflow": ".github/workflows/qualification.yml"
+        },
+        "reference": "ghcr.io/closure-labs/xo-nixpkg-products@sha256:46076612a1b73befba9a853072bccbd0b2851363614f8fa8ab89841cf769a7df",
+        "sha256": "fab12eaf53c45f0067fd8c2ff820833ce7e0e34431e04e1142ee09ee43b79fef"
+      },
+      "observed": {
+        "producer": {
+          "repository": "closure-labs/xo-nixpkg",
+          "revision": "fc2b8f692a990948d3fa8e64bb7431e0a994a172",
+          "runAttempt": 1,
+          "runId": 41350789571,
+          "sourceRevision": "fc2b8f692a990948d3fa8e64bb7431e0a994a172",
+          "workflow": ".github/workflows/qualification.yml"
+        },
+        "reference": "ghcr.io/closure-labs/xo-nixpkg-products@sha256:46076612a1b73befba9a853072bccbd0b2851363614f8fa8ab89841cf769a7df",
+        "sha256": "fab12eaf53c45f0067fd8c2ff820833ce7e0e34431e04e1142ee09ee43b79fef"
+      },
+      "productHash": "9c259b9c451fffaf0fca9b8923b04a904e5bf734419c03c67d8a69b2ccdae74a",
+      "schema": 1,
+      "status": "verified",
+      "verifiedAt": "2026-11-01T22:26:21.335571+00:00",
+      "verifier": "b7573547249bb8fc7359d29ebaea7dfab5f6d67f8c74361ce6eb1cf277fcd187"
     }
   },
   "schema": 2,
@@ -76,6 +108,22 @@
         }
       },
       "name": "cache",
+      "state": "complete"
+    },
+    {
+      "identity": {
+        "producer": {
+          "repository": "closure-labs/xo-nixpkg",
+          "revision": "fc2b8f692a990948d3fa8e64bb7431e0a994a172",
+          "runAttempt": 1,
+          "runId": 41350789571,
+          "sourceRevision": "fc2b8f692a990948d3fa8e64bb7431e0a994a172",
+          "workflow": ".github/workflows/qualification.yml"
+        },
+        "reference": "ghcr.io/closure-labs/xo-nixpkg-products@sha256:46076612a1b73befba9a853072bccbd0b2851363614f8fa8ab89841cf769a7df",
+        "sha256": "fab12eaf53c45f0067fd8c2ff820833ce7e0e34431e04e1142ee09ee43b79fef"
+      },
+      "name": "handoff",
       "state": "complete"
     }
   ]
