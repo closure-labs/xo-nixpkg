@@ -342,31 +342,40 @@ def publish(result_path, observations, progress):
     state=destinations.cache(product,os.environ['XO_NIXPKG_CACHIX_CACHE_URL'])
     if state['status'] in ('conflict','unavailable'):
         raise ValueError('Public cache '+state['status'])
+    # Refresh packets carry authenticated inventory/observations only. Their
+    # original closure transport is materialized at publication, not every rescan.
+    parts = scans['transport']['parts']
+    if not isinstance(parts, dict) or not parts or any(not isinstance(name, str) or not re.fullmatch(r'distribution-cache\.tar\.part-[0-9]{3}', name) for name in parts):
+        raise ValueError('Original closure part manifest is missing or invalid')
+    part_names = set(parts)
+    local_handoff = not part_names.issubset(descriptor['files']) if descriptor else not all((directory/name).is_file() for name in part_names)
+    if source and (state['status']!='verified' or local_handoff):
+        import decision_packets as packets
+        with registry(), tempfile.TemporaryDirectory() as temp:
+            target=Path(temp)/'evidence'
+            observations['closurePacketFetches'] += 1
+            packets.fetch(source['reference'],target,source['sha256'])
+            (target/'decision-packet.json').unlink()
+            for path in target.rglob('*'):
+                if path.is_file():
+                    relative=path.relative_to(target); output=directory/relative
+                    packets.install_member(path, output, directory)
     if state['status']!='verified':
-        if source:
-            import decision_packets as packets
-            with registry(), tempfile.TemporaryDirectory() as temp:
-                target=Path(temp)/'evidence'
-                observations['closurePacketFetches'] += 1
-                packets.fetch(source['reference'],target,source['sha256'])
-                (target/'decision-packet.json').unlink()
-                for path in target.rglob('*'):
-                    if path.is_file():
-                        relative=path.relative_to(target); output=directory/relative
-                        packets.install_member(path, output, directory)
         observations['cachePublishInvocations'] += 1
         run('xo-nixpkg-publish')
         state=destinations.cache(product,os.environ['XO_NIXPKG_CACHIX_CACHE_URL'])
+    if local_handoff and not all((directory/name).is_file() for name in part_names):
+        run('xo-nixpkg-restore-products', '--materialize-only')
     proof=destinations.receipt(state,product)
     journal.complete('cache', {'products':product['products'],'roots':product.get('roots',{})},proof)
     progress['completedStages'].append('cache')
     progress['stage'] = 'handoff'
-    if source:
+    if source and not local_handoff:
         packet=remote_handoff(source,descriptor,observations)
     else:
         observations['handoffPushInvocations'] += 1
         packet=publish_handoff(directory,scans,repository,revision)
-    if not source:
+    if not source or local_handoff:
         # Historical artifact recovery must also read the immutable public manifest.
         import decision_packets as packets
         old_registry,old_reference=packets.REGISTRY,packets.REFERENCE

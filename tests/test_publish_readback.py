@@ -71,7 +71,7 @@ class PublishReadback(unittest.TestCase):
                         'repository': 'closure-labs/xo-nixpkg', 'revision': 'a' * 40,
                         'assets': {}}
         (self.work / 'product.json').write_text(json.dumps(self.product))
-        (self.work / 'scans.json').write_text('{}')
+        (self.work / 'scans.json').write_text(json.dumps({'transport':{'parts':{'distribution-cache.tar.part-000':{'size':7,'sha256':'f'*64}}}}))
         self.calls = self.work / 'calls.jsonl'
         self.fixture = self.work / 'fixture.json'
         self.env = dict(os.environ, PATH=str(self.native) + os.pathsep + os.environ['PATH'],
