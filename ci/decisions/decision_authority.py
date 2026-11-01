@@ -376,8 +376,10 @@ def document_at(api, repository, path, revision):
             or type(content.get('size')) is not int or not 0 < content['size'] <= MAX_PROPOSAL_BYTES
             or not isinstance(content.get('sha'), str) or not SHA.fullmatch(content['sha'])):
         raise AuthorityError('Decision proposal is not a bounded regular Git blob')
-    # Metadata/access is read afresh, including on hits. The cache supplies only
-    # Git-object-hash-verified bytes; no API response or authorization is reused.
+    # A publication gate may deduplicate exact-SHA decision metadata within that
+    # one call. Policy and all mutable authority/access surfaces stay live. The
+    # byte cache still verifies Git object identity on every use; neither map
+    # supplies a review, membership decision or authorization result.
     return document_blob(api, repository, content['sha'], content['size'],
                          inline=content if content['encoding'] == 'base64' else None)
 

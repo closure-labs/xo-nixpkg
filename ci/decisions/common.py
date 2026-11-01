@@ -14,6 +14,7 @@ import time
 import operations
 import observability
 import attestation_session
+import immutable_reads
 import decision_authority as authority
 import decision_packets as packets
 from security_decisions import (canonical_hash, load_json, evaluate, validate_normalized,
@@ -560,7 +561,11 @@ def gate(cfg, scan_path, product_path=None, purpose='rolling', api=None):
         calls += 1
         return raw_api(endpoint)
     try:
-        result = _gate(cfg, scan_path, product_path, purpose, counted)
+        # The map dies with this gate call. Only full-SHA Git facts qualify;
+        # mutable heads, policy, reviews, membership and timelines always pass
+        # through counted() to the live API, including both race-check passes.
+        reads = immutable_reads.GateReads(cfg.get('repository'), counted)
+        result = _gate(cfg, scan_path, product_path, purpose, reads)
         state = 'passed'
         return result
     finally:
