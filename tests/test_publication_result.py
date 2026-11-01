@@ -34,7 +34,7 @@ class PublicationResult(unittest.TestCase):
         self.producer = {'repository':self.product['repository'],'revision':'a'*40,
                          'sourceRevision':'a'*40,'workflow':'.github/workflows/qualification.yml',
                          'runId':123,'runAttempt':1}
-        self.scans = {'producer':self.producer}
+        self.scans = {'producer':self.producer,'transport':{'parts':{'distribution-cache.tar.part-000':{'size':7,'sha256':'f'*64}}}}
         self.source = {'reference':'ghcr.io/closure-labs/xo-nixpkg-decisions@sha256:'+'d'*64,
                        'sha256':'e'*64,'producer':self.producer}
         files = {}
@@ -42,7 +42,7 @@ class PublicationResult(unittest.TestCase):
             raw = json.dumps(value).encode(); (self.directory/name).write_bytes(raw)
             files[name] = {'sha256':hashlib.sha256(raw).hexdigest(),'size':len(raw)}
         self.directory.with_suffix('.source.json').write_text(json.dumps(self.source))
-        self.descriptor = {'files':files,'producer':self.producer}
+        self.descriptor = {'files':dict(files, **{'distribution-cache.tar.part-000':{'size':7,'sha256':'f'*64}}),'producer':self.producer}
         self.artifact = self.root/'publication-result.json'
         self.calls = []
         class Journal:
@@ -68,6 +68,8 @@ class PublicationResult(unittest.TestCase):
         def run(*args, **kwargs):
             self.calls.append(args)
             if fail: raise subprocess.CalledProcessError(27,args)
+            if args == ('xo-nixpkg-restore-products','--materialize-only'):
+                (self.directory/'distribution-cache.tar.part-000').write_bytes(b'fixture')
         cache = {'status':'verified','expected':{'root':'hash'},'observed':{'root':'hash'}}
         states = [dict(cache,status='partial'),cache] if args else [cache]
         with patch.object(m,'Journal',self.journal), patch.object(m,'run',side_effect=run), \
@@ -76,6 +78,8 @@ class PublicationResult(unittest.TestCase):
                 patch.object(m.destinations,'receipt',side_effect=lambda state,product:state), \
                 patch.object(m,'remote_handoff',return_value=self.source, side_effect=RuntimeError('PRIVATE_TOKEN /private/path') if fail_handoff else None), \
                 patch.object(m,'registry',contextlib.nullcontext), \
+                patch.object(m,'publish_handoff',return_value=self.source), \
+                patch.object(packets,'metadata',return_value={}), \
                 patch.object(packets,'fetch',side_effect=lambda ref,target,digest:(target.mkdir(),(target/'decision-packet.json').write_text('{}'))), \
                 patch.object(m.subprocess,'check_output',side_effect=self.output), \
                 patch.object(m.subprocess,'run',return_value=subprocess.CompletedProcess([],0,'f'*40+'\n','')), \
@@ -101,6 +105,15 @@ class PublicationResult(unittest.TestCase):
         self.assertEqual(result['operations']['closurePacketFetches'],1)
         self.assertEqual(result['operations']['cachePublishInvocations'],1)
         self.assertIn(('xo-nixpkg-publish',),self.calls)
+
+    def test_light_refresh_preserves_self_contained_handoff_without_duplicate_restore(self):
+        self.descriptor['files'].pop('distribution-cache.tar.part-000')
+        result = self.execute()
+        self.assertEqual(result['operations']['closurePacketFetches'],1)
+        self.assertEqual(result['operations']['handoffPushInvocations'],1)
+        self.assertEqual(result['operations']['handoffCopyAttempts'],0)
+        self.assertEqual(self.calls.count(('xo-nixpkg-restore-products','--materialize-only')),1)
+        self.assertNotIn(('xo-nixpkg-publish',),self.calls)
 
     def test_failed_live_gate_replaces_stale_success_with_non_authoritative_summary(self):
         self.artifact.write_text('{"status":"verified"}')
@@ -136,6 +149,8 @@ class PublicationResult(unittest.TestCase):
                     return None if missing else b'present'
                 with patch.dict(os.environ,{'GITHUB_REPOSITORY':self.product['repository']}), \
                         patch.object(m,'registry',contextlib.nullcontext), \
+                patch.object(m,'publish_handoff',return_value=self.source), \
+                patch.object(packets,'metadata',return_value={}), \
                         patch.object(m,'run'), patch.object(packets,'command',side_effect=command), \
                         patch.object(packets,'inspect',return_value=({},{})), \
                         patch.object(packets,'fetch_member'), patch.object(packets,'packet_descriptor',return_value=self.descriptor):

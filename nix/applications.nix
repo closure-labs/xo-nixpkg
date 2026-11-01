@@ -165,6 +165,7 @@ rec {
       python3
       nix
       publicationGate
+      fetchEvidence
     ];
     prelude = ''
       export XO_NIXPKG_RESTORER=${../ci/restore-products.py}

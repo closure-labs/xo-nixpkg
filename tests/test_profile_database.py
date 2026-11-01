@@ -248,14 +248,14 @@ class ParentDatabaseTests(unittest.TestCase):
         self.assertEqual(self.builds, [], 'Refreshing retained products rebuilt source')
         self.assertEqual(self.inventories, [], 'Refreshing retained products regenerated inventory')
         self.assertEqual(self.transport_exports, [])
-        self.assertEqual(len(self.transport_imports), 1)
+        self.assertEqual(self.transport_imports, [], 'SBOM refresh imported a closure')
+        self.assertFalse(list(self.output.glob('distribution-cache.tar.part-*')))
         self.assertEqual((self.output / 'product.json').read_bytes(), product_before)
         self.assertEqual((source / 'product.json').read_bytes(), product_before)
         self.assertEqual((source / 'scans.json').read_bytes(), scan_before)
         scans = json.loads((self.output / 'scans.json').read_text())
         self.assert_profile_subjects(scans, json.loads(product_before))
-        self.assertEqual(set(self.realised), {subject['storePath'] for observation in scans['profiles'].values()
-                                            for subject in observation['subjects']})
+        self.assertEqual(self.realised, [], 'SBOM refresh realized package roots')
         self.assertEqual(len(list(self.output.glob('handoff-*.json'))), 4)
 
     def test_refresh_scan_failure_cleans_database_and_removes_old_success_aggregates(self):
