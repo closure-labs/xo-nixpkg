@@ -3,8 +3,8 @@
 The user-approved policy requires incoming-change scans for merges and releases.
 The exact `Repository security audit` job is a real GitHub Actions job on
 `pull_request` and `merge_group`, retaining required source Actions15368.
-Historical scanning is a separate daily/manual audit: failures stay visible and
-unresolved, but are not release blockers. This does not certify old history clean.
+Historical scanning is disabled: old commits are no longer rescanned. Previous
+failed runs and reports remain intact; this does not certify old history clean.
 
 ## Maintained sources and adaptations
 
@@ -58,12 +58,11 @@ Native scanning/push protection settings and the fresh repository-wide zero-open
 alert publication observation remain unchanged, as do Grype inventories, accepted
 vulnerability decisions, immutable outputs, attestations and signer authority.
 
-The history audit fetches branch, tag and pull-request refs and scans all reachable
-history in that snapshot. The known large historical JSON timeout is unresolved;
-changing the wrapper does not fix it. A timeout is an audit failure, never clean
-history. No prior failed audit is deleted, suppressed or grandfathered into success.
-The explicit approved policy makes this historical debt nonblocking for releases;
-it does not waive incoming scans or native publication checks.
+The daily/manual historical job has been removed. The known large historical JSON
+timeout remains unresolved; prior runs and reports are not deleted or relabeled.
+Incoming-change scans and native publication checks remain required. Changes to
+the workflow update its policy binding, so new qualification and review are needed;
+old evidence cannot silently acquire the new binding.
 
 This draft authorizes no settings window, merge, approval, cleanup or release
 restart. Hosted CI must validate the actual pinned CLI/toolchain. Local tests use

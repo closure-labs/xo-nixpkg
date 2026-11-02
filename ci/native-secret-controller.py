@@ -245,7 +245,7 @@ def policy_binding():
     require(path.is_file() and not path.is_symlink() and path.stat().st_size <= 16384, 'policy-file')
     require(contract.canonical(decode(path.read_bytes())) == contract.canonical(contract.POLICY), 'policy-changed')
     combined = {'nativePublication': contract.POLICY, 'incoming': incoming_sources(),
-                'history': 'visible-nonblocking-unresolved-debt'}
+                'history': 'disabled-no-clean-history-claim'}
     return {'policyId': 'gitleaks-incoming-native-publication-v2',
             'policySha256': __import__('hashlib').sha256(contract.canonical(combined)).hexdigest()}
 

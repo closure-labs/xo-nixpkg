@@ -86,6 +86,13 @@ class PolicyBindingTests(unittest.TestCase):
         self.assertEqual(configured, computed,
                          'Scanner/config changes must update the reviewed decision policy binding')
 
+    def test_reuse_and_publication_bind_the_same_history_removal_policy(self):
+        spec = importlib.util.spec_from_file_location('build_reuse_binding', ROOT / 'ci/build-reuse.py')
+        reuse = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(reuse)
+        with patch.dict(os.environ, self.sources()):
+            self.assertEqual(reuse.repository_policy_binding(ROOT), M.policy_binding())
+
     def test_either_scanner_file_change_invalidates_unchanged_binding(self):
         configured = json.loads((ROOT / 'ci/decision-policy.json').read_text())['repositorySecretPolicy']
         for variable in ('XO_INCOMING_SECRET_WORKFLOW_SOURCE', 'XO_GITLEAKS_CONFIG_SOURCE'):
@@ -102,7 +109,7 @@ class PolicyBindingTests(unittest.TestCase):
 
     def test_previous_config_binding_still_cannot_qualify(self):
         previous = {'policyId': 'gitleaks-incoming-native-publication-v2',
-                    'policySha256': 'edfc59daaf284da183a59049b2fd2d0232471cb1780d16d9f117edb7bd8e98f3'}
+                    'policySha256': '8d3018b387e30992b7f4a85c7627219d56611fb9820a4847e3709aadb33d1178'}
         with patch.dict(os.environ, self.sources()), self.assertRaisesRegex(M.Blocked, 'old-policy-qualification'):
             M.validate_product_policy({'repositorySecretPolicy': previous}, {'repositorySecretPolicy': previous})
 

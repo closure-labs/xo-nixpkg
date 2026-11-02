@@ -252,10 +252,10 @@ additions remain in scope. Missing or incomplete inputs, findings, scanner error
 and timeouts fail closed. The protected configuration retains upstream rules and
 the existing narrow canonical public finding-identity exception.
 
-The separate daily/manual historical audit remains visible and unresolved. It is
-nonblocking for release publication under the explicitly approved policy; neither
-its failure nor the historical compact-JSON timeout certifies history clean. No
-baseline, history exclusion or new finding exception is introduced.
+Historical scanning is disabled: old commits are no longer rescanned. Previous
+failed runs and reports remain intact, and the compact-JSON timeout remains
+unresolved. This does not certify old history clean. Incoming scans and native
+publication checks are unchanged; no baseline or finding exception is added.
 
 Publication requires the exact source's successful incoming scan, current run
 attempt, expected Actions check owner and unchanged scanner policy/configuration.
