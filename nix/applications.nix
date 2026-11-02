@@ -202,6 +202,7 @@ rec {
       oras
       publicationGate
       publish
+      restoreProducts
       tagXoRelease
       tagRelease
       publishRelease

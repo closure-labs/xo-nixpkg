@@ -116,8 +116,13 @@ let
         (with pkgs; [
           gnugrep
           ripgrep
+          python3
         ])
         ''
+          python3 source/tests/installed-publication-runtime.py \
+            --controller ${pkgs.lib.getExe applications.publicationController} \
+            --restore ${pkgs.lib.getExe applications.restoreProducts} \
+            --source ${../ci/publication-controller.py}
           grep -F -- '${pkgs.lib.getExe applications.updateXo} --release' \
             ${pkgs.lib.getExe applications.updateXoRelease}
           grep -F -- '${pkgs.lib.getExe applications.updateXo} --rolling' \
