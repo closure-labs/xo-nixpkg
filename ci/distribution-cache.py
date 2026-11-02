@@ -22,6 +22,72 @@ MAX_MEMBERS = 100_000
 PART = re.compile(r'distribution-cache\.tar\.part-[0-9]{3}')
 NAR = re.compile(r'sha256-[A-Za-z0-9+/]{43}=')
 STORE = re.compile(r'/nix/store/[a-z0-9]{32}-[^/\s]+')
+STDERR_TAIL_BYTES = 64 * 1024
+
+
+class CommandFailure(subprocess.CalledProcessError):
+    """Preserve nonzero-command semantics without retaining raw output/arguments."""
+
+    def __init__(self, returncode, diagnostic):
+        super().__init__(returncode, ['nix', diagnostic['operation']])
+        self.diagnostic = diagnostic
+
+    def __str__(self):
+        return 'Distribution command failed: ' + json.dumps(self.diagnostic, sort_keys=True, separators=(',', ':'))
+
+
+def resources():
+    # Numeric filesystem observations are clues, not an assertion of root cause.
+    result = {}
+    for label, path in (('temporary', tempfile.gettempdir),
+                        ('workspace', lambda: '.'), ('store', lambda: '/nix/store')):
+        try:
+            value = os.statvfs(path())
+            result[label] = {'status': 'observed',
+                             'availableBytes': value.f_bavail * value.f_frsize,
+                             'availableInodes': value.f_favail}
+        except OSError as error:
+            result[label] = {'status': 'unavailable', 'errno': error.errno}
+    return result
+
+
+def command_failure(args, error, started, before):
+    operation = 'unknown'
+    for prefix, name in ((['nix', 'copy', '--to'], 'export-copy'),
+                         (['nix', 'copy', '--from'], 'restore-copy'),
+                         (['nix', 'path-info'], 'root-identity'),
+                         (['nix', 'store', 'verify'], 'store-verify')):
+        if list(args[:len(prefix)]) == prefix:
+            operation = name
+            break
+    raw = error.stderr or b''
+    # The existing supervisor captures command output. Inspect only this bounded
+    # tail; never print/persist it, stdout, argv, paths, URLs or exception text.
+    tail = raw[-STDERR_TAIL_BYTES:]
+    if isinstance(tail, str):
+        tail = tail.encode('utf-8', errors='replace')
+    truncated = len(raw) > STDERR_TAIL_BYTES or len(tail) > STDERR_TAIL_BYTES
+    tail = tail[-STDERR_TAIL_BYTES:]
+    text = tail.decode('utf-8', errors='replace').lower()
+    patterns = {'disk-full': r'no space left on device',
+                'quota-exceeded': r'disk quota exceeded',
+                'permission-denied': r'permission denied|operation not permitted',
+                'read-only-filesystem': r'read-only file system',
+                'destination-conflict': r'file exists|already exists',
+                'missing-path': r'no such file or directory|path .{0,512} is not valid',
+                'io-error': r'input/output error|i/o error',
+                'network-error': r'connection reset|connection refused|could not resolve|http error [45][0-9]{2}',
+                'compression-error': r'zstd.{0,128}error|compression failed|unknown compression|unsupported compression',
+                'integrity-error': r'hash mismatch|corrupted',
+                'unsupported-option': r'unrecognized argument|unrecognised argument|unknown setting',
+                'signature-error': r'not signed by.{0,256}trusted|signature.{0,256}invalid'}
+    indicators = sorted(name for name, pattern in patterns.items() if re.search(pattern, text))
+    return {'schema': 1, 'code': 'distribution-command-failed',
+            'operation': operation, 'returncode': error.returncode,
+            'elapsedMilliseconds': max(0, round((time.monotonic() - started) * 1000)),
+            'stderrTailBytes': len(tail), 'stderrTailTruncated': truncated,
+            'indicators': indicators or ['unclassified'],
+            'resources': {'before': before, 'after': resources()}, 'authorityClaim': False}
 
 
 def require(value, message):
@@ -47,7 +113,11 @@ def identities(roots):
 
 
 def command(args):
-    return operations.run(args, capture_output=True, check=True, timeout=1800).stdout
+    before, started = resources(), time.monotonic()
+    try:
+        return operations.run(args, capture_output=True, check=True, timeout=1800).stdout
+    except subprocess.CalledProcessError as error:
+        raise CommandFailure(error.returncode, command_failure(args, error, started, before)) from None
 
 
 def verify_roots(roots):
