@@ -20,6 +20,6 @@
   "maxDatabaseAgeHours": 48,
   "repositorySecretPolicy": {
     "policyId": "gitleaks-incoming-native-publication-v2",
-    "policySha256": "8d3018b387e30992b7f4a85c7627219d56611fb9820a4847e3709aadb33d1178"
+    "policySha256": "aae89c3734d5aea65938848db6c2d2514a98ac9870d3052aaa8d8f47a835a5a2"
   }
 }

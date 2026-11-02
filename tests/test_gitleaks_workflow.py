@@ -220,11 +220,14 @@ class PublicationProofTests(unittest.TestCase):
             with self.subTest(change=change), self.assertRaises(GATE.native.Blocked):
                 self.verify_with_race(change)
 
-    def test_workflow_is_read_only_and_history_is_separate_visible_debt(self):
+    def test_workflow_is_read_only_and_only_incoming_events_remain(self):
         text = WORKFLOW.read_text()
         self.assertIn('pull_request:', text)
         self.assertIn('merge_group:', text)
-        self.assertIn('Repository historical audit (nonblocking debt)', text)
+        self.assertNotIn('  history:', text)
+        self.assertNotIn('  schedule:', text)
+        self.assertNotIn('  workflow_dispatch:', text)
+        self.assertNotIn('--all --full-history', text)
         for absent in ['secrets.', 'write\n', 'continue-on-error:', 'upload-artifact', 'pull_request_target:', 'workflow_run:', '--baseline-path', '--max-target-megabytes']:
             self.assertNotIn(absent, text)
         self.assertIn('551f6fc83ea457d62a0d98237cbad105af8d557003051f41f3e7ca7b3f2470eb', text)
