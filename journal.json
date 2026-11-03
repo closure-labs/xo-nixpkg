@@ -60,6 +60,22 @@
       "status": "verified",
       "verifiedAt": "2026-11-03T21:28:41.158136+00:00",
       "verifier": "b7573547249bb8fc7359d29ebaea7dfab5f6d67f8c74361ce6eb1cf277fcd187"
+    },
+    "xo-tag": {
+      "destination": "xo-tag",
+      "expected": {
+        "required": false,
+        "revision": "19b9023b5c7bfdadc6fa434d589e260307bd5994"
+      },
+      "observed": {
+        "required": false,
+        "revision": "19b9023b5c7bfdadc6fa434d589e260307bd5994"
+      },
+      "productHash": "1741157d853a88c750f32afe1a0d2f4067263b247329a62ff39c85b7930bf58c",
+      "schema": 1,
+      "status": "verified",
+      "verifiedAt": "2026-11-03T21:32:17.598505+00:00",
+      "verifier": "b7573547249bb8fc7359d29ebaea7dfab5f6d67f8c74361ce6eb1cf277fcd187"
     }
   },
   "schema": 2,
@@ -124,6 +140,13 @@
         "sha256": "617ac74ecd96be3ecdcf04845b3862b5ce0d94a92b485f444b9dfb27415e1199"
       },
       "name": "handoff",
+      "state": "complete"
+    },
+    {
+      "identity": {
+        "revision": "19b9023b5c7bfdadc6fa434d589e260307bd5994"
+      },
+      "name": "xo-tag",
       "state": "complete"
     }
   ]
