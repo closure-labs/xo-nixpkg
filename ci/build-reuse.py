@@ -19,11 +19,12 @@ import operations
 
 REPOSITORY = 'closure-labs/xo-nixpkg'
 WORKFLOW = '.github/workflows/ci.yml'
-# This exact reviewed workflow disables PR receipt export and PR attestation.
+# These exact reviewed workflows disable PR receipt export and PR attestation.
 # New workflow versions conservatively retain historical discovery until reviewed.
 NO_PR_RECEIPT_WORKFLOWS = frozenset({
     '9bb58a9672874320546752f5f3f19264a465d9bd858fb2f1274ce69527f35282',
     '60131a500c8cf4274142617cc2356d9cba6e288af73c3541c15f989ed3ae7d5b',
+    'e87c94f3313406676c6597dae716ba9e5cd0cda406dafcba30c0da0e620388fe',
 })
 SHA = re.compile(r'[a-f0-9]{40}')
 STORE = re.compile(r'/nix/store/[a-z0-9]{32}-[^/\s]+')
