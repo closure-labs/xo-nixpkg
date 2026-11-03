@@ -3,7 +3,8 @@
 The new composite action is the single installer for read-only scanner fixtures
 and the diagnostic triage workflow. Both use the same upstream 8.30.1 archive,
 checksum, HTTPS restriction, 60-second download limit and exact version check.
-The action returns an explicit binary path; it does not modify the runner PATH.
+Callers use GitHub's native self-repository `$/` syntax so action loading does not
+follow a runtime checkout. The action returns an explicit binary path; it does not modify the runner PATH.
 GitHub documents composite actions as the standard way to share repeated steps:
 https://docs.github.com/en/actions/tutorials/create-actions/create-a-composite-action
 

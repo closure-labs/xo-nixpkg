@@ -60,7 +60,7 @@ class GitleaksSetup(unittest.TestCase):
         self.assertIn('--config "$GITHUB_WORKSPACE/controller/.gitleaks.toml"', required)
         for filename in ('gitleaks-policy-fixtures.yml', 'diagnostic-secret-triage.yml'):
             source = (ROOT / '.github/workflows' / filename).read_text()
-            self.assertIn('uses: ./.github/actions/setup-gitleaks', source)
+            self.assertIn('uses: $/.github/actions/setup-gitleaks', source)
             self.assertIn('GITLEAKS_BINARY: ${{ steps.gitleaks.outputs.binary }}', source)
             self.assertNotIn('releases/download/', source)
             self.assertNotIn('secrets.', source)
