@@ -214,4 +214,52 @@ for path in .gitleaks.toml tests/test_secret_inventory.py nix/repository-checks.
   ' <<<"$fixture_plan" >/dev/null
 done
 
+# These three pure workflow/installer unit fixtures already execute within the
+# mandatory repository-policy preflight. Do not schedule unrelated XO/VM builds.
+for path in tests/test_gate_overhead.py tests/test_controller_wakeups.py tests/test_gitleaks_setup.py; do
+  parent=$(git -C "$fixture" rev-parse HEAD)
+  mkdir -p "$fixture/tests"
+  printf 'pure workflow fixture\n' >"$fixture/$path"
+  git -C "$fixture" add "$path"
+  git -C "$fixture" commit -qm known-pure-fixture
+  fixture_head=$(git -C "$fixture" rev-parse HEAD)
+  jq -n --arg base "$parent" --arg head "$fixture_head" \
+    '{pull_request:{base:{sha:$base}},merge_group:{base_sha:$base,head_sha:$head}}' >"$temporary/event.json"
+  for event in pull_request merge_group; do
+    selected=$(classify "$event" refs/pull/7/merge "$fixture_head")
+    jq -e '
+      [.jobs.validate.plan.targets[].name] == ["repository-policy"] and
+      .jobs.validate.enabled == true and
+      .jobs.publish.plan == null and .jobs.publish.enabled == false and
+      .release.enabled == false
+    ' <<<"$selected" >/dev/null
+  done
+done
+
+# Similar names, unknown paths, and a package change cannot hide behind a unit
+# fixture. Exercise the production classifier on both PR and queue events.
+for path in tests/test_unreviewed_fixture.py tests/test_gate_overhead.py.extra nix/runtime-node.nix; do
+  parent=$(git -C "$fixture" rev-parse HEAD)
+  mkdir -p "$(dirname "$fixture/$path")"
+  printf 'changed real or unknown contract\n' >"$fixture/$path"
+  printf 'pure fixture edit\n' >>"$fixture/tests/test_gate_overhead.py"
+  git -C "$fixture" add "$path" tests/test_gate_overhead.py
+  git -C "$fixture" commit -qm mixed-fixture-contract
+  fixture_head=$(git -C "$fixture" rev-parse HEAD)
+  jq -n --arg base "$parent" --arg head "$fixture_head" \
+    '{pull_request:{base:{sha:$base}},merge_group:{base_sha:$base,head_sha:$head}}' >"$temporary/event.json"
+  for event in pull_request merge_group; do
+    selected=$(classify "$event" refs/pull/8/merge "$fixture_head")
+    jq -e --arg path "$path" '
+      any(.jobs.validate.plan.targets[]; .name == "repository-policy") and
+      any(.jobs.validate.plan.targets[]; .name == "xo-server-service") and
+      any(.jobs.validate.plan.targets[]; .name == "xo-fuse-linkage") and
+      (if $path == "nix/runtime-node.nix" then
+        any(.jobs.validate.plan.targets[]; .name == "xo-latest")
+       else (.jobs.validate.plan.targets | length) == 19 end) and
+      .jobs.publish.enabled == false
+    ' <<<"$selected" >/dev/null
+  done
+done
+
 printf 'Classifier fixtures passed\n'

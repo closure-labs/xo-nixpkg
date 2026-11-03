@@ -169,6 +169,13 @@
   ],
   "pathRules": [
     {
+      "pattern": "^tests/test_(gate_overhead|controller_wakeups|gitleaks_setup)\\.py$",
+      "validation": [
+        "repository-policy"
+      ],
+      "publication": []
+    },
+    {
       "pattern": "^ci/public-source-smoke\\.sh$",
       "validation": [
         "*"
