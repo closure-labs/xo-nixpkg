@@ -39,6 +39,7 @@ class GitHub:
         self.ref = {'ref': 'refs/tags/v7.0.1', 'object': {'type': 'commit', 'sha': NEW}}
         self.tag = {'sha': TAG, 'object': {'type': 'commit', 'sha': NEW}}
         self.calls = []
+        self.main = {'ref': 'refs/heads/main', 'object': {'type': 'commit', 'sha': BASE}}
 
     def add_file(self, path, before, after=None):
         for commit, text in ((MERGE_BASE, before), (HEAD, before if after is None else after)):
@@ -51,6 +52,7 @@ class GitHub:
     def __call__(self, endpoint):
         self.calls.append(endpoint)
         prefix = 'repos/' + dependency.REPOSITORY
+        if endpoint == prefix + '/git/ref/heads/main': return deepcopy(self.main)
         if endpoint == prefix + '/pulls/7': return deepcopy(self.pull)
         if endpoint.startswith(prefix + '/pulls/7/files?'): return deepcopy(self.files)
         if endpoint == prefix + f'/compare/{BASE}...{HEAD}':
@@ -70,6 +72,23 @@ class GitHub:
 
 
 class Boundaries(unittest.TestCase):
+    def test_reported_pr_base_cannot_substitute_for_live_main(self):
+        api = GitHub()
+        api.main['object']['sha'] = 'c' * 40
+        with self.assertRaisesRegex(dependency.UnsupportedFamily, 'live main'):
+            api.inspect()
+        self.assertFalse(any('/git/trees/' in call for call in api.calls))
+
+    def test_live_main_shape_and_revalidation_fail_closed(self):
+        for value in [None, {}, {'ref': 'refs/heads/other'},
+                      {'ref': 'refs/heads/main', 'object': {'type': 'blob', 'sha': BASE}},
+                      {'ref': 'refs/heads/main', 'object': {'type': 'commit', 'sha': True}}]:
+            api = GitHub(); api.main = value
+            with self.subTest(value=value), self.assertRaises(ValueError): api.inspect()
+        api = GitHub(); context = api.inspect(); api.main['object']['sha'] = 'c' * 40
+        with self.assertRaisesRegex(dependency.UnsupportedFamily, 'live main'):
+            dependency.revalidate(api, dependency.REPOSITORY, context)
+
     def test_exact_official_pin_change_and_annotated_tag(self):
         api = GitHub()
         self.assertEqual(api.classify(), [{'path': PATH, 'action': 'actions/checkout', 'old': OLD, 'new': NEW, 'version': 'v7.0.1'}])
@@ -192,6 +211,30 @@ POLICY = json.loads((ROOT / 'ci/ci-admission-policy.json').read_text())
 
 
 class Integration(unittest.TestCase):
+    def test_stale_reported_base_and_late_live_main_change_never_approve(self):
+        for late in (False, True):
+            self.setUp()
+            if not late:
+                self.source.main['object']['sha'] = 'c' * 40
+                # Actual main gained privileged CI while the PR metadata and
+                # audited head still describe the earlier read-only workflow.
+                raw = b'permissions:\n  contents: write\njobs:\n  test:\n    runs-on: ubuntu-24.04\n    steps:\n      - run: echo main-only\n'
+                digest = hashlib.sha1(b'blob ' + str(len(raw)).encode() + b'\0' + raw).hexdigest()
+                self.source.blobs[digest] = {'sha': digest, 'size': len(raw), 'encoding': 'base64',
+                                             'content': base64.b64encode(raw).decode()}
+                self.source.trees['c' * 40] = deepcopy(self.source.trees[BASE])
+                for entry in self.source.trees['c' * 40]['tree']:
+                    if entry['path'] == '.github/workflows/ci.yml': entry['sha'] = digest
+            else:
+                def move_main(endpoint):
+                    if endpoint.endswith('/git/ref/heads/main') and self.calls.count(endpoint) >= 3:
+                        self.source.main['object']['sha'] = 'c' * 40
+                self.mutate = move_main
+            with self.subTest(late=late):
+                try: self.assertNotEqual(self.admit(), 'approved')
+                except dependency.UnsupportedFamily: pass
+                self.assertEqual(self.posts, [])
+
     def setUp(self):
         self.source = GitHub()
         self.humans = authority_fixture.GitHub()

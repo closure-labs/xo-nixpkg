@@ -13,7 +13,10 @@ change. The controller has its existing scoped Actions-write permission, reads
 metadata and immutable blobs only, and makes at most one native approval request
 for each freshly verified run. It never checks out or executes candidate code.
 
-The current protected base must be an ancestor of the candidate head. Diverged
+The PR's reported base must match an independent read of `refs/heads/main`, both
+before inspecting candidate content and during final execution revalidation.
+PR base metadata alone can describe an older main revision. The current
+protected base must be an ancestor of the candidate head. Diverged
 branches wait for refresh, so main-only changes cannot appear in an unaudited
 synthetic merge tree. The base/head binding is reread before execution approval.
 
