@@ -169,7 +169,7 @@ class Admission(unittest.TestCase):
         self.assertIn('"$ADMISSION_TOOL/bin/xo-nixpkg-ci-admission"', workflow)
         self.assertLess(workflow.index('nix build .#ci-admission'), workflow.index('secrets.DECIDER_KEY'))
         self.assertNotIn('nix run', workflow[workflow.index('secrets.DECIDER_KEY'):])
-        self.assertIn("cron: '*/15 * * * *'", workflow)
+        self.assertIn("cron: '17 * * * *'", workflow)
         for forbidden in ('head.sha', 'pull_request_target:', 'permission-contents: write',
                           'permission-pull-requests: write', 'permission-checks: write', 'download-artifact'):
             self.assertNotIn(forbidden, workflow)

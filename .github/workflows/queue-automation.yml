@@ -9,9 +9,6 @@ on:
       - Validate packages
       - Verify merge approval
       - Relay update reviews
-      - Check for XO release updates
-      - Refresh XO rolling channel
-      - Refresh libvhdi source
     types: [completed]
   schedule:
     - cron: "7 10 * * *"
