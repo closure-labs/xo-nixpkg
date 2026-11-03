@@ -21,7 +21,7 @@ jobs:
         run: python3 -m unittest discover -s tests -p test_gitleaks_setup.py
       - name: Install checksum-pinned fixture scanner
         id: gitleaks
-        uses: $/.github/actions/setup-gitleaks
+        uses: ./.github/actions/setup-gitleaks # zizmor: ignore[self-repository] -- pinned actionlint 1.7.12 cannot parse $/; candidate fixtures are read-only, without secrets.
       - name: Test proposed policy without changing authoritative scan
         env:
           GITLEAKS_BINARY: ${{ steps.gitleaks.outputs.binary }}

@@ -3,8 +3,7 @@
 The new composite action is the single installer for read-only scanner fixtures
 and the diagnostic triage workflow. Both use the same upstream 8.30.1 archive,
 checksum, HTTPS restriction, 60-second download limit and exact version check.
-Callers use GitHub's native self-repository `$/` syntax so action loading does not
-follow a runtime checkout. The action returns an explicit binary path; it does not modify the runner PATH.
+The action returns an explicit binary path; it does not modify the runner PATH.
 GitHub documents composite actions as the standard way to share repeated steps:
 https://docs.github.com/en/actions/tutorials/create-actions/create-a-composite-action
 
@@ -23,3 +22,18 @@ fresh qualification. Existing proof must not be relabeled as the new policy.
 The first stage removes one of three duplicate installer bodies. It does not
 remove scanner invocations or claim runtime savings: each independent runner
 still needs its scanner, and each meaningful scan/fixture remains.
+
+## Current validator compatibility
+
+GitHub's newer native `$/` references executed successfully in hosted fixture
+run 41585376609. The pinned actionlint 1.7.12 nevertheless rejects that syntax
+before tests, as seen in preflight job 125749969813. Until the normal toolchain
+update supports it, these two callers use GitHub's supported workspace-relative
+`./` form and narrowly document the corresponding Zizmor style exception.
+Neither caller has App credentials, write permission or signing authority;
+checkout persists no credentials. The authoritative scan is untouched.
+
+Follow-up: migrate these two calls to `$/` and remove the annotations when the
+validator supports it. Do not mechanically convert protected-base controller
+actions: `$/` resolves the workflow revision, not a separately checked-out base.
+Source: https://github.blog/changelog/2026-07-30-reference-same-repository-actions-with-self-repository-syntax/
