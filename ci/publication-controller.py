@@ -60,8 +60,12 @@ def readback_error(reason, expected, observed, prior, attempts):
 
 
 class Journal:
-    def __init__(self, repository, product, authorize=None):
-        self.authorize = authorize or (lambda: None)
+    """Record verified destination facts; receipts never authorize public writes.
+
+    Live admission remains at controller entry and every publishing leaf. A
+    revocation after a write must not prevent recording what already happened.
+    """
+    def __init__(self, repository, product):
         self.save_attempts = 0
         self.repository = repository
         self.digest = hashlib.sha256(canonical(product)).hexdigest()
@@ -86,7 +90,6 @@ class Journal:
 
     def save(self):
         self.save_attempts += 1
-        self.authorize()
         tree = api(self.repository, 'git/trees', {'tree': [{'path': 'journal.json', 'mode': '100644',
             'type': 'blob', 'content': json.dumps(self.value, sort_keys=True, indent=2) + '\n'}]})
         body = {'message': 'Record immutable publication ' + self.digest, 'tree': tree['sha'],
@@ -141,7 +144,6 @@ class Journal:
             publication_receipts.validate(proof, self.digest, name)
             prior = self.value.get('receipts', {}).get(name)
             if prior and all(canonical(prior[k]) == canonical(proof[k]) for k in ('expected', 'observed', 'verifier')):
-                self.authorize()
                 return
             self.value.update(schema=2, receipts={**self.value.get('receipts', {}), name: proof})
         existing = next((step for step in self.value['steps'] if step['name'] == name), None)
@@ -337,7 +339,7 @@ def publish(result_path, observations, progress):
             if path.is_symlink() or hashlib.sha256(path.read_bytes()).hexdigest()!=expected:
                 raise ValueError('Publication asset differs from approved immutable bytes')
     progress['stage'] = 'journal'
-    journal=Journal(repository,product,authorize=lambda: run('xo-nixpkg-publication-gate'))
+    journal=Journal(repository,product)
     progress['stage'] = 'cache'
     state=destinations.cache(product,os.environ['XO_NIXPKG_CACHIX_CACHE_URL'])
     if state['status'] in ('conflict','unavailable'):

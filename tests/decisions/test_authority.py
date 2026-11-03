@@ -107,6 +107,26 @@ class Authority(unittest.TestCase):
         self.assertEqual(result['reviewId'], 10)
         self.assertEqual(result['proposalHash'], mod.canonical_hash(PROPOSAL))
 
+    def test_access_loss_requires_new_eligible_exact_head_findings_review(self):
+        api = GitHub()
+        api.roles['maintainer'] = 'read'
+        api.roles['other'] = 'maintain'
+        # Eligibility of another person alone never transfers the old decision.
+        with self.assertRaises(mod.HumanDecisionRequired):
+            verify(api)
+        other = {'id': 2, 'login': 'other', 'type': 'User'}
+        for state, commit in [('DISMISSED', HEAD), ('CHANGES_REQUESTED', HEAD),
+                              ('APPROVED', 'd' * 40)]:
+            api.reviews = [dict(id=11, state=state, commit_id=commit, user=other)]
+            with self.subTest(state=state, commit=commit), self.assertRaises(mod.HumanDecisionRequired):
+                verify(api)
+        api.reviews = [dict(id=12, state='APPROVED', commit_id=HEAD, user=other)]
+        result = verify(api)
+        self.assertEqual(result['reviewId'], 12)
+        api.memberships['other'] = {'state': 'pending', 'role': 'member'}
+        with self.assertRaises(mod.HumanDecisionRequired):
+            verify(api)
+
     def test_administrator_allowed_without_expiry(self):
         api = GitHub()
         api.roles['maintainer'] = 'admin'
