@@ -418,7 +418,8 @@ def repository_policy_binding(controller):
             and policy.get('activation') == 'protected-main', 'Current native policy required')
     combined = {'nativePublication': policy, 'incoming': {
         'workflowSha256': digest(controller / '.github/workflows/repository-secret-scan.yml'),
-        'configSha256': digest(controller / '.gitleaks.toml')},
+        'configSha256': digest(controller / '.gitleaks.toml'),
+        'installerSha256': digest(controller / '.github/actions/setup-gitleaks/action.yml')},
         'history': 'disabled-no-clean-history-claim'}
     return {'policyId': 'gitleaks-incoming-native-publication-v2', 'policySha256': hashlib.sha256(
         json.dumps(combined, sort_keys=True, separators=(',', ':')).encode()).hexdigest()}

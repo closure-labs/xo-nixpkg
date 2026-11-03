@@ -43,7 +43,8 @@ def incoming_check(api, revision):
     base = native.sha(parents[0].get('sha'))
     native.require(re.fullmatch(r'gh-readonly-queue/main/pr-[1-9][0-9]*-' + base, run.get('head_branch', '')) is not None, 'incoming-range-binding')
     expected = native.incoming_sources()
-    for path, ref, key in [(workflow, revision, 'workflowSha256'), ('.gitleaks.toml', base, 'configSha256')]:
+    for path, ref, key in [(workflow, revision, 'workflowSha256'), ('.gitleaks.toml', base, 'configSha256'),
+                           ('.github/actions/setup-gitleaks/action.yml', base, 'installerSha256')]:
         value = api.get(native.PREFIX + '/contents/' + path + '?ref=' + ref)
         native.require(value.get('encoding') == 'base64' and type(value.get('size')) is int
                        and value['size'] <= 65536, 'incoming-source-schema')

@@ -55,8 +55,10 @@ class GitleaksSetup(unittest.TestCase):
 
     def test_authoritative_policy_is_separate_from_proposed_fixture_action(self):
         required = (ROOT / '.github/workflows/repository-secret-scan.yml').read_text()
-        self.assertNotIn('setup-gitleaks', required)
-        self.assertIn('sparse-checkout: .gitleaks.toml', required)
+        self.assertIn('uses: ./controller/.github/actions/setup-gitleaks', required)
+        self.assertNotIn('uses: ./.github/actions/setup-gitleaks', required)
+        self.assertIn('github.event.pull_request.base.sha || github.event.merge_group.base_sha', required)
+        self.assertIn('.github/actions/setup-gitleaks/action.yml', required)
         self.assertIn('--config "$GITHUB_WORKSPACE/controller/.gitleaks.toml"', required)
         for filename in ('gitleaks-policy-fixtures.yml', 'diagnostic-secret-triage.yml'):
             source = (ROOT / '.github/workflows' / filename).read_text()
