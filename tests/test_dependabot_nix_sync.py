@@ -6,6 +6,8 @@ import importlib.util
 import json
 from pathlib import Path
 import unittest
+from types import SimpleNamespace
+import yaml
 
 ROOT = Path(__file__).resolve().parents[1]
 spec = importlib.util.spec_from_file_location('sync_lock', ROOT / 'ci/sync-dependabot-lock.py')
@@ -289,6 +291,39 @@ class SyncTests(unittest.TestCase):
         self.assertIn('permission-contents: write', text)
         self.assertNotIn('permission-pull-requests: write', text)
         self.assertLess(text.index('id: plan'), text.index('id: writer'))
+
+    def test_only_successful_pr_collector_wakes_protected_synchronizer(self):
+        workflow = yaml.safe_load((ROOT / '.github/workflows/dependabot-nix-lock.yml').read_text())
+        triggers = workflow.get('on', workflow.get(True))
+        self.assertEqual(set(triggers), {'workflow_run', 'schedule', 'workflow_dispatch'})
+        self.assertEqual(triggers['workflow_run'], {
+            'workflows': ['Collect PR and queue events'], 'types': ['completed']})
+        self.assertEqual(triggers['schedule'], [{'cron': '17 * * * *'}])
+        condition = workflow['jobs']['synchronize']['if']
+        condition = condition.replace('&&', ' and ').replace('||', ' or ')
+        cases = [
+            ('workflow_run', 'pull_request', 'success', True),
+            ('workflow_run', 'pull_request', 'failure', False),
+            ('workflow_run', 'pull_request', 'cancelled', False),
+            ('workflow_run', 'pull_request_review', 'success', False),
+            ('workflow_run', 'merge_group', 'success', False),
+            ('schedule', None, None, True),
+            ('workflow_dispatch', None, None, True),
+        ]
+        for event_name, event, conclusion, expected in cases:
+            for repository, ref in [('closure-labs/xo-nixpkg', 'refs/heads/main'),
+                                    ('other/fork', 'refs/heads/main'),
+                                    ('closure-labs/xo-nixpkg', 'refs/pull/9/merge')]:
+                with self.subTest(event=event_name, source=event, result=conclusion,
+                                  repository=repository, ref=ref):
+                    for actor_id, login in [(49699333, 'dependabot[bot]'),
+                                            (1, 'dependabot[bot]'), (49699333, 'other[bot]')]:
+                        github = SimpleNamespace(repository=repository, ref=ref, event_name=event_name,
+                            event=SimpleNamespace(workflow_run=SimpleNamespace(event=event, conclusion=conclusion,
+                                actor=SimpleNamespace(id=actor_id, login=login))))
+                        self.assertEqual(bool(eval(condition, {'__builtins__': {}}, {'github': github})),
+                            expected and repository == 'closure-labs/xo-nixpkg' and ref == 'refs/heads/main'
+                            and (event_name != 'workflow_run' or (actor_id, login) == (49699333, 'dependabot[bot]')))
 
 
 if __name__ == '__main__': unittest.main()

@@ -24,8 +24,10 @@ Supported same-repository updates from the official numeric Dependabot identity:
   owners, action paths, workflow semantics and file modes cannot change.
 * Nix updates may change only `flake.lock` and `devenv.lock`. The existing trusted
   JSON-only synchronizer validates the complete nixpkgs identity and all unrelated
-  inputs. Both locks must already agree; admission waits for the scheduled trusted
-  synchronizer if necessary. No candidate Nix expression is evaluated by the
+  inputs. Both locks must already agree. Successful metadata-only PR collectors
+  initiated by the official Dependabot identity wake the protected synchronizer
+  promptly; hourly/manual discovery remains the
+  fallback. No candidate Nix expression is evaluated by the
   credentialed controller, and there is no generic lockfile exemption.
 
 Before approving CI, the controller also inspects the immutable requested
@@ -43,7 +45,23 @@ Missing, incomplete or ambiguous inventories, malformed input, moved heads and
 API errors fail closed. Uncertain writes are not retried. Other author admission
 and exact-current-head merge authority retain their previous restrictions.
 
-The existing workflow completion wakeups and fifteen-minute reconciliation
+The existing workflow completion wakeups and hourly reconciliation
 schedule handle pending runs. No additional polling service is introduced.
-These changes take effect only after this implementation is reviewed and merged;
-a PR's own CI is not evidence that protected-main admission has been deployed.
+
+## Dependency branch ownership and action policy
+
+Prefer Dependabot's own `@dependabot rebase` command over manual main merges on
+its branches. Manual commits can prevent subsequent automatic rebases. If the bot
+refuses because the branch was edited, the maintainer can request
+`@dependabot recreate` after checking whether those edits should be retained.
+Recreation discards branch edits and requires approval of the resulting head.
+The companion-lock synchronizer necessarily adds a signed Decider commit; that
+also changes the head and requires a fresh exact-head merge review. It never
+submits that review itself.
+
+An action-pin update must satisfy both the repository's allowed-actions policy
+and the pin classifier. A GitHub `startup_failure` naming a disallowed action is
+a settings-policy rejection, not a pending CI-execution approval. Review the
+upstream release and request an explicitly authorized exact-pin allowlist change;
+do not broaden the policy or bypass it through a wrapper. Workflow changes alone
+cannot authorize a blocked action.

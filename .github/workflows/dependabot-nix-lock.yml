@@ -1,6 +1,9 @@
 # SPDX-License-Identifier: Apache-2.0
 name: Synchronize native lock for Dependabot
 on:
+  workflow_run: # zizmor: ignore[dangerous-triggers] Protected main reads metadata and validated lock JSON only; candidate code is never executed.
+    workflows: [Collect PR and queue events]
+    types: [completed]
   schedule:
     - cron: "17 * * * *"
   workflow_dispatch:
@@ -12,7 +15,11 @@ concurrency:
   cancel-in-progress: false
 jobs:
   synchronize:
-    if: github.repository == 'closure-labs/xo-nixpkg' && github.ref == 'refs/heads/main'
+    if: >-
+      github.repository == 'closure-labs/xo-nixpkg' && github.ref == 'refs/heads/main' &&
+      (github.event_name != 'workflow_run' ||
+       (github.event.workflow_run.event == 'pull_request' && github.event.workflow_run.conclusion == 'success' &&
+        github.event.workflow_run.actor.id == 49699333 && github.event.workflow_run.actor.login == 'dependabot[bot]'))
     runs-on: ubuntu-24.04
     timeout-minutes: 5
     env:
