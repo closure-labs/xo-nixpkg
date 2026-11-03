@@ -109,6 +109,19 @@ def blob(api, repository, sha):
         raise ValueError('Invalid authenticated dependency blob') from error
 
 
+def current_base(api, repository, expected):
+    """PR base metadata can lag a main merge; never treat it as a live ref."""
+    value = api(f'repos/{repository}/git/ref/heads/main')
+    if (not isinstance(value, dict) or value.get('ref') != 'refs/heads/main'
+            or not isinstance(value.get('object'), dict)
+            or value['object'].get('type') != 'commit'
+            or not isinstance(value['object'].get('sha'), str)
+            or not SHA.fullmatch(value['object']['sha'])):
+        raise ValueError('Invalid live protected-main identity')
+    if value['object']['sha'] != expected:
+        raise UnsupportedFamily('Refresh Dependabot branch: live main differs from reported PR base')
+
+
 def inspect(api, repository, pull, files=None):
     """Stdlib shape/byte validation; never execute or import candidate code.
 
@@ -116,6 +129,7 @@ def inspect(api, repository, pull, files=None):
     The trusted-main admission worker must additionally call classify().
     """
     number, base, head = identity(repository, pull)
+    current_base(api, repository, base)
     files = files_at(api, repository, number) if files is None else files
     paths = changed_paths(files, pull.get('changed_files'))
     if (not 1 <= len(paths) <= MAX_FILES or len(paths) != len(files)
@@ -156,6 +170,7 @@ def revalidate(api, repository, context):
     latest = api(f'repos/{repository}/pulls/{context["number"]}')
     if identity(repository, latest) != (context['number'], context['base'], context['head']):
         raise ValueError('Dependency PR changed during validation; review the current head')
+    current_base(api, repository, context['base'])
     return latest
 
 
