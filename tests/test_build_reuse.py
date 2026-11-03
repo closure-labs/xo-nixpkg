@@ -504,6 +504,27 @@ class RestoreTests(ReuseFixture):
         self.attestation.assert_not_called()
         self.transport.restore.assert_not_called()
 
+    def test_current_bash_verdict_contract_still_skips_impossible_pr_receipts(self):
+        fixture = ROOT / 'tests/fixtures/reuse/ci-pr-export-disabled-bash-verdict.yml'
+        self.assertEqual(fixture.read_bytes(), (ROOT / reuse.WORKFLOW).read_bytes())
+        self.assertIn(reuse.digest(fixture), reuse.NO_PR_RECEIPT_WORKFLOWS)
+        workflow = yaml.safe_load(fixture.read_text())
+        disabled = "${{ github.event_name != 'pull_request' && (github.event_name != 'workflow_dispatch' || inputs.export_reuse_payload) && 'true' || 'false' }}"
+        for job in ('preflight', 'validate'):
+            self.assertEqual(workflow['jobs'][job]['env']['XO_NIXPKG_EXPORT_REUSE_PAYLOAD'], disabled)
+        self.assertEqual(workflow['jobs']['attest-builds']['if'],
+                         "github.event_name != 'pull_request' && github.event_name != 'pull_request_review' && needs.validate.outputs.cache_eligible == 'true'")
+        (self.controller / reuse.WORKFLOW).write_bytes(fixture.read_bytes())
+        self.runs = [dict(self.run, id=200 + i) for i in range(30)]
+        with patch.object(reuse, 'api', side_effect=self.api) as calls, \
+             patch.object(reuse, 'digest', wraps=reuse.digest) as digests:
+            self.assertEqual(self.restore()['status'], 'miss')
+        self.assertEqual(len(calls.call_args_list), 1)
+        self.assertEqual(digests.call_count, 1)
+        self.download.assert_not_called()
+        self.attestation.assert_not_called()
+        self.transport.restore.assert_not_called()
+
     def test_mixed_pr_runs_still_reach_authenticated_queue_hit(self):
         self.pinned_workflow()
         skipped = [dict(self.run, id=200 + i) for i in range(12)]
