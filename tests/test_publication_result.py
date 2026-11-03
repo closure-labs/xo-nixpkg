@@ -46,13 +46,12 @@ class PublicationResult(unittest.TestCase):
         self.artifact = self.root/'publication-result.json'
         self.calls = []
         class Journal:
-            def __init__(self, repository, product, authorize):
+            def __init__(self, repository, product):
                 self.digest = hashlib.sha256(m.canonical(product)).hexdigest()
                 self.branch = 'automation/publication-'+self.digest
                 self.save_attempts = 0
-                self.authorize = authorize
             def complete(self, *args):
-                self.authorize()
+                pass
         self.journal = Journal
         self.environment = patch.dict(os.environ, {'RUNNER_TEMP':str(self.root),
             'XO_NIXPKG_EVIDENCE':str(self.directory),'XO_NIXPKG_CACHIX_CACHE_URL':'https://fixture.invalid',
@@ -98,7 +97,7 @@ class PublicationResult(unittest.TestCase):
             handoffCopyAttempts=0,handoffPushInvocations=0,xoTagLeafInvocations=1,projectTagInvocations=0,
             releasePublishInvocations=0,xoTagRequired=False,journalSaveAttempts=0))
         self.assertNotIn(('xo-nixpkg-publish',),self.calls)
-        self.assertEqual(self.calls.count(('xo-nixpkg-publication-gate',)),4)
+        self.assertEqual(self.calls.count(('xo-nixpkg-publication-gate',)),1)
 
     def test_cache_repair_records_fetch_and_publication_instead_of_noop(self):
         result = self.execute(args=('repair',))
@@ -162,14 +161,44 @@ class PublicationResult(unittest.TestCase):
                 self.assertEqual(observations['handoffCopyAttempts'],int(missing))
                 self.assertEqual(sum(c[:2]==['oras','copy'] for c in calls),int(missing))
 
-    def test_journal_save_attempt_is_counted_before_revoked_authority(self):
+    def test_journal_records_metadata_without_replaying_destination_authority(self):
         journal = object.__new__(m.Journal)
         journal.save_attempts = 0
-        journal.authorize = lambda: (_ for _ in ()).throw(ValueError('revoked'))
-        with patch.object(m,'api') as api, self.assertRaisesRegex(ValueError,'revoked'):
+        journal.repository = self.product['repository']
+        journal.digest = 'a' * 64
+        journal.branch = 'automation/publication-' + journal.digest
+        journal.commit = None
+        journal.value = {'schema': 1, 'productHash': journal.digest, 'steps': []}
+        def api(repository, path, data=None, **kwargs):
+            if path == 'git/trees': return {'sha': 'd' * 40}
+            if path == 'git/commits': return {'sha': 'e' * 40}
+            if path == 'git/refs':
+                return {'ref': 'refs/heads/' + journal.branch,
+                        'object': {'type': 'commit', 'sha': 'e' * 40}}
+            if path == 'git/ref/heads/' + journal.branch:
+                return {'ref': 'refs/heads/' + journal.branch,
+                        'object': {'type': 'commit', 'sha': 'e' * 40}}
+            raise AssertionError('unexpected journal operation')
+        with patch.object(m, 'api', side_effect=api), patch.object(m, 'run') as gate:
             journal.save()
-        self.assertEqual(journal.save_attempts,1)
-        api.assert_not_called()
+        self.assertEqual(journal.save_attempts, 1)
+        self.assertEqual(journal.commit, 'e' * 40)
+        gate.assert_not_called()
+
+    def test_access_lost_before_next_handoff_prevents_copy(self):
+        calls = []
+        def command(args, **kwargs):
+            calls.append(args)
+            return None
+        def gate(*args, **kwargs):
+            self.assertEqual(args, ('xo-nixpkg-publication-gate',))
+            raise ValueError('current access lost')
+        with patch.object(m, 'registry', contextlib.nullcontext), \
+             patch.object(packets, 'command', side_effect=command), \
+             patch.object(m, 'run', side_effect=gate):
+            with self.assertRaisesRegex(ValueError, 'current access lost'):
+                m.remote_handoff(self.source, self.descriptor)
+        self.assertFalse(any(call[:2] == ['oras', 'copy'] for call in calls))
 
 
 if __name__ == '__main__':

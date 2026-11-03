@@ -19,6 +19,10 @@ name, args = pathlib.Path(sys.argv[0]).name, sys.argv[1:]
 fixture = json.loads(pathlib.Path(os.environ['PUBLISH_FIXTURE']).read_text())
 with open(os.environ['PUBLISH_CALLS'], 'a') as stream:
     stream.write(json.dumps([name, *args]) + '\\n')
+if name == 'xo-nixpkg-publication-gate':
+    gates = sum(json.loads(line)[0] == name for line in pathlib.Path(os.environ['PUBLISH_CALLS']).read_text().splitlines())
+    if fixture.get('denied') or gates == fixture.get('deny_at'):
+        sys.exit(1)
 if name == 'curl':
     previous = [json.loads(line) for line in pathlib.Path(os.environ['PUBLISH_CALLS']).read_text().splitlines()]
     uploaded = any(call[0] == 'cachix' for call in previous)
@@ -97,6 +101,29 @@ class PublishReadback(unittest.TestCase):
         self.assertEqual(sum(call[0] == 'cachix' for call in calls), 1)
         self.assertNotIn('fixture-secret', result.stdout + result.stderr)
         return result, calls
+
+    def test_lost_access_gate_blocks_cache_transfer(self):
+        result, calls = self.run_leaf(denied=True)
+        self.assertNotEqual(result.returncode, 0)
+        self.assertFalse(any(call[0] in ('cachix', 'xo-nixpkg-restore-products') for call in calls))
+
+    def test_revocation_after_restore_still_blocks_actual_cache_upload(self):
+        result, calls = self.run_leaf(deny_at=2)
+        self.assertNotEqual(result.returncode, 0)
+        self.assertTrue(any(call[0] == 'xo-nixpkg-restore-products' for call in calls))
+        self.assertFalse(any(call[0] == 'cachix' for call in calls))
+        self.assertEqual(sum(call[0] == 'xo-nixpkg-publication-gate' for call in calls), 2)
+
+    def test_revocation_blocks_every_tag_and_release_leaf(self):
+        for script in ('tag-release.sh', 'tag-xo-release.sh', 'publish-release.sh'):
+            with self.subTest(script=script):
+                self.calls.unlink(missing_ok=True)
+                self.fixture.write_text(json.dumps({'denied': True}))
+                result = subprocess.run(['bash', str(ROOT / 'ci' / script)], env=self.env,
+                                        text=True, capture_output=True, timeout=5)
+                self.assertNotEqual(result.returncode, 0)
+                calls = [json.loads(line) for line in self.calls.read_text().splitlines()]
+                self.assertEqual(calls, [['xo-nixpkg-publication-gate']])
 
     def test_all_eight_paths_are_read_after_push_with_metadata_caches_disabled(self):
         result, calls = self.run_leaf()
