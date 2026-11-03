@@ -504,9 +504,8 @@ class RestoreTests(ReuseFixture):
         self.attestation.assert_not_called()
         self.transport.restore.assert_not_called()
 
-    def test_current_bash_verdict_contract_still_skips_impossible_pr_receipts(self):
-        fixture = ROOT / 'tests/fixtures/reuse/ci-pr-export-disabled-bash-verdict.yml'
-        self.assertEqual(fixture.read_bytes(), (ROOT / reuse.WORKFLOW).read_bytes())
+    def assert_pinned_bash_contract(self, name):
+        fixture = ROOT / 'tests/fixtures/reuse' / name
         self.assertIn(reuse.digest(fixture), reuse.NO_PR_RECEIPT_WORKFLOWS)
         workflow = yaml.safe_load(fixture.read_text())
         disabled = "${{ github.event_name != 'pull_request' && (github.event_name != 'workflow_dispatch' || inputs.export_reuse_payload) && 'true' || 'false' }}"
@@ -524,6 +523,12 @@ class RestoreTests(ReuseFixture):
         self.download.assert_not_called()
         self.attestation.assert_not_called()
         self.transport.restore.assert_not_called()
+
+    def test_archived_bash_verdict_contract_still_skips_impossible_pr_receipts(self):
+        self.assert_pinned_bash_contract('ci-pr-export-disabled-bash-verdict.yml')
+
+    def test_new_pinned_harden_runner_contract_still_skips_impossible_pr_receipts(self):
+        self.assert_pinned_bash_contract('ci-pr-export-disabled-harden-v2.22.3.yml')
 
     def test_mixed_pr_runs_still_reach_authenticated_queue_hit(self):
         self.pinned_workflow()
@@ -546,6 +551,20 @@ class RestoreTests(ReuseFixture):
         self.assertTrue(any(c.args[0].endswith('/actions/runs/101/artifacts') for c in calls.call_args_list))
         self.attestation.assert_called_once()
         self.transport.restore.assert_called_once()
+
+    def test_future_action_pin_keeps_full_discovery_and_authentication(self):
+        fixture = ROOT / 'tests/fixtures/reuse/ci-pr-export-disabled-harden-v2.22.3.yml'
+        data = fixture.read_text().replace('46b06cea07f9e64621fdf066ba77ac6915163d43', 'a' * 40)
+        self.assertNotEqual(data.encode(), fixture.read_bytes())
+        (self.controller / reuse.WORKFLOW).write_text(data)
+        self.receipt['workflowSha256'] = reuse.digest(self.controller / reuse.WORKFLOW)
+        self.assertNotIn(self.receipt['workflowSha256'], reuse.NO_PR_RECEIPT_WORKFLOWS)
+        with patch.object(reuse, 'api', side_effect=self.api) as calls:
+            self.assertEqual(self.restore()['status'], 'hit')
+        self.assertTrue(any(c.args[0].endswith('/actions/runs/101/artifacts') for c in calls.call_args_list))
+        self.attestation.assert_called_once()
+        self.transport.restore.assert_called_once()
+        self.native.assert_called_once()
 
     def test_selected_queue_malformed_output_or_signature_still_fails(self):
         self.pinned_workflow()
