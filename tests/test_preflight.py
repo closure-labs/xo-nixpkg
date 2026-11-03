@@ -308,7 +308,7 @@ class PreflightTests(unittest.TestCase):
             security = workflow('security-audit.yml')
         self.assertNotIn('pull_request', security['on'])
         self.assertNotIn('merge_group', security['on'])
-        self.assertEqual(set(security['on']), {'push', 'schedule', 'workflow_dispatch'})
+        self.assertEqual(set(security['on']), {'schedule', 'workflow_dispatch'})
         self.assertEqual(ci['jobs']['preflight']['name'], 'Repository preflight')
         self.assertEqual(ci['jobs']['validate']['needs'], ['classify', 'preflight'])
         self.assertIn('preflight', ci['jobs']['gate']['needs'])

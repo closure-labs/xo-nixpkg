@@ -262,10 +262,7 @@ jobs:
           ref: ${{ github.event.pull_request.base.sha || github.event.merge_group.base_sha || 'main' }}
           path: controller
           persist-credentials: false
-      - name: Set up Nix
-        uses: ./controller/.github/actions/setup-nix # zizmor: ignore[self-repository] -- local setup follows the explicitly checked-out trusted revision.
-        with:
-          github-token: ${{ github.token }}
       - name: Enforce the classified lifecycle
         working-directory: controller
-        run: nix run .#devenv -- tasks run --mode single --option 'packages:pkgs!' '' ci:verdict
+        # The protected script uses only Bash builtins; no package realization.
+        run: bash ci/ci-verdict.sh
