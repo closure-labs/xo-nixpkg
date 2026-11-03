@@ -1,8 +1,6 @@
 # SPDX-License-Identifier: Apache-2.0
 name: Audit repository rules
 on:
-  push:
-    branches: [main]
   schedule:
     - cron: '43 4 * * *'
   workflow_dispatch:
