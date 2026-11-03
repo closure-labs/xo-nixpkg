@@ -233,6 +233,7 @@ def incoming_sources():
     for key, env, fallback in [
         ('workflowSha256', 'XO_INCOMING_SECRET_WORKFLOW_SOURCE', Path(__file__).parents[1] / '.github/workflows/repository-secret-scan.yml'),
         ('configSha256', 'XO_GITLEAKS_CONFIG_SOURCE', Path(__file__).parents[1] / '.gitleaks.toml'),
+        ('installerSha256', 'XO_GITLEAKS_INSTALLER_SOURCE', Path(__file__).parents[1] / '.github/actions/setup-gitleaks/action.yml'),
     ]:
         path = Path(os.environ.get(env, str(fallback)))
         require(path.is_file() and not path.is_symlink() and path.stat().st_size <= 65536, 'incoming-policy-file')

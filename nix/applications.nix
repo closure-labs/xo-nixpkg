@@ -228,6 +228,7 @@ rec {
       export XO_NATIVE_SECRET_POLICY_PATH=${../ci/native-secret-policy.json}
       export XO_INCOMING_SECRET_WORKFLOW_SOURCE=${../.github/workflows/repository-secret-scan.yml}
       export XO_GITLEAKS_CONFIG_SOURCE=${../.gitleaks.toml}
+      export XO_GITLEAKS_INSTALLER_SOURCE=${../.github/actions/setup-gitleaks/action.yml}
       export XO_NIXPKG_REFRESHER=${../ci/refresh-products.py}
       export PYTHONPATH=${decisions}/lib/decisions
       export XO_NIXPKG_DISTRIBUTION_CACHE_SOURCE=${../ci/distribution-cache.py}
@@ -390,6 +391,7 @@ rec {
       export XO_NATIVE_SECRET_POLICY_PATH=${../ci/native-secret-policy.json}
       export XO_INCOMING_SECRET_WORKFLOW_SOURCE=${../.github/workflows/repository-secret-scan.yml}
       export XO_GITLEAKS_CONFIG_SOURCE=${../.gitleaks.toml}
+      export XO_GITLEAKS_INSTALLER_SOURCE=${../.github/actions/setup-gitleaks/action.yml}
       export XO_NIXPKG_QUALIFIER=${../ci/qualify-products.py}
       export PYTHONPATH=${decisions}/lib/decisions
       export XO_NIXPKG_DISTRIBUTION_CACHE_SOURCE=${../ci/distribution-cache.py}
@@ -410,6 +412,7 @@ rec {
       export XO_NATIVE_SECRET_POLICY_PATH=${../ci/native-secret-policy.json}
       export XO_INCOMING_SECRET_WORKFLOW_SOURCE=${../.github/workflows/repository-secret-scan.yml}
       export XO_GITLEAKS_CONFIG_SOURCE=${../.gitleaks.toml}
+      export XO_GITLEAKS_INSTALLER_SOURCE=${../.github/actions/setup-gitleaks/action.yml}
       export XO_NIXPKG_AUDIT_FRESHNESS_SOURCE=${../ci/audit-freshness.py}
       export PYTHONPATH=${decisions}/lib/decisions
     '';

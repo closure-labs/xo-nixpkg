@@ -38,7 +38,7 @@ The protected-base `.gitleaks.toml` preserves all upstream rules and the existin
 narrow canonical finding-identity exception, unchanged. No new exclusions,
 fingerprints, baseline or size-based skipping are added. Inline allow-comments
 are ignored. Git text diffs disable external diff/textconv execution. The scanner
-reads candidate data; no candidate scripts, local actions, App credentials,
+reads candidate data; no candidate scripts, candidate local actions, App credentials,
 cache-write tokens or license secrets are used. Checksums and actions are pinned.
 
 Scans use full redaction, no verbose output and no uploaded findings/report.
@@ -48,11 +48,11 @@ printed. Findings, runtime errors and the600-second wall limit all fail closed.
 ## Release binding and unresolved history
 
 The existing `repositorySecretPolicy` binding now covers native publication
-policy plus exact scanner workflow/config hashes. Old policy products cannot be
+policy plus exact scanner workflow/config/installer hashes. Old policy products cannot be
 rescanned into this identity; fresh qualification and human review are required.
 Every publication boundary queries ordinary GitHub metadata for the exact source's
 successful merge-group run and current attempt, the real Actions15368 audit job,
-its exact base/head range, and matching workflow/protected configuration bytes.
+its exact base/head range, and matching workflow/protected configuration/installer bytes.
 No synthetic check, custom receipt service or saved-success fallback is added.
 Native scanning/push protection settings and the fresh repository-wide zero-open
 alert publication observation remain unchanged, as do Grype inventories, accepted

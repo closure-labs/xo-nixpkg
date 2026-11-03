@@ -71,7 +71,8 @@ class RangeTests(unittest.TestCase):
 
     def run_scan(self, **values):
         env = dict(self.env, EVENT_NAME='pull_request', BASE_SHA=self.base, HEAD_SHA=self.head,
-                   RUNNER_TEMP=str(self.runtime), GITHUB_WORKSPACE=str(self.root), ARG_LOG=str(self.root / 'args.json'))
+                   RUNNER_TEMP=str(self.runtime), GITHUB_WORKSPACE=str(self.root), ARG_LOG=str(self.root / 'args.json'),
+                   GITLEAKS_BINARY=str(self.runtime / 'gitleaks/gitleaks'))
         env.update(values)
         return subprocess.run(['bash', '-c', scan_script()], cwd=self.repo, env=env,
                               stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
@@ -130,6 +131,7 @@ class ProofAPI:
         self.owner = 15368
         self.count = 1
         self.changed_source = False
+        self.changed_installer = False
         self.calls = []
     def get(self, path):
         self.calls.append(path)
@@ -140,8 +142,11 @@ class ProofAPI:
         if '/git/commits/' in path:
             return {'parents': [{'sha': 'a' * 40}, {'sha': 'c' * 40}]}
         if '/contents/' in path:
-            file = ROOT / ('.gitleaks.toml' if '/contents/.gitleaks.toml?' in path else '.github/workflows/repository-secret-scan.yml')
-            raw = file.read_bytes() + (b'changed' if self.changed_source else b'')
+            relative = path.split('/contents/', 1)[1].split('?ref=', 1)[0]
+            assert relative in ('.gitleaks.toml', '.github/workflows/repository-secret-scan.yml', '.github/actions/setup-gitleaks/action.yml')
+            file = ROOT / relative
+            changed = self.changed_source or (self.changed_installer and relative.endswith('/action.yml'))
+            raw = file.read_bytes() + (b'changed' if changed else b'')
             return {'encoding': 'base64', 'size': len(raw), 'content': base64.b64encode(raw).decode()}
         if '/attempts/2/jobs?' in path:
             return {'total_count': 1, 'jobs': [copy.deepcopy(self.job)]}
@@ -155,6 +160,16 @@ class PublicationProofTests(unittest.TestCase):
         proof = GATE.incoming_check(api, 'b' * 40)
         self.assertEqual(proof, {'runId': 7, 'runAttempt': 2, 'base': 'a' * 40, 'head': 'b' * 40})
         self.assertTrue(any('/attempts/2/jobs?' in p for p in api.calls))
+
+    def test_installer_is_bound_to_base_and_changed_bytes_block(self):
+        api = ProofAPI()
+        GATE.incoming_check(api, 'b' * 40)
+        installer = GATE.native.PREFIX + '/contents/.github/actions/setup-gitleaks/action.yml?ref='
+        self.assertIn(installer + 'a' * 40, api.calls)
+        self.assertNotIn(installer + 'b' * 40, api.calls)
+        api.changed_installer = True
+        with self.assertRaisesRegex(GATE.native.Blocked, 'incoming-policy-changed'):
+            GATE.incoming_check(api, 'b' * 40)
 
     def test_failed_foreign_history_wrong_head_and_incomplete_runs_block(self):
         for key, value in [('conclusion', 'failure'), ('event', 'schedule'), ('status', 'in_progress'),
@@ -230,7 +245,10 @@ class PublicationProofTests(unittest.TestCase):
         self.assertNotIn('--all --full-history', text)
         for absent in ['secrets.', 'write\n', 'continue-on-error:', 'upload-artifact', 'pull_request_target:', 'workflow_run:', '--baseline-path', '--max-target-megabytes']:
             self.assertNotIn(absent, text)
-        self.assertIn('551f6fc83ea457d62a0d98237cbad105af8d557003051f41f3e7ca7b3f2470eb', text)
+        self.assertNotIn('releases/download/', text)
+        self.assertIn('uses: ./controller/.github/actions/setup-gitleaks', text)
+        self.assertIn('551f6fc83ea457d62a0d98237cbad105af8d557003051f41f3e7ca7b3f2470eb',
+                      (ROOT / '.github/actions/setup-gitleaks/action.yml').read_text())
         self.assertFalse((ROOT / '.github/workflows/native-secret-observation.yml').exists())
         self.assertFalse(hasattr(GATE.native, 'publish_check'))
 

@@ -33,6 +33,9 @@ class PreflightTests(unittest.TestCase):
         (self.controller / '.github/workflows').mkdir(parents=True, exist_ok=True)
         (self.controller / '.github/workflows/repository-secret-scan.yml').write_bytes((ROOT / '.github/workflows/repository-secret-scan.yml').read_bytes())
         (self.controller / '.gitleaks.toml').write_bytes((ROOT / '.gitleaks.toml').read_bytes())
+        installer = self.controller / '.github/actions/setup-gitleaks/action.yml'
+        installer.parent.mkdir(parents=True)
+        installer.write_bytes((ROOT / '.github/actions/setup-gitleaks/action.yml').read_bytes())
         self.cheap = {'name': 'repository-policy', 'attribute': 'checks.x86_64-linux.repository-policy'}
         self.runtime = {'name': 'xo-latest', 'attribute': 'checks.x86_64-linux.xo-latest'}
         self.plan = {'schemaVersion': 2, 'name': 'fixture', 'targets': [self.cheap, self.runtime]}

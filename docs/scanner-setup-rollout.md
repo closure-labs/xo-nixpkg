@@ -7,21 +7,19 @@ The action returns an explicit binary path; it does not modify the runner PATH.
 GitHub documents composite actions as the standard way to share repeated steps:
 https://docs.github.com/en/actions/tutorials/create-actions/create-a-composite-action
 
-The required incoming scan intentionally retains its existing inline installer
-in this first stage. Its protected-base checkout does not contain the new action
-until this PR is reviewed and merged. Running the proposed installer from the
-candidate checkout would let that candidate replace the scanner with a passing
-stub; this PR does not do that. Candidate policy fixtures remain separate,
-read-only tests and do not certify the authoritative scan.
+The required incoming scan uses that same installer from its exact event-base
+checkout (`controller/.github/actions/setup-gitleaks`). It never loads the
+candidate's action, even when a PR edits the installer. The checksum and version
+remain pinned in the shared action. Candidate fixtures use their proposed action
+in separate read-only jobs and cannot certify the required scan.
 
-After this foundation reaches protected main, a follow-up can make the required
-scanner checkout the action from the exact event base and use that copy. That
-follow-up must bind the installer bytes in both policy-hash implementations and
-the publication's source verification, update the reviewed policy hash, and run
-fresh qualification. Existing proof must not be relabeled as the new policy.
-The first stage removes one of three duplicate installer bodies. It does not
-remove scanner invocations or claim runtime savings: each independent runner
-still needs its scanner, and each meaningful scan/fixture remains.
+The installer bytes are part of both policy-hash implementations and the
+publication source verification. Publication fetches the installer at the exact
+scan base, not the candidate head, and fails closed on a mismatch. This rollout
+changes the policy binding and therefore needs fresh qualification; old evidence
+is not relabeled. Required job name, App owner, ranges, redaction, timeouts and
+failure behavior remain unchanged. All three installer copies now share one
+body. Scanner invocations remain separate because they serve different purposes.
 
 ## Current validator compatibility
 
@@ -31,7 +29,9 @@ before tests, as seen in preflight job 125749969813. Until the normal toolchain
 update supports it, these two callers use GitHub's supported workspace-relative
 `./` form and narrowly document the corresponding Zizmor style exception.
 Neither caller has App credentials, write permission or signing authority;
-checkout persists no credentials. The authoritative scan is untouched.
+checkout persists no credentials. The authoritative caller deliberately retains
+its protected-base workspace path: native `$/` would select the workflow
+revision instead of that separate trusted checkout.
 
 Follow-up: migrate these two calls to `$/` and remove the annotations when the
 validator supports it. Do not mechanically convert protected-base controller

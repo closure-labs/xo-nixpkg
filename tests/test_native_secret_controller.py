@@ -77,7 +77,8 @@ class PolicyBindingTests(unittest.TestCase):
     def sources(self):
         return {'XO_NATIVE_SECRET_POLICY_PATH': str(ROOT / 'ci/native-secret-policy.json'),
                 'XO_INCOMING_SECRET_WORKFLOW_SOURCE': str(ROOT / '.github/workflows/repository-secret-scan.yml'),
-                'XO_GITLEAKS_CONFIG_SOURCE': str(ROOT / '.gitleaks.toml')}
+                'XO_GITLEAKS_CONFIG_SOURCE': str(ROOT / '.gitleaks.toml'),
+                'XO_GITLEAKS_INSTALLER_SOURCE': str(ROOT / '.github/actions/setup-gitleaks/action.yml')}
 
     def test_decision_policy_matches_actual_protected_scanner_files(self):
         with patch.dict(os.environ, self.sources()):
@@ -95,7 +96,7 @@ class PolicyBindingTests(unittest.TestCase):
 
     def test_either_scanner_file_change_invalidates_unchanged_binding(self):
         configured = json.loads((ROOT / 'ci/decision-policy.json').read_text())['repositorySecretPolicy']
-        for variable in ('XO_INCOMING_SECRET_WORKFLOW_SOURCE', 'XO_GITLEAKS_CONFIG_SOURCE'):
+        for variable in ('XO_INCOMING_SECRET_WORKFLOW_SOURCE', 'XO_GITLEAKS_CONFIG_SOURCE', 'XO_GITLEAKS_INSTALLER_SOURCE'):
             sources = self.sources()
             with tempfile.TemporaryDirectory() as temporary:
                 changed = Path(temporary) / 'changed-source'
