@@ -3,7 +3,7 @@ name: Test secret scanner policy
 on:
   pull_request:
     branches: [main]
-    paths: [.gitleaks.toml, tests/test_public_cache_key_policy.py, .github/workflows/gitleaks-policy-fixtures.yml]
+    paths: [.gitleaks.toml, tests/test_public_cache_key_policy.py, tests/test_gitleaks_setup.py, .github/actions/setup-gitleaks/**, .github/workflows/gitleaks-policy-fixtures.yml]
   merge_group:
     types: [checks_requested]
 permissions:
@@ -17,15 +17,14 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
+      - name: Test installer integrity boundaries
+        run: python3 -m unittest discover -s tests -p test_gitleaks_setup.py
       - name: Install checksum-pinned fixture scanner
-        run: |
-          set -euo pipefail
-          mkdir -p "$RUNNER_TEMP/policy-gitleaks"
-          curl --fail --silent --show-error --location --proto '=https' --tlsv1.2 --max-time 60 https://github.com/gitleaks/gitleaks/releases/download/v8.30.1/gitleaks_8.30.1_linux_x64.tar.gz -o "$RUNNER_TEMP/policy-gitleaks.tar.gz"
-          echo "551f6fc83ea457d62a0d98237cbad105af8d557003051f41f3e7ca7b3f2470eb  $RUNNER_TEMP/policy-gitleaks.tar.gz" | sha256sum --check --status
-          tar -xzf "$RUNNER_TEMP/policy-gitleaks.tar.gz" -C "$RUNNER_TEMP/policy-gitleaks" gitleaks
-          test "$("$RUNNER_TEMP/policy-gitleaks/gitleaks" version)" = 8.30.1
+        id: gitleaks
+        uses: ./.github/actions/setup-gitleaks
       - name: Test proposed policy without changing authoritative scan
+        env:
+          GITLEAKS_BINARY: ${{ steps.gitleaks.outputs.binary }}
         run: |
           set -euo pipefail
           sudo systemd-run --quiet --wait --pipe --collect --service-type=exec \
@@ -37,6 +36,6 @@ jobs:
             --property=PrivateTmp=true --property=PrivateNetwork=true --property=ProtectControlGroups=true \
             --property=UMask=0077 --property=KillMode=control-group \
             --setenv=PATH=/usr/local/bin:/usr/bin:/bin \
-            --setenv="GITLEAKS_BINARY=$RUNNER_TEMP/policy-gitleaks/gitleaks" \
+            --setenv="GITLEAKS_BINARY=$GITLEAKS_BINARY" \
             /usr/bin/timeout --signal=TERM --kill-after=5s 110s \
             /usr/bin/python3 -m unittest discover -s tests -p test_public_cache_key_policy.py
