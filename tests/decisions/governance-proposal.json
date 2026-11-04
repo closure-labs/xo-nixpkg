@@ -1,0 +1,22 @@
+{
+  "schema": 1,
+  "activation": "inactive",
+  "repository": "closure-labs/xo-nixpkg",
+  "approvalAccessLoss": "blocks-future-issuance-only",
+  "pastAcceptances": "remain-valid-within-original-scope-unless-expired-or-explicitly-revoked",
+  "mechanisms": {
+    "merge": "native-required-reviews-and-merge-queue",
+    "findings": "explicit-native-PR-review-and-trusted-once-only-issuance",
+    "publication": "protected-environment-if-separate-release-approval-is-retained",
+    "integrity": "existing-pinned-gh-attestation-and-exact-artifact-verification"
+  },
+  "unresolved": [
+    "minimum-future-approver-role-and-reviewer-pool",
+    "retain-separate-human-publication-approval-or-publish-automatically-when-covered",
+    "legacy-sealing-and-expiry-explicit-revocation-policy"
+  ],
+  "liveSettingsChanged": false,
+  "issuerImplemented": false,
+  "alternateWritersVerified": false,
+  "legacySealed": false
+}
