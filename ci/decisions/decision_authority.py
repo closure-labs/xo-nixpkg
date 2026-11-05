@@ -405,6 +405,37 @@ def approver_members(api):
     return members
 
 
+def governance_eligible(api, repository, user):
+    """A current repository admin OR active pinned Super Admin team member."""
+    if not isinstance(user, dict) or user.get('type') != 'User':
+        return False
+    login, user_id = user.get('login'), user.get('id')
+    if (not isinstance(login, str) or not re.fullmatch(r'[A-Za-z0-9-]+', login)
+            or type(user_id) is not int or user_id < 1):
+        raise AuthorityError('Invalid immutable human reviewer identity')
+    permission = api(f'repos/{repository}/collaborators/{login}/permission')
+    native = permission.get('user') if isinstance(permission, dict) else None
+    if (not isinstance(native, dict) or native.get('type') != 'User'
+            or native.get('id') != user_id or type(native.get('id')) is not int
+            or not isinstance(native.get('login'), str) or native['login'].lower() != login.lower()):
+        raise AuthorityError('Repository permission identity differs from native reviewer')
+    role = permission.get('role_name', permission.get('permission'))
+    if not isinstance(role, str):
+        raise AuthorityError('Invalid current repository reviewer role')
+    if role == 'admin':
+        return True  # Repository admins do not depend on organization membership.
+    members = approver_members(api)
+    if login.lower() not in members:
+        return False
+    if members[login.lower()] != user_id:
+        raise AuthorityError('Reviewer identity differs from current Super Admin member')
+    membership = api(f'orgs/{APPROVER_ORG}/teams/{APPROVER_TEAM}/memberships/{login}')
+    if (not isinstance(membership, dict) or membership.get('state') not in ('active', 'pending')
+            or membership.get('role') not in ('member', 'maintainer')):
+        raise AuthorityError('Invalid current Super Admin membership')
+    return membership['state'] == 'active'
+
+
 def eligible(api, repository, user, members=None):
     if not isinstance(user, dict) or user.get('type') != 'User' or not isinstance(user.get('login'), str):
         return False
@@ -430,8 +461,13 @@ def eligible(api, repository, user, members=None):
     return permission.get('role_name', permission.get('permission')) in ('maintain', 'admin')
 
 
-def approval(api, repository, number, head):
-    members = approver_members(api)
+def approval(api, repository, number, head, *, reviewer_policy=None):
+    if reviewer_policy not in (None, 'repository-admin-or-super-admin'):
+        raise AuthorityError('Unsupported current approval policy')
+    members = approver_members(api) if reviewer_policy is None else None
+    def qualified(user):
+        return (eligible(api, repository, user, members) if reviewer_policy is None
+                else governance_eligible(api, repository, user))
     reviews = collection(api, f'repos/{repository}/pulls/{number}/reviews')
     latest = {}
     for review in reviews:
@@ -456,28 +492,29 @@ def approval(api, repository, number, head):
             latest[user_id] = review
     accepted = []
     for review in latest.values():
-        if not eligible(api, repository, review['user'], members):
+        if not qualified(review['user']):
             continue
         if review['state'] == 'CHANGES_REQUESTED':
-            raise HumanDecisionRequired('Eligible Super Admin has an unresolved changes-requested review')
+            raise HumanDecisionRequired('Eligible Super Admin has an unresolved changes-requested review' if reviewer_policy is None else 'Eligible repository admin or Super Admin has an unresolved changes-requested review')
         if review['state'] == 'APPROVED' and review.get('commit_id') == head:
             accepted.append(review)
     if not accepted:
-        raise HumanDecisionRequired('An active Super Admin with maintain/admin access must approve the exact current proposal PR head')
+        raise HumanDecisionRequired('An active Super Admin with maintain/admin access must approve the exact current proposal PR head' if reviewer_policy is None else 'An eligible repository admin or Super Admin must approve the exact proposal head')
     selected = sorted(accepted, key=lambda value: value['id'])[-1]
-    if approver_members(api) != members:
+    if reviewer_policy is None and approver_members(api) != members:
         raise AuthorityError('Super Admins membership changed during authorization')
-    if not eligible(api, repository, selected['user'], members):
-        raise HumanDecisionRequired('Selected Super Admin approval is no longer eligible')
+    if not qualified(selected['user']):
+        raise HumanDecisionRequired('Selected Super Admin approval is no longer eligible' if reviewer_policy is None else 'Selected admin or Super Admin approval is no longer eligible')
     return selected
 
 
 def verify_proposal(proposal, pr, repository, expected_bot, require_merged=True, github=None,
-                    allowed_paths=None, require_live_review=True):
+                    allowed_paths=None, require_live_review=True, reviewer_policy=None):
     """Return API-derived authority; callers separately validate scan/release payload semantics.
 
     No self-reported PR ID, approver, hash or signature inside a proposal grants authority.
-    Current active Super Admins membership and maintain/admin access are required; there is no TTL.
+    Live review uses the selected current eligibility policy, with no authority TTL.
+    Historical verification proves the merged record; it never issues a new approval.
     """
     validate_context(repository, expected_bot)
     if not require_live_review and not require_merged:
@@ -528,7 +565,8 @@ def verify_proposal(proposal, pr, repository, expected_bot, require_merged=True,
             raise AuthorityError('Proposal merge is not an ancestor of current main')
         if canonical_hash(document_at(api, repository, path, current)) != digest:
             raise AuthorityError('Decision proposal is no longer unchanged on main')
-    review = approval(api, repository, number, head) if require_live_review else None
+    review = (approval(api, repository, number, head, reviewer_policy=reviewer_policy)
+              if reviewer_policy is not None else approval(api, repository, number, head)) if require_live_review else None
     # Detect changed proposal heads/merge state while authority was being checked.
     latest = api(endpoint)
     if (not isinstance(latest, dict) or latest.get('head', {}).get('sha') != head
@@ -538,14 +576,15 @@ def verify_proposal(proposal, pr, repository, expected_bot, require_merged=True,
         raise AuthorityError('Proposal PR changed during authorization')
     if merge_provenance is not None and merged_event(api, repository, number, latest) != merge_provenance:
         raise AuthorityError('Proposal merge event changed during authorization')
-    if review is not None and not eligible(api, repository, review['user']):
-        raise HumanDecisionRequired('Super Admin approval was withdrawn during authorization')
+    if review is not None and not (eligible(api, repository, review['user']) if reviewer_policy is None
+                                   else governance_eligible(api, repository, review['user'])):
+        raise HumanDecisionRequired('Super Admin approval was withdrawn during authorization' if reviewer_policy is None else 'Admin or Super Admin approval was withdrawn during authorization')
     return {'schema': 1, 'status': 'authorized' if review is not None else 'historical-provenance', 'repository': repository,
             'proposalHash': digest, 'path': path, 'pullRequest': number,
             'reviewId': review['id'] if review is not None else None, 'reviewer': review['user']['login'] if review is not None else None,
             'reviewedHead': head, 'mergeCommit': merge if pull.get('merged') else None,
-            'permissionPolicy': 'current-super-admins-and-maintain-or-admin' if review is not None else 'immutable-bot-merge-provenance',
-            'approverTeam': {'organization': APPROVER_ORG, 'slug': APPROVER_TEAM, 'id': APPROVER_TEAM_ID}}
+            'permissionPolicy': ('current-super-admins-and-maintain-or-admin' if reviewer_policy is None else 'current-repository-admin-or-super-admin') if review is not None else 'immutable-bot-merge-provenance',
+            'approverTeam': {'organization': APPROVER_ORG, 'slug': APPROVER_TEAM, 'id': APPROVER_TEAM_ID} if reviewer_policy is None else None}
 
 
 def find_origin_pr(proposal, repository, expected_bot, github=None):

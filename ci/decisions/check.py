@@ -12,7 +12,7 @@ import sys
 from security_decisions import canonical_hash, load_json
 
 import decision_authority as authority
-from common import config, parser, emit, run
+from common import config, parser, emit, run, reviewer_policy
 CHECK_NAME = 'Maintainer decision authority'
 COLLECTOR = '.github/workflows/decision-events.yml'
 QUEUE = re.compile(r'gh-readonly-queue/main/pr-([1-9][0-9]*)-[0-9a-f]{7,40}')
@@ -65,7 +65,7 @@ def validate_proposal_packet(proposal):
     return validate(proposal)
 
 
-def check_pr(repository, number, expected_bot, target_sha=None, github=None):
+def check_pr(repository, number, expected_bot, target_sha=None, github=None, *, reviewer_policy=None):
     api = github or authority.github_api
     endpoint = f'repos/{repository}/pulls/{number}'
     pull = api(endpoint)
@@ -91,13 +91,14 @@ def check_pr(repository, number, expected_bot, target_sha=None, github=None):
     if sensitive:
         # Governance changes can be authored by humans. Their review is still
         # exact-head/current-maintainer; bot authorship applies only to proposals.
-        authority.approval(api, repository, number, head)
+        options = {'reviewer_policy': reviewer_policy} if reviewer_policy is not None else {}
+        authority.approval(api, repository, number, head, **options)
         for path in proposals:
             proposal = authority.document_at(api, repository, path, head)
             if authority.proposal_path(proposal) != path:
                 raise authority.AuthorityError('Proposal filename does not match canonical document hash')
             authority.verify_proposal(proposal, number, repository, expected_bot,
-                                      require_merged=False, github=api, allowed_paths=proposals)
+                                      require_merged=False, github=api, allowed_paths=proposals, **options)
             validate_proposal_packet(proposal)
         if any(path.startswith('automation/decisions/') and not PROPOSAL.fullmatch(path) for path in paths):
             raise authority.AuthorityError('Decision ledger permits only immutable canonical proposal paths')
@@ -217,7 +218,7 @@ def review_fingerprint(api, repository, number, head):
     return canonical_hash({'head': head, 'reviews': sorted(rows, key=lambda row: row['id'])})
 
 
-def run_checks(repository, run_id, expected_bot, app_id, github=None, api_post=None, *, expected=None):
+def run_checks(repository, run_id, expected_bot, app_id, github=None, api_post=None, *, expected=None, reviewer_policy=None):
     authority.validate_context(repository, expected_bot)
     if type(run_id) is not int or run_id < 1 or type(app_id) is not int or app_id < 1:
         raise authority.AuthorityError('Invalid collector run or review App ID')
@@ -243,7 +244,8 @@ def run_checks(repository, run_id, expected_bot, app_id, github=None, api_post=N
         fingerprint = None
         try:
             fingerprint = review_fingerprint(api, repository, number, head)
-            result = check_pr(repository, number, expected_bot, target, api)
+            options = {'reviewer_policy': reviewer_policy} if reviewer_policy is not None else {}
+            result = check_pr(repository, number, expected_bot, target, api, **options)
             summary = ('Eligible human approval verified for governed changes.' if result['status'] == 'authorized'
                        else 'This PR does not change governed security or delivery controls.')
             conclusion = 'success'
@@ -305,7 +307,8 @@ def main():
     import reconciliation
     reconciliation.CHECK_CONFIG = cfg
     emit(run_checks(cfg['repository'], args.collector_run, cfg['botLogin'], cfg['appId'],
-                    expected=worker if args.pull_request is not None else None), args.output)
+                    expected=worker if args.pull_request is not None else None,
+                    reviewer_policy=reviewer_policy(cfg)), args.output)
 
 
 if __name__ == '__main__':
