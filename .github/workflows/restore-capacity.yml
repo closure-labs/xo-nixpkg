@@ -1,0 +1,98 @@
+# SPDX-License-Identifier: Apache-2.0
+name: Validate retained restore capacity
+on:
+  pull_request:
+    types: [opened]
+    branches: [main]
+    paths:
+      - .github/workflows/restore-capacity.yml
+      - ci/validate-restore-capacity.py
+      - tests/test_restore_capacity.py
+permissions:
+  contents: read
+concurrency:
+  group: retained-restore-capacity-${{ github.repository }}
+  cancel-in-progress: false
+jobs:
+  restore:
+    name: Restore exact retained NARs without publication
+    if: github.repository == 'closure-labs/xo-nixpkg' && github.event.pull_request.head.repo.full_name == github.repository && github.head_ref == 'diagnostic/restore-capacity'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 40
+    permissions:
+      contents: read
+      actions: read
+      attestations: read
+      packages: read
+    steps:
+      - name: Audit runner traffic
+        uses: step-security/harden-runner@46b06cea07f9e64621fdf066ba77ac6915163d43 # v2.22.3
+        with:
+          egress-policy: audit
+      - name: Checkout diagnostic code
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          path: diagnostic
+          persist-credentials: false
+      - name: Checkout fixed reviewed restore source
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: 9c001f4c6a3588f0c654436a337136ad038e34e2
+          path: controller
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Validate diagnostic guards
+        run: python3 -m unittest discover -s diagnostic/tests -p test_restore_capacity.py
+      - name: Install pinned Nix without stored GitHub credentials
+        uses: DeterminateSystems/determinate-nix-action@61cbfe2efc2d4e7a8a6d56967c3c1058e846c858 # v3.21.9
+        with:
+          github-token: ''
+          extra-conf: |
+            accept-flake-config = true
+            access-tokens =
+      - name: Stop daemons before capped direct local-store work
+        run: |
+          set -euo pipefail
+          for unit in nix-daemon.socket nix-daemon.service determinate-nixd.socket determinate-nixd.service; do
+            if [[ $(systemctl show "$unit" --property=LoadState --value) == loaded ]]; then
+              sudo systemctl stop "$unit"
+            fi
+          done
+      - name: Run the one bounded nonpublishing restore
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          sudo --preserve-env=GH_TOKEN,GITHUB_REPOSITORY,GITHUB_RUN_ID,GITHUB_RUN_ATTEMPT,GITHUB_JOB,GITHUB_ACTOR,RUNNER_TEMP \
+            systemd-run --unit="restore-capacity-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}" \
+              --service-type=exec --wait --pipe --collect --expand-environment=no \
+              --property=CPUQuota=200% --property=MemoryMax=4G --property=MemorySwapMax=0 \
+              --property=RuntimeMaxSec=2100 --property=KillMode=control-group \
+              --working-directory="$GITHUB_WORKSPACE/controller" \
+              --setenv=GH_TOKEN --setenv=GITHUB_REPOSITORY --setenv=GITHUB_RUN_ID \
+              --setenv=GITHUB_RUN_ATTEMPT --setenv=GITHUB_JOB --setenv=GITHUB_ACTOR --setenv=RUNNER_TEMP \
+              --setenv=NIX_REMOTE=local \
+              --setenv=PATH=/nix/var/nix/profiles/default/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin \
+              /usr/bin/python3 "$GITHUB_WORKSPACE/diagnostic/ci/validate-restore-capacity.py" \
+                --source "$GITHUB_WORKSPACE/controller" \
+                --work "$RUNNER_TEMP/restore-capacity" --output "$RUNNER_TEMP/restore-capacity-summary.json"
+      - name: Preserve a blocked result if the capped service terminated
+        if: always()
+        run: |
+          if [[ ! -f "$RUNNER_TEMP/restore-capacity-summary.json" ]]; then
+            printf '%s\n' '{"schema":1,"status":"blocked","code":"probe-not-completed","authorityClaim":false,"capacityOnly":true}' > "$RUNNER_TEMP/restore-capacity-summary.json"
+          fi
+      - name: Upload only bounded capacity observations
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: retained-restore-capacity-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/restore-capacity-summary.json
+          if-no-files-found: warn
+          retention-days: 7
+      - name: Remove private temporary input and stop remaining local work
+        if: always()
+        run: |
+          sudo systemctl stop "restore-capacity-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}.service" || true
+          sudo rm -rf -- "$RUNNER_TEMP/restore-capacity"
