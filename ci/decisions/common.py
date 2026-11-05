@@ -57,6 +57,36 @@ def parser(description):
     return result
 
 
+def governance_policy(cfg):
+    """Absent policy preserves legacy behavior; partial policies never activate."""
+    if 'governance' not in cfg:
+        return None
+    value = cfg['governance']
+    require(isinstance(value, dict) and set(value) == {'mode', 'pastRiskAcceptances', 'confirmedLegacyAcceptances'}
+            and value['mode'] == 'repository-admin-or-super-admin-v1'
+            and value['pastRiskAcceptances'] == 'confirmed-merged-provenance', 'Invalid governance policy')
+    confirmed = value['confirmedLegacyAcceptances']
+    require(isinstance(confirmed, list) and len(confirmed) <= 256
+            and all(isinstance(x, str) and HASH.fullmatch(x) for x in confirmed)
+            and len(set(confirmed)) == len(confirmed), 'Invalid confirmed legacy scopes')
+    return value
+
+
+def reviewer_policy(cfg):
+    return 'repository-admin-or-super-admin' if governance_policy(cfg) is not None else None
+
+
+def persisted_risk(cfg, digest, proposal, api):
+    """Keep verified prior decisions; legacy accepted scope needs explicit confirmation."""
+    proof = historical_provenance(cfg, proposal, api)
+    if proposal['payload']['disposition'] == 'accepted':
+        historical_policy = authority.document_at(api, cfg['repository'], cfg['policyPath'], proof['mergeCommit'])
+        if governance_policy(historical_policy) is None:
+            require(digest in governance_policy(cfg)['confirmedLegacyAcceptances'],
+                    'Legacy risk scope requires explicit carry-forward confirmation: ' + digest)
+    return proof
+
+
 def config(path, live=False, enabled=False, api=None):
     api = api or authority.github_api
     value = load_json(path)
@@ -81,6 +111,9 @@ def config(path, live=False, enabled=False, api=None):
             'Pinned policy repository path required')
     packets.REGISTRY = 'ghcr.io/' + value['repository'].lower() + '-decisions'
     packets.REFERENCE = re.compile(re.escape(packets.REGISTRY) + r'@sha256:[0-9a-f]{64}')
+    policy = governance_policy(value)
+    if live and policy is not None:
+        required_check(value, api)
     if live:
         revision = main_revision(value, api)
         checked = authority.document_at(api, value['repository'], policy_path, revision)
@@ -133,16 +166,18 @@ def ledger(cfg, api=None, *, with_policy=False):
 def authorize(cfg, proposal, api=None, pr=None, allow_open=False):
     api = api or authority.github_api
     number = pr or authority.find_origin_pr(proposal, cfg['repository'], cfg['botLogin'], github=api)
+    options = {'reviewer_policy': reviewer_policy(cfg)} if governance_policy(cfg) is not None else {}
     return authority.verify_proposal(proposal, number, cfg['repository'], cfg['botLogin'],
-                                     require_merged=not allow_open, github=api)
+                                     require_merged=not allow_open, github=api, **options)
 
 
 def historical_provenance(cfg, proposal, api=None):
     """A superseded parent needs immutable bot merge provenance, never live authority."""
     api = api or authority.github_api
     number = authority.find_origin_pr(proposal, cfg['repository'], cfg['botLogin'], github=api)
+    options = {'reviewer_policy': reviewer_policy(cfg)} if governance_policy(cfg) is not None else {}
     return authority.verify_proposal(proposal, number, cfg['repository'], cfg['botLogin'],
-                                     require_merged=True, github=api, require_live_review=False)
+                                     require_merged=True, github=api, require_live_review=False, **options)
 
 
 def security_contexts(native):
@@ -223,7 +258,10 @@ def active_security(cfg, records, api=None, authenticate=True):
         return None, None
     digest = next(iter(leaves))
     if authenticate:
-        authorize(cfg, candidates[digest], api)
+        if governance_policy(cfg) is not None:
+            persisted_risk(cfg, digest, candidates[digest], api)
+        else:
+            authorize(cfg, candidates[digest], api)
     return digest, candidates[digest]
 
 
