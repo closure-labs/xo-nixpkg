@@ -267,6 +267,9 @@ def restore(directory, manifest, roots, recursive_verify=True):
                         hasher.update(block)
         require(archive.stat().st_size == manifest['archiveSize'] and hasher.hexdigest() == manifest['archiveSha256'], 'Reassembled distribution archive integrity mismatch')
         unpack(archive, cache)
+        # Hash and member checks are complete. Retain the original authenticated
+        # parts, but release this disposable duplicate before importing the NARs.
+        archive.unlink()
         with operations.budget(600):
             command(['nix', 'copy', '--from', cache.as_uri(), '--no-check-sigs', *sorted(expected)])
             verify_roots(roots)
