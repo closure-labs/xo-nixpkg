@@ -169,6 +169,13 @@
   ],
   "pathRules": [
     {
+      "pattern": "^(?:ci/validate-restore-capacity\\.py|tests/test_restore_capacity\\.py|\\.github/workflows/restore-capacity\\.yml)$",
+      "validation": [
+        "*"
+      ],
+      "publication": []
+    },
+    {
       "pattern": "^tests/test_(gate_overhead|controller_wakeups|gitleaks_setup)\\.py$",
       "validation": [
         "repository-policy"
