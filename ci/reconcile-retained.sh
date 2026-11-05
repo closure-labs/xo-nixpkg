@@ -40,16 +40,17 @@ created_at=$(jq -r .created_at <<<"$selected")
 # Stable workflow run-names expose the requested input identity in authenticated
 # Actions metadata. Never infer dispatch inputs from arbitrary commit messages.
 workflow_state() {
-  local workflow=$1 title=$2 values state count page completed=false
+  local workflow=$1 title=$2 alternate_title=${3:-} values state count page completed=false
   for page in {1..10}; do
     values=$(gh api "repos/$GITHUB_REPOSITORY/actions/workflows/$workflow/runs?branch=main&event=workflow_dispatch&created=%3E%3D$created_at&per_page=100&page=$page") || return
     state=$(jq -er --arg repo "$GITHUB_REPOSITORY" --arg path ".github/workflows/$workflow" \
-      --arg title "$title" --arg workflow "$workflow" '
+      --arg title "$title" --arg alternate "$alternate_title" --arg workflow "$workflow" '
     .workflow_runs |
     if type != "array" or length > 100 then error("Invalid dispatch discovery") else . end |
     map(select(.repository.full_name == $repo and .head_repository.full_name == $repo and
       .path == $path and .head_branch == "main" and .event == "workflow_dispatch" and
-      .display_title == $title and (.head_sha | test("^[0-9a-f]{40}$")))) |
+      (.display_title == $title or ($alternate != "" and .display_title == $alternate)) and
+      (.head_sha | test("^[0-9a-f]{40}$")))) |
     if any(.status as $s | ["queued", "in_progress", "waiting", "pending", "requested"] | index($s)) then "active"
     elif $workflow == "publish.yml" and any(.status == "completed" and .conclusion == "success") then "complete"
     else "absent" end
@@ -66,8 +67,12 @@ workflow_state() {
   return 1
 }
 
+# Automatic delivery is rolling-only. Both purposes include the same immutable
+# cache/handoff work, so an exact active or successful release also suppresses
+# duplicate rolling delivery. This scheduling fact never authorizes a write.
+# Versioned tags/releases remain an explicit publish.yml purpose=release action.
 # Active exact-run work is scheduling metadata and needs no packet download.
-publication_state=$(workflow_state publish.yml "Publish release qualification $run_id attempt $attempt")
+publication_state=$(workflow_state publish.yml "Publish rolling qualification $run_id attempt $attempt" "Publish release qualification $run_id attempt $attempt")
 if [[ $publication_state == active ]]; then
   printf 'Qualification %s publication is active.\n' "$run_id"
   exit 0
@@ -126,7 +131,7 @@ if [[ $observation_state == expired ]]; then
   fi
   exit 0
 fi
-publication_state=$(workflow_state publish.yml "Publish release qualification $run_id attempt $attempt")
+publication_state=$(workflow_state publish.yml "Publish rolling qualification $run_id attempt $attempt" "Publish release qualification $run_id attempt $attempt")
 if [[ $publication_state != absent ]]; then
   printf 'Qualification %s publication is %s.\n' "$run_id" "$publication_state"
   exit 0
@@ -140,7 +145,7 @@ xo-nixpkg-decision-reconcile --config ci/decision-policy.json \
   --directory "$XO_NIXPKG_EVIDENCE" --kind release-product
 # The publisher repeats every live gate and does not trust scheduler state.
 if xo-nixpkg-decision-publication --config ci/decision-policy.json \
-  --scans "$XO_NIXPKG_EVIDENCE/scans.json" --product "$XO_NIXPKG_EVIDENCE/product.json" --purpose release; then
+  --scans "$XO_NIXPKG_EVIDENCE/scans.json" --product "$XO_NIXPKG_EVIDENCE/product.json" --purpose rolling; then
   gh workflow run publish.yml --repo "$GITHUB_REPOSITORY" --ref main \
-    -f qualification_run="$run_id" -f qualification_attempt="$attempt" -f purpose=release
+    -f qualification_run="$run_id" -f qualification_attempt="$attempt" -f purpose=rolling
 fi
