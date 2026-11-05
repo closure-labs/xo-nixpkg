@@ -21,5 +21,12 @@
   "repositorySecretPolicy": {
     "policyId": "gitleaks-incoming-native-publication-v2",
     "policySha256": "6dc96d52c1c07569136546f4a61173ee0b378593dfe837a976228c2b9c8fbef6"
+  },
+  "governance": {
+    "mode": "repository-admin-or-super-admin-v1",
+    "pastRiskAcceptances": "confirmed-merged-provenance",
+    "confirmedLegacyAcceptances": [
+      "a7cc9498cbe0a5815f62e469e4d9700b298cbb2de0599faf796738ad1a0d2953"
+    ]
   }
 }
