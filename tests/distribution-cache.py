@@ -52,6 +52,7 @@ class Nix:
         else:
             assert args[2] == '--from' and args[4] == '--no-check-sigs'
             restored = Path(urlparse(args[3]).path)
+            assert not (restored.parent / 'distribution-cache.tar').exists()
             assert (restored / 'nar' / 'fixture.nar.xz').read_bytes() == b'compressed immutable NAR bytes'
         return b''
 
@@ -65,6 +66,8 @@ with tempfile.TemporaryDirectory() as temporary:
         again = cache.export(second, roots)
         assert manifest == again and len(manifest['parts']) > 1
         cache.restore(first, manifest, roots)
+        assert all((first / name).is_file() and cache.digest(first / name) == record['sha256']
+                   for name, record in manifest['parts'].items())
         assert any(args[:3] == ['nix', 'copy', '--from'] for args in nix.calls)
         before = len(nix.calls)
         bad = deepcopy(manifest)
