@@ -45,13 +45,15 @@ class PublicationResult(unittest.TestCase):
         self.descriptor = {'files':dict(files, **{'distribution-cache.tar.part-000':{'size':7,'sha256':'f'*64}}),'producer':self.producer}
         self.artifact = self.root/'publication-result.json'
         self.calls = []
+        self.completed = []
+        completed = self.completed
         class Journal:
             def __init__(self, repository, product):
                 self.digest = hashlib.sha256(m.canonical(product)).hexdigest()
                 self.branch = 'automation/publication-'+self.digest
                 self.save_attempts = 0
-            def complete(self, *args):
-                pass
+            def complete(self, name, *args):
+                completed.append(name)
         self.journal = Journal
         self.environment = patch.dict(os.environ, {'RUNNER_TEMP':str(self.root),
             'XO_NIXPKG_EVIDENCE':str(self.directory),'XO_NIXPKG_CACHIX_CACHE_URL':'https://fixture.invalid',
@@ -63,7 +65,7 @@ class PublicationResult(unittest.TestCase):
         if args[-1].endswith(':VERSION'): return '0.10.1\n'
         return json.dumps({'channels':{'latest':{'version':'6.9.1','rev':'c'*40}}})
 
-    def execute(self, args=(), fail=False, fail_handoff=False):
+    def execute(self, args=(), fail=False, fail_handoff=False, existing_tag_commit=None):
         def run(*args, **kwargs):
             self.calls.append(args)
             if fail: raise subprocess.CalledProcessError(27,args)
@@ -81,10 +83,33 @@ class PublicationResult(unittest.TestCase):
                 patch.object(packets,'metadata',return_value={}), \
                 patch.object(packets,'fetch',side_effect=lambda ref,target,digest:(target.mkdir(),(target/'decision-packet.json').write_text('{}'))), \
                 patch.object(m.subprocess,'check_output',side_effect=self.output), \
-                patch.object(m.subprocess,'run',return_value=subprocess.CompletedProcess([],0,'f'*40+'\n','')), \
+                patch.object(m.subprocess,'run',return_value=subprocess.CompletedProcess([],0,(existing_tag_commit or 'f'*40)+'\n','')), \
                 contextlib.redirect_stdout(io.StringIO()):
             m.main()
         return json.loads(self.artifact.read_text())
+
+    def test_rolling_publishes_same_exact_handoff_without_tag_or_release_leaves(self):
+        os.environ['XO_NIXPKG_PUBLICATION_PURPOSE'] = 'rolling'
+        result = self.execute()
+        self.assertEqual(result['status'], 'verified')
+        self.assertEqual(result['productHash'], hashlib.sha256(m.canonical(self.product)).hexdigest())
+        self.assertEqual(self.completed, ['cache', 'handoff'])
+        for name in ('xoTagLeafInvocations','projectTagInvocations','releasePublishInvocations'):
+            self.assertEqual(result['operations'][name], 0)
+        self.assertFalse(any(c[0] in ('xo-nixpkg-tag-xo-release','xo-nixpkg-tag-release','xo-nixpkg-publish-release') for c in self.calls))
+        self.assertIn(('xo-nixpkg-publication-gate',), self.calls)
+
+    def test_explicit_versioned_path_still_checks_and_invokes_tag_and_release_leaves(self):
+        with patch.object(m, 'verify_tag', side_effect=[False, True, True]), \
+                patch.object(m, 'api', return_value={'tag_name':'v0.10.1','draft':False}):
+            result = self.execute(existing_tag_commit=self.product['revision'])
+        self.assertEqual(result['status'], 'verified')
+        self.assertEqual(result['operations']['xoTagLeafInvocations'], 1)
+        self.assertEqual(result['operations']['projectTagInvocations'], 1)
+        self.assertEqual(result['operations']['releasePublishInvocations'], 1)
+        self.assertIn(('xo-nixpkg-tag-release',), self.calls)
+        self.assertIn(('xo-nixpkg-publish-release',), self.calls)
+        self.assertIn(('xo-nixpkg-publication-gate',), self.calls)
 
     def test_noop_retains_exact_product_and_zero_transfer_branches(self):
         result = self.execute()

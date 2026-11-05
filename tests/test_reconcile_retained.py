@@ -89,7 +89,7 @@ elif name == 'xo-nixpkg-decision-publication' and not fixture['admitted']:
         return result, calls
 
     def workflow(self, workflow='publish', *, run=123, attempt=2, status='in_progress',
-                 conclusion=None, purpose='release'):
+                 conclusion=None, purpose='rolling'):
         result = copy.deepcopy(self.producer)
         result.update(path=f'.github/workflows/{workflow}.yml', event='workflow_dispatch',
                       status=status, conclusion=conclusion, created_at='2026-10-20T00:00:01Z')
@@ -146,7 +146,10 @@ elif name == 'xo-nixpkg-decision-publication' and not fixture['admitted']:
         self.assertEqual(len(dispatch), 1)
         self.assertIn('qualification_run=123', dispatch[0])
         self.assertIn('qualification_attempt=2', dispatch[0])
-        self.assertIn('purpose=release', dispatch[0])
+        self.assertIn('purpose=rolling', dispatch[0])
+        admission = next(c for c in calls if c[0] == 'xo-nixpkg-decision-publication')
+        self.assertEqual(admission[-2:], ['--purpose', 'rolling'])
+        self.assertEqual(sum(c[:2] == ['gh', 'api'] and 'publish.yml/runs' in c[-1] for c in calls), 2)
 
     def test_active_and_completed_exact_publication_do_not_reconcile_or_redispatch(self):
         for status, conclusion in [('in_progress', None), ('pending', None), ('completed', 'success')]:
@@ -158,9 +161,27 @@ elif name == 'xo-nixpkg-decision-publication' and not fixture['admitted']:
                 self.assertFalse(self.dispatches(calls))
                 self.assertFalse(any(c[0].startswith('xo-nixpkg-decision') for c in calls))
 
+    def test_release_publication_suppresses_duplicate_rolling_delivery(self):
+        for status, conclusion in [('in_progress', None), ('completed', 'success')]:
+            with self.subTest(status=status):
+                self.calls.unlink(missing_ok=True)
+                self.fixture['publish'] = [self.workflow(purpose='release', status=status, conclusion=conclusion)]
+                result, calls = self.run_scheduler()
+                self.assertEqual(result.returncode, 0, result.stderr)
+                self.assertEqual(self.dispatches(calls), [])
+                self.assertFalse(any(c[0].startswith('xo-nixpkg-decision') for c in calls))
+
+    def test_failed_release_does_not_forge_success_or_suppress_fresh_rolling_gate(self):
+        self.fixture['publish'] = [self.workflow(purpose='release', status='completed', conclusion='failure')]
+        result, calls = self.run_scheduler()
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(len(self.dispatches(calls)), 1)
+        self.assertIn('purpose=rolling', self.dispatches(calls)[0])
+        self.assertTrue(any(c[0] == 'xo-nixpkg-decision-publication' and c[-2:] == ['--purpose','rolling'] for c in calls))
+
     def test_other_attempt_run_purpose_and_failed_publication_do_not_suppress(self):
         variants = [self.workflow(attempt=1, status='completed', conclusion='success'),
-                    self.workflow(run=122), self.workflow(purpose='rolling'),
+                    self.workflow(run=122), self.workflow(purpose='unknown'),
                     self.workflow(status='completed', conclusion='failure')]
         for variant in variants:
             with self.subTest(variant=variant):
