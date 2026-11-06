@@ -11,8 +11,7 @@ concurrency:
   cancel-in-progress: true
 
 permissions:
-  contents: write
-  pull-requests: write
+  contents: read
 
 jobs:
   update:
@@ -28,12 +27,20 @@ jobs:
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
+          ref: ${{ github.sha }}
           persist-credentials: false
 
       - name: Set up Nix
         uses: ./.github/actions/setup-nix # zizmor: ignore[self-repository] -- setup follows the explicitly checked-out source; repair jobs use a trusted base revision.
         with:
           github-token: ${{ github.token }}
+
+      - name: Prepare immutable publisher before changing candidate sources
+        id: publisher
+        run: |
+          tool=$(nix build .#open-update-pr --no-link --print-out-paths)
+          [[ $tool =~ ^/nix/store/[a-z0-9]{32}-xo-nixpkg-open-update-pr$ ]]
+          printf 'path=%s\n' "$tool" >>"$GITHUB_OUTPUT"
 
       - name: Refresh the rolling source and dependency locks
         id: rolling
@@ -47,10 +54,23 @@ jobs:
         continue-on-error: true
         run: nix run .#devenv -- tasks run --mode single --option 'packages:pkgs!' '' update:rolling-realize
 
+      - name: Mint repository-scoped rolling publisher token
+        if: ${{ !cancelled() && steps.rolling.outputs.changed == 'true' }}
+        id: writer
+        uses: actions/create-github-app-token@64ab729a6294000f5aa4a4bc0b73d1f32bc45510 # v3.3.0
+        with:
+          client-id: ${{ vars.DECIDER_CLIENT }}
+          private-key: ${{ secrets.DECIDER_KEY }}
+          owner: ${{ github.repository_owner }}
+          repositories: xo-nixpkg
+          permission-contents: write
+          permission-pull-requests: write
+
       - name: Open or update the rolling candidate pull request
-        if: always() && steps.rolling.outputs.changed == 'true'
+        if: ${{ !cancelled() && steps.rolling.outputs.changed == 'true' && steps.writer.outcome == 'success' }}
         env:
-          GH_TOKEN: ${{ github.token }}
+          GH_TOKEN: ${{ steps.writer.outputs.token }}
+          PUBLISHER_TOOL: ${{ steps.publisher.outputs.path }}
           UPDATE_BRANCH: automation/xo-rolling
           UPDATE_TITLE: "xen-orchestra-ce rolling: refresh upstream"
           UPDATE_DRAFT: ${{ steps.prewarm.outcome != 'success' }}
@@ -64,9 +84,10 @@ jobs:
             The normal pull-request CI is authoritative. A realized locally candidate is
             eligible for the trusted merge queue; a broken candidate remains draft
             and is replaced only when upstream advances.
-          XO_NIXPKG_UPDATE_PATHS: flake.nix flake.lock nix/sources/xen-orchestra.json
-        run: nix run .#devenv -- tasks run --mode single --option 'packages:pkgs!' '' update:open-pr
+        run: '"$PUBLISHER_TOOL/bin/xo-nixpkg-open-update-pr" flake.nix flake.lock nix/sources/xen-orchestra.json'
 
       - name: Fail after preserving a broken rolling candidate
         if: always() && steps.rolling.outputs.changed == 'true' && steps.prewarm.outcome != 'success'
-        run: nix run .#devenv -- tasks run --mode single --option 'packages:pkgs!' '' update:rolling-failure
+        run: |
+          printf 'Update candidate realization failed; see the draft PR and publication step for diagnosis.\n' >&2
+          exit 1

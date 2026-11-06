@@ -14,11 +14,20 @@ set -euo pipefail
 if [[ "$1 $2" == 'pr view' ]]; then
   auto_merge=null
   [[ ${FAKE_AUTO_MERGE:-false} != true ]] || auto_merge='{"enabledAt":"2026-09-04T00:00:00Z"}'
+  head=${FAKE_HEAD_SHA:-abc123}
+  if [[ -n ${FAKE_PR_READ_COUNT:-} ]]; then
+    count=0
+    [[ ! -f $FAKE_PR_READ_COUNT ]] || count=$(<"$FAKE_PR_READ_COUNT")
+    ((count += 1))
+    printf '%s\n' "$count" >"$FAKE_PR_READ_COUNT"
+    ((count < 2)) || head=stale-head
+  fi
   jq -n \
+    --arg head "$head" \
     --arg author "${FAKE_AUTHOR:-github-actions[bot]}" \
     --arg repository "${FAKE_REPOSITORY:-example/xo-nixpkg}" \
     --argjson auto_merge "$auto_merge" \
-    '{author:{login:$author},autoMergeRequest:$auto_merge,baseRefName:"main",headRefName:"automation/test",headRefOid:"abc123",headRepository:{nameWithOwner:$repository},isDraft:false,state:"OPEN",title:"Trusted update",url:"https://example.invalid/pr/1"}'
+    '{author:{login:$author},autoMergeRequest:$auto_merge,baseRefName:"main",headRefName:"automation/test",headRefOid:$head,headRepository:{nameWithOwner:$repository},isDraft:false,state:"OPEN",title:"Trusted update",url:"https://example.invalid/pr/1"}'
 elif [[ "$1 $2" == 'run list' ]]; then
   if [[ ${FAKE_RUN_MISSING:-false} == true ]]; then
     printf '[]\n'
@@ -227,6 +236,23 @@ if run_trusted automatic "$temporary/result.json" \
   exit 1
 fi
 
+# The App login is compatible with gh's normalized author output, but cannot
+# bypass the exact head recheck either before CI or immediately before queuing.
+for scenario in current-head stale-head changed-head; do
+  rm -f "$temporary/merge.log" "$temporary/pr-reads"
+  options=(EXPECTED_AUTHOR=cl-decider FAKE_AUTHOR='app/cl-decider')
+  case $scenario in
+    stale-head) options+=(FAKE_HEAD_SHA=stale-head) ;;
+    changed-head) options+=(FAKE_PR_READ_COUNT="$temporary/pr-reads") ;;
+  esac
+  if run_trusted automatic "$temporary/result.json" "${options[@]}" >/dev/null 2>&1; then
+    [[ $scenario == current-head ]]
+    grep -Fq -- '--match-head-commit abc123' "$temporary/merge.log"
+  else
+    [[ $scenario != current-head && ! -e $temporary/merge.log ]]
+  fi
+done
+
 # The reconciler assigns different approval policies to release and rolling
 # updates, enforces changed-file allowlists, and continues after one bad PR.
 printf '#!%s\n' "$BASH" >"$temporary/bin/fake-trusted-update"
@@ -245,7 +271,7 @@ release_pr='{
 }'
 rolling_pr='{
   "draft":false,"number":2,"title":"xen-orchestra-ce rolling: refresh upstream",
-  "user":{"login":"github-actions[bot]"},"base":{"ref":"main"},
+  "user":{"login":"cl-decider[bot]","id":344936881,"type":"Bot"},"base":{"ref":"main"},
   "head":{"ref":"automation/xo-rolling","sha":"rolling-sha","repo":{"full_name":"example/xo-nixpkg"}}
 }'
 files='[
@@ -307,6 +333,47 @@ grep -F '| #3 | xo-rolling | `policy-error` |' \
 # shellcheck disable=SC2016
 grep -F '| #4 | xo-rolling | `queued` |' \
   "$temporary/invalid-summary.md" >/dev/null
+
+# Rolling alone uses the exact native App identity. Do not normalize impostors
+# or accept a token-authored legacy PR; changing a token cannot change its author.
+for identity in official wrong-id wrong-type wrong-login missing-id builtin fork base branch title draft; do
+  candidate=$rolling_pr
+  case $identity in
+    wrong-id) candidate=$(jq '.user.id = 1' <<<"$candidate") ;;
+    wrong-type) candidate=$(jq '.user.type = "User"' <<<"$candidate") ;;
+    wrong-login) candidate=$(jq '.user.login = "cl-decider"' <<<"$candidate") ;;
+    missing-id) candidate=$(jq 'del(.user.id)' <<<"$candidate") ;;
+    builtin) candidate=$(jq '.user = {login:"github-actions[bot]",id:41898282,type:"Bot"}' <<<"$candidate") ;;
+    fork) candidate=$(jq '.head.repo.full_name = "attacker/fork"' <<<"$candidate") ;;
+    base) candidate=$(jq '.base.ref = "other"' <<<"$candidate") ;;
+    branch) candidate=$(jq '.head.ref += "-other"' <<<"$candidate") ;;
+    title) candidate=$(jq '.title += " other"' <<<"$candidate") ;;
+    draft) candidate=$(jq '.draft = true' <<<"$candidate") ;;
+  esac
+  : >"$temporary/trusted.log"
+  env PATH="$temporary/bin:$PATH" \
+    GH_TOKEN=fixture GITHUB_REPOSITORY=example/xo-nixpkg DEFAULT_BRANCH=main \
+    XO_NIXPKG_TRUSTED_UPDATE_COMMAND="$temporary/bin/fake-trusted-update" \
+    FAKE_TRUSTED_LOG="$temporary/trusted.log" FAKE_PULLS_JSON="[$candidate]" \
+    FAKE_FILES_2="$files" \
+    bash "$root/ci/queue-automation.sh" >/dev/null
+  if [[ $identity == official ]]; then
+    grep -Fx '2 automatic' "$temporary/trusted.log" >/dev/null
+  else
+    [[ ! -s $temporary/trusted.log ]]
+  fi
+done
+
+# The new rolling identity must not authorize App-authored release candidates.
+app_release=$(jq '.user = {login:"cl-decider[bot]",id:344936881,type:"Bot"}' <<<"$release_pr")
+: >"$temporary/trusted.log"
+env PATH="$temporary/bin:$PATH" \
+  GH_TOKEN=fixture GITHUB_REPOSITORY=example/xo-nixpkg DEFAULT_BRANCH=main \
+  XO_NIXPKG_TRUSTED_UPDATE_COMMAND="$temporary/bin/fake-trusted-update" \
+  FAKE_TRUSTED_LOG="$temporary/trusted.log" FAKE_PULLS_JSON="[$app_release]" \
+  FAKE_FILES_1="$files" \
+  bash "$root/ci/queue-automation.sh" >/dev/null
+[[ ! -s $temporary/trusted.log ]]
 
 # Native numeric bot identity is required even for an auto-merge request.
 dependabot_pr='{

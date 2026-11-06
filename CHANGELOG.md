@@ -8,6 +8,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## Unreleased
 
+### Fixed
+
+- Publish rolling candidates with the exact Decider App identity already trusted
+  by CI admission, using a late repository-scoped Contents/PR-write token and an
+  immutable publisher. Keep other updater identities and human authority intact.
+- Authenticate update-branch Git operations with a command-scoped GitHub CLI
+  credential helper instead of persisting a token-bearing remote URL.
+
 ## [0.10.2] - 2026-10-31
 
 ### Highlights
