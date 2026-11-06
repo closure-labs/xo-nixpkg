@@ -12,6 +12,23 @@ real_git=$(command -v git)
 printf '#!%s\n' "$BASH" >"$temporary/bin/git"
 cat >>"$temporary/bin/git" <<'EOF'
 set -euo pipefail
+# Network commands must use only the command-scoped GitHub CLI helper. Verify
+# no credential is written even while a push is in progress or later fails.
+if [[ ${1:-} == -c ]]; then
+  [[ $2 == credential.helper= && $3 == -c && $4 == 'credential.helper=!gh auth git-credential' ]]
+  shift 4
+  [[ $("$REAL_GIT" remote get-url origin) == https://example.invalid/repository.git ]]
+  if grep -Fq "$GH_TOKEN" .git/config; then
+    echo 'Git authentication persisted the fixture token' >&2
+    exit 1
+  fi
+  # Exercise real Git credential plumbing (no network), rather than merely
+  # trusting that the -c arguments name a helper. The fake CLI receives the
+  # requested host and returns the token via stdin/stdout only.
+  credentials=$(printf 'protocol=https\nhost=github.com\n\n' |
+    "$REAL_GIT" -c credential.helper= -c 'credential.helper=!gh auth git-credential' credential fill)
+  [[ $credentials == *"password=$GH_TOKEN"* && $credentials == *'username=x-access-token'* ]]
+fi
 case ${1:-} in
   ls-remote)
     [[ -z ${FAKE_REMOTE_SHA:-} ]] || printf '%s\trefs/heads/automation/test\n' "$FAKE_REMOTE_SHA"
@@ -39,6 +56,14 @@ EOF
 printf '#!%s\n' "$BASH" >"$temporary/bin/gh"
 cat >>"$temporary/bin/gh" <<'EOF'
 set -euo pipefail
+if [[ "$1 $2" == 'auth git-credential' ]]; then
+  [[ $3 == get ]]
+  request=$(cat)
+  [[ $request == *'protocol=https'* && $request == *'host=github.com'* ]]
+  printf 'username=x-access-token\npassword=%s\n' "$GH_TOKEN"
+  printf '%s\n' "$*" >>"$FAKE_GH_LOG.credentials"
+  exit 0
+fi
 printf '%s\n' "$*" >>"$FAKE_GH_LOG"
 case "$1 $2" in
   'pr list')
@@ -48,6 +73,7 @@ case "$1 $2" in
       printf '{}\n'
     fi
     ;;
+  'pr ready') printf 'https://example.invalid/pull/17\n' ;;
   'pr edit') printf 'https://example.invalid/pull/17\n' ;;
   'pr create') printf 'https://example.invalid/pull/1\n' ;;
   'api graphql')
@@ -82,7 +108,7 @@ run_fixture() {
   local open_pr_json=${7:-'{}'}
   local queue_entry=${8:-}
   local update_branch=${9:-automation/test}
-  local update_path=${10:-update}
+  local update_path=${10:-update} fixture_status
   (
     cd "$repository"
     env \
@@ -95,7 +121,7 @@ run_fixture() {
       FAKE_GH_LOG="$gh_log" \
       FAKE_OPEN_PR_JSON="$open_pr_json" \
       FAKE_QUEUE_ENTRY="$queue_entry" \
-      GH_TOKEN=fixture \
+      GH_TOKEN=fixture-secret-never-persist \
       GITHUB_REPOSITORY=example/xo-nixpkg \
       UPDATE_BRANCH="$update_branch" \
       UPDATE_TITLE='Fixture update' \
@@ -103,7 +129,13 @@ run_fixture() {
       UPDATE_REVIEWER=declarative-dale \
       XO_NIXPKG_RETRY_DELAY_SECONDS=0 \
       bash "$root/ci/open-update-pr.sh" "$update_path"
-  )
+  ) && fixture_status=0 || fixture_status=$?
+  [[ $(git -C "$repository" remote get-url origin) == https://example.invalid/repository.git ]]
+  if grep -Fq fixture-secret-never-persist "$repository/.git/config"; then
+    echo 'Update publication persisted the fixture token' >&2
+    return 1
+  fi
+  return "$fixture_status"
 }
 
 transient_repository=$temporary/transient
@@ -113,6 +145,7 @@ make_repository "$transient_repository"
 : >"$transient_gh_log"
 run_fixture "$transient_repository" 1 "$transient_push_count" "$transient_gh_log"
 [[ $(<"$transient_push_count") == 2 ]]
+[[ $(grep -c '^auth git-credential get$' "$transient_gh_log.credentials") == 3 ]]
 [[ $(grep -c '^pr create ' "$transient_gh_log") == 1 ]]
 grep -F -- '--reviewer declarative-dale' "$transient_gh_log" >/dev/null
 
@@ -214,5 +247,41 @@ other_gh_log=$temporary/other-gh-log
 : >"$other_gh_log"
 run_fixture "$other_repository" 0 "$temporary/other-push" "$other_gh_log"
 [[ $(git -C "$other_repository" diff-tree --no-commit-id --name-only -r HEAD) == update ]]
+
+# No-op discovery and an already-published identical tree leave authentication
+# untouched, and the identical tree is not needlessly force-pushed again.
+noop_repository=$temporary/noop
+make_repository "$noop_repository"
+git -C "$noop_repository" restore update
+: >"$temporary/noop-gh-log"
+run_fixture "$noop_repository" 0 "$temporary/noop-push" "$temporary/noop-gh-log"
+[[ ! -e $temporary/noop-push && ! -s $temporary/noop-gh-log && ! -e $temporary/noop-gh-log.credentials ]]
+identical_repository=$temporary/identical
+make_repository "$identical_repository"
+git -C "$identical_repository" add update
+git -C "$identical_repository" commit -qm candidate
+identical_sha=$(git -C "$identical_repository" rev-parse HEAD)
+git -C "$identical_repository" reset -q --mixed HEAD^
+: >"$temporary/identical-gh-log"
+run_fixture "$identical_repository" 0 "$temporary/identical-push" "$temporary/identical-gh-log" \
+  unused "$identical_sha" '{"number":17,"isDraft":false}'
+[[ ! -e $temporary/identical-push ]]
+grep -F 'pr edit 17 ' "$temporary/identical-gh-log" >/dev/null
+
+# A broken candidate is preserved as a draft on both create and replacement.
+for existing in new existing; do
+  draft_repository=$temporary/draft-$existing
+  make_repository "$draft_repository"
+  : >"$temporary/draft-$existing-gh-log"
+  pr='{}'
+  [[ $existing == new ]] || pr='{"number":17,"isDraft":false}'
+  UPDATE_DRAFT=true run_fixture "$draft_repository" 0 "$temporary/draft-$existing-push" \
+    "$temporary/draft-$existing-gh-log" unused '' "$pr"
+  if [[ $existing == new ]]; then
+    grep -F -- '--draft' "$temporary/draft-$existing-gh-log" >/dev/null
+  else
+    grep -F 'pr ready --undo 17 ' "$temporary/draft-$existing-gh-log" >/dev/null
+  fi
+done
 
 printf 'Update pull-request retry fixtures passed\n'

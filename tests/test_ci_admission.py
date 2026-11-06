@@ -68,6 +68,34 @@ class Admission(unittest.TestCase):
             self.assertEqual(api.approve(), 'approved')
             self.assertEqual(api.posts, [f'repos/{POLICY["repository"]}/actions/runs/42/approve'])
 
+    def test_exact_rolling_app_identity_for_every_admitted_workflow(self):
+        for workflow in POLICY['workflows']:
+            with self.subTest(workflow=workflow):
+                api = API()
+                api.run.update(path=workflow, head_branch='automation/xo-rolling', head_repository=REPO)
+                api.workflow['path'] = workflow
+                api.pull['head'].update(ref='automation/xo-rolling', repo=REPO)
+                self.assertEqual(api.approve(), 'approved')
+                # Admission grants only execution, not review, queue or publication.
+                self.assertEqual(api.posts, [f'repos/{POLICY["repository"]}/actions/runs/42/approve'])
+
+    def test_rolling_bot_impostors_and_builtin_token_are_not_admitted(self):
+        for user in (dict(BOT, login='cl-decider'), dict(BOT, id=1),
+                     dict(BOT, type='User'),
+                     {'login': 'github-actions[bot]', 'id': 41898282, 'type': 'Bot'}):
+            for identity in ('author', 'actor', 'triggering_actor'):
+                with self.subTest(user=user, identity=identity):
+                    api = API()
+                    if identity == 'author':
+                        api.pull['user'] = user
+                    else:
+                        api.run[identity] = user
+                    try:
+                        self.assertNotEqual(api.approve(), 'approved')
+                    except admission.AuthorityError:
+                        pass
+                    self.assertFalse(api.posts)
+
     def test_super_admin_draft_and_ready(self):
         for draft in (True, False):
             api = API(); api.human(); api.pull['draft'] = draft

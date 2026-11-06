@@ -341,7 +341,33 @@ leaves the candidate draft for diagnosis. Protected-main publication retains
 every pending request in its FIFO concurrency group and requires fresh live
 admission of the exact signed product.
 
-Update pull requests use job-scoped built-in GitHub tokens. Queue reconciliation
+Rolling pull requests use the existing Decider App identity (`cl-decider[bot]`,
+user ID `344936881`, type `Bot`) so their native author and triggering actor match
+CI admission. The workflow prepares its immutable publisher from the protected
+main event revision before source discovery. Discovery and sandboxed candidate
+realization use no write token. Only a changed candidate mints a short-lived
+`xo-nixpkg` installation token with Contents and Pull requests write permissions;
+only the fixed publisher receives it. No candidate Nix is evaluated afterward.
+Git network operations use GitHub CLI's command-scoped credential helper, never
+a token-bearing remote URL or persisted credential. The token action retains its
+automatic job-completion revocation. This is not branch- or path-scoped GitHub
+permission: protected-main enforcement and the publisher's explicit path list
+remain necessary.
+
+The queue recognizes that exact identity only for the rolling branch/title and
+three-file cohort. Other updater families keep their existing built-in-token
+identity and approval policies. The CI admission policy, exact-head human
+authority, required checks and publication gates are unchanged.
+
+Before activating this workflow, resolve any existing rolling PR authored by
+`github-actions[bot]`: either complete it through the existing human-authorized
+process or have a maintainer close it so the next changed candidate creates a
+new App-authored PR. Editing an existing PR with an App token cannot change its
+author. The old identity is deliberately not added to admission or the new
+rolling queue rule. Verify the first new PR's native author, current-head CI
+runs and required human authority before treating the rollout as complete.
+
+Other updater pull requests use job-scoped built-in GitHub tokens. Queue reconciliation
 mints a short-lived repository-scoped token from the Decider App with Actions,
 Contents and Pull requests write permissions; `DECIDER_CLIENT` is a repository
 variable and `DECIDER_KEY` is a runtime secret. The separate read-only audit App

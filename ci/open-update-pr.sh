@@ -100,11 +100,18 @@ dequeue_update_pr_if_needed() {
   echo "Dequeued update PR $pr_number so the newer exact candidate can replace it"
 }
 
+# GitHub CLI reads GH_TOKEN at invocation time. Reset inherited credential
+# helpers and use it only for these network commands: no token-bearing remote
+# URL, Git configuration, or temporary credential file survives any exit path.
+authenticated_git() {
+  git -c credential.helper= -c 'credential.helper=!gh auth git-credential' "$@"
+}
+
 push_update_branch() {
   local attempt output status exponent delay jitter
   for ((attempt = 1; attempt <= retry_attempts; attempt += 1)); do
-    if output=$(git push --force-with-lease="refs/heads/$UPDATE_BRANCH:$remote_sha" \
-      origin "HEAD:refs/heads/$UPDATE_BRANCH" 2>&1); then
+    if output=$(authenticated_git push --force-with-lease="refs/heads/$UPDATE_BRANCH:$remote_sha" \
+      "$repository_url" "HEAD:refs/heads/$UPDATE_BRANCH" 2>&1); then
       [[ -z $output ]] || printf '%s\n' "$output"
       return 0
     else
@@ -168,14 +175,14 @@ fi
 
 git config user.name 'github-actions[bot]'
 git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-git remote set-url origin "https://x-access-token:${GH_TOKEN}@github.com/${GITHUB_REPOSITORY}.git"
+repository_url="https://github.com/${GITHUB_REPOSITORY}.git"
 remote_refs=$(retry_transient "Read update branch $UPDATE_BRANCH" \
-  git ls-remote --refs origin "refs/heads/$UPDATE_BRANCH")
+  authenticated_git ls-remote --refs "$repository_url" "refs/heads/$UPDATE_BRANCH")
 remote_sha=$(cut -f1 <<<"$remote_refs")
 candidate_published=false
 if [[ -n $remote_sha ]]; then
   retry_transient "Fetch existing update candidate $UPDATE_BRANCH" \
-    git fetch --no-tags --depth=1 origin "$remote_sha"
+    authenticated_git fetch --no-tags --depth=1 "$repository_url" "$remote_sha"
   if git diff --quiet "$remote_sha" -- .; then
     echo 'The exact candidate tree is already published on the update branch'
     candidate_published=true

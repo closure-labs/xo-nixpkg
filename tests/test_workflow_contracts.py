@@ -47,3 +47,53 @@ class WorkflowContracts(unittest.TestCase):
                     for task in re.findall(r'\b[a-z-]+:[a-z-]+\b', line):
                         if task != 'packages:pkgs':
                             self.assertIn(task, tasks, f'{path.name}: {task}')
+
+    def test_rolling_publication_uses_only_a_late_scoped_app_token(self):
+        # BaseLoader preserves GitHub's `on` and expression scalars unchanged.
+        import yaml
+        source = (WORKFLOWS / 'update-rolling.yml').read_text()
+        workflow = yaml.load(source, Loader=yaml.BaseLoader)
+        self.assertEqual(workflow['permissions'], {'contents': 'read'})
+        steps = workflow['jobs']['update']['steps']
+        by_id = {step['id']: step for step in steps if 'id' in step}
+        publisher, rolling, prewarm, writer = (by_id[key] for key in
+                                              ('publisher', 'rolling', 'prewarm', 'writer'))
+        for before, after in ((publisher, rolling), (rolling, prewarm), (prewarm, writer)):
+            self.assertLess(steps.index(before), steps.index(after))
+        checkout = next(step for step in steps if step.get('uses', '').startswith('actions/checkout@'))
+        self.assertEqual(checkout['with']['ref'], '${{ github.sha }}')
+        self.assertEqual(checkout['with']['persist-credentials'], 'false')
+        self.assertIn('nix build .#open-update-pr --no-link --print-out-paths', publisher['run'])
+        packages = (ROOT / 'flake.nix').read_text().split('      packages = ', 1)[1].split('      devShells = ', 1)[0]
+        self.assertIn('open-update-pr = applications.openUpdatePr;', packages)
+        self.assertIn('^/nix/store/[a-z0-9]{32}-xo-nixpkg-open-update-pr$', publisher['run'])
+        self.assertEqual(writer['uses'],
+                         'actions/create-github-app-token@64ab729a6294000f5aa4a4bc0b73d1f32bc45510')
+        self.assertEqual(writer['with'], {
+            'client-id': '${{ vars.DECIDER_CLIENT }}',
+            'private-key': '${{ secrets.DECIDER_KEY }}',
+            'owner': '${{ github.repository_owner }}', 'repositories': 'xo-nixpkg',
+            'permission-contents': 'write', 'permission-pull-requests': 'write',
+        })
+        self.assertIn("steps.rolling.outputs.changed == 'true'", writer['if'])
+        self.assertIn('!cancelled()', writer['if'])
+        # No skip-token-revoke override, credentials in preparation, or mutable
+        # Nix evaluation/builds after minting, including the broken-candidate path.
+        for step in steps[:steps.index(writer)]:
+            self.assertNotIn('DECIDER_', str(step))
+            self.assertNotIn('steps.writer.outputs.token', str(step))
+        after_mint = steps[steps.index(writer) + 1:]
+        publication = after_mint[0]
+        self.assertEqual(publication['env']['GH_TOKEN'], '${{ steps.writer.outputs.token }}')
+        self.assertEqual(publication['env']['PUBLISHER_TOOL'], '${{ steps.publisher.outputs.path }}')
+        self.assertEqual(publication['run'],
+                         '"$PUBLISHER_TOOL/bin/xo-nixpkg-open-update-pr" flake.nix flake.lock nix/sources/xen-orchestra.json')
+        self.assertIn("steps.writer.outcome == 'success'", publication['if'])
+        self.assertIn('!cancelled()', publication['if'])
+        self.assertEqual(publication['env']['UPDATE_DRAFT'], "${{ steps.prewarm.outcome != 'success' }}")
+        self.assertEqual(prewarm['continue-on-error'], 'true')
+        self.assertIn("steps.prewarm.outcome != 'success'", after_mint[-1]['if'])
+        self.assertIn('exit 1', after_mint[-1]['run'])
+        for step in after_mint:
+            self.assertNotRegex(step.get('run', ''), r'\bnix\s+(?:run|build|eval)\b|\bdevenv\s|\./ci/|\./scripts/')
+        self.assertEqual(source.count('steps.writer.outputs.token'), 1)
