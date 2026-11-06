@@ -18,7 +18,10 @@ if [[ ${1:-} == -c ]]; then
   [[ $2 == credential.helper= && $3 == -c && $4 == 'credential.helper=!gh auth git-credential' ]]
   shift 4
   [[ $("$REAL_GIT" remote get-url origin) == https://example.invalid/repository.git ]]
-  ! grep -F "$GH_TOKEN" .git/config
+  if grep -Fq "$GH_TOKEN" .git/config; then
+    echo 'Git authentication persisted the fixture token' >&2
+    exit 1
+  fi
   # Exercise real Git credential plumbing (no network), rather than merely
   # trusting that the -c arguments name a helper. The fake CLI receives the
   # requested host and returns the token via stdin/stdout only.
@@ -128,7 +131,10 @@ run_fixture() {
       bash "$root/ci/open-update-pr.sh" "$update_path"
   ) && fixture_status=0 || fixture_status=$?
   [[ $(git -C "$repository" remote get-url origin) == https://example.invalid/repository.git ]]
-  ! grep -F fixture-secret-never-persist "$repository/.git/config"
+  if grep -Fq fixture-secret-never-persist "$repository/.git/config"; then
+    echo 'Update publication persisted the fixture token' >&2
+    return 1
+  fi
   return "$fixture_status"
 }
 
