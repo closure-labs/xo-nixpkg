@@ -45,7 +45,7 @@ if ! candidates_json=$(jq -c \
         .title == ("xen-orchestra-ce: update to " + (.head.ref | sub("^automation/xo-release-"; ""))) then
         {author:$author,branch:.head.ref,number,title,sha:.head.sha,
          kind:"xo-release",approvalPolicy:"trusted-maintainer"}
-      elif $author == $update_author and
+      elif .user.login == "cl-decider[bot]" and .user.id == 344936881 and .user.type == "Bot" and
         .head.ref == "automation/xo-rolling" and
         .title == "xen-orchestra-ce rolling: refresh upstream" then
         {author:$author,branch:.head.ref,number,title,sha:.head.sha,

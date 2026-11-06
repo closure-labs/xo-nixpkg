@@ -141,6 +141,7 @@ rec {
           xen-orchestra-ce-latest-upstream = rolling;
           automation-runtime = automationRuntime;
           ci-admission = applications.ciAdmission;
+          open-update-pr = applications.openUpdatePr;
           security-applicability = applications.securityApplicability;
           security-scan = applications.securityScan;
           security-review-all = applications.securityReviewAll;
