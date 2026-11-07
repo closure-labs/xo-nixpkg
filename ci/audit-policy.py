@@ -24,8 +24,15 @@ def repository_api(endpoint):
     return json.loads(response.stdout)
 
 
+def audit_api(endpoint):
+    """Keep effective rules on the administration reader, metadata on contents."""
+    if endpoint == 'repos/closure-labs/xo-nixpkg/rules/branches/main':
+        return authority.github_api(endpoint)
+    return repository_api(endpoint)
+
+
 def main():
-    cfg = config(Path('ci/decision-policy.json'), live=True, api=repository_api)
+    cfg = config(Path('ci/decision-policy.json'), live=True, api=audit_api)
     required_check(cfg)
     rules = authority.github_api(f'repos/{cfg["repository"]}/rules/branches/main')
     types = {rule['type'] for rule in rules}

@@ -704,6 +704,66 @@ class PolicyCredentialTests(unittest.TestCase):
             with self.assertRaisesRegex(ValueError, 'metadata reader'):
                 audit.repository_api(endpoint)
 
+    def test_live_governed_audit_routes_rules_to_administration_reader(self):
+        import base64
+        import io
+        import sys
+        from contextlib import redirect_stdout
+        from copy import deepcopy
+        from unittest.mock import patch
+        sys.path.insert(0, str(ROOT / 'ci/decisions'))
+        audit = module('audit-policy')
+        policy = json.loads((ROOT / 'ci/decision-policy.json').read_text())
+        self.assertIn('governance', policy)
+        prefix = 'repos/closure-labs/xo-nixpkg/'
+        revision = 'a' * 40
+        raw = json.dumps(policy).encode()
+        document = {'type': 'file', 'encoding': 'base64', 'size': len(raw),
+                    'sha': hashlib.sha1(b'blob ' + str(len(raw)).encode() + b'\0' + raw).hexdigest(),
+                    'content': base64.b64encode(raw).decode()}
+        rules = [{'type': 'deletion'}, {'type': 'non_fast_forward'},
+                 {'type': 'pull_request', 'parameters': {'required_review_thread_resolution': True}},
+                 {'type': 'merge_queue', 'parameters': {'max_entries_to_merge': 1}},
+                 {'type': 'required_status_checks', 'parameters': {'required_status_checks': [
+                     {'context': 'Maintainer decision authority', 'integration_id': policy['appId']}]}}]
+
+        def metadata(endpoint):
+            if endpoint == prefix + 'git/ref/heads/main':
+                return {'object': {'sha': revision}}
+            self.assertEqual(endpoint, prefix + 'contents/ci/decision-policy.json?ref=' + revision)
+            return document
+
+        def administration(endpoint):
+            self.assertEqual(endpoint, prefix + 'rules/branches/main')
+            return rules
+
+        with patch.object(audit, 'repository_api', side_effect=metadata), \
+                patch.object(audit.authority, 'github_api', side_effect=administration), \
+                redirect_stdout(io.StringIO()) as output:
+            audit.main()
+            self.assertEqual(json.loads(output.getvalue())['status'], 'verified')
+            good = deepcopy(rules)
+            rules[-1]['parameters']['required_status_checks'][0]['integration_id'] += 1
+            with self.assertRaisesRegex(ValueError, 'App-bound'):
+                audit.main()
+            rules[:] = good
+            rules[3]['parameters']['max_entries_to_merge'] = 2
+            with self.assertRaisesRegex(ValueError, 'single-PR'):
+                audit.main()
+
+    def test_audit_router_rejects_other_administration_endpoints(self):
+        import sys
+        from unittest.mock import patch
+        sys.path.insert(0, str(ROOT / 'ci/decisions'))
+        audit = module('audit-policy')
+        with patch.object(audit.authority, 'github_api') as administration:
+            for endpoint in ('repos/closure-labs/other/rules/branches/main',
+                             'repos/closure-labs/xo-nixpkg/rules/branches/other',
+                             'repos/closure-labs/xo-nixpkg/rules/branches/main?other=1'):
+                with self.assertRaisesRegex(ValueError, 'Unexpected'):
+                    audit.audit_api(endpoint)
+            administration.assert_not_called()
+
     def test_workflows_use_inherited_variables_and_minted_queue_token(self):
         audit = (ROOT / '.github/workflows/security-audit.yml').read_text()
         queue = (ROOT / '.github/workflows/queue-automation.yml').read_text()
