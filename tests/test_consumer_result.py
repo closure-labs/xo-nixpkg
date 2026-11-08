@@ -41,8 +41,10 @@ class ConsumerResult(unittest.TestCase):
             patch.object(sys, 'argv', ['consumer', '--config', 'fixture',
                                       '--cache', 'https://cache.example', '--key', 'public']),
             patch.object(consumer.common, 'config', return_value={}),
+            patch.object(consumer, 'publication_snapshot', return_value=('journal', 'commit')),
+            patch.object(consumer, 'unchanged'),
             patch.object(consumer.common, 'ledger', return_value=(
-                'main', {'old': self.old, 'selected': self.selected})),
+                'main', {'old': self.old, 'selected': self.selected}, {})),
             patch.object(consumer.common, 'active_release', side_effect=lambda cfg, records, product, authenticate:
                          (None, self.old if product == self.old['payload']['product'] else self.selected)),
         ]
@@ -66,7 +68,7 @@ class ConsumerResult(unittest.TestCase):
         self.assertEqual(json.loads(self.artifact.read_text()), result)
         self.assertEqual(result, dict(self.result, proposalHash=consumer.common.canonical_hash(self.selected)))
         self.probe.assert_called_once_with(self.selected['payload']['product'], 'https://cache.example', 'public')
-        self.assertEqual(self.provenance.call_count, 2)
+        self.assertEqual(self.provenance.call_count, 1)
 
     def test_local_result_remains_available_on_stdout(self):
         with patch.dict(os.environ, {'RUNNER_TEMP': ''}):
@@ -78,6 +80,20 @@ class ConsumerResult(unittest.TestCase):
         self.probe.side_effect = ValueError('signature failure')
         with self.assertRaisesRegex(ValueError, 'signature failure'):
             self.invoke()
+        self.assertFalse(self.artifact.exists())
+
+    def test_missing_current_publication_never_falls_back_or_downloads(self):
+        with patch.object(consumer, 'publication_snapshot', side_effect=ValueError('missing journal')):
+            with self.assertRaisesRegex(ValueError, 'missing journal'):
+                self.invoke()
+        self.probe.assert_not_called()
+        self.assertFalse(self.artifact.exists())
+
+    def test_selection_change_during_probe_does_not_emit_verified_result(self):
+        with patch.object(consumer, 'unchanged', side_effect=[None, ValueError('selection changed')]):
+            with self.assertRaisesRegex(ValueError, 'selection changed'):
+                self.invoke()
+        self.probe.assert_called_once()
         self.assertFalse(self.artifact.exists())
 
 

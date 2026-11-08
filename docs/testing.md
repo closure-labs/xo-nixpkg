@@ -152,3 +152,22 @@ scanning, and inventory/journal fixtures. `tests/publication-boundary.sh` proves
 all distribution leaves stop before external effects when live authority fails.
 Use `devenv tasks run security:readiness` with repository-scoped runtime read
 credentials to audit the live App/ruleset/baseline configuration before activation.
+
+### Public consumer target selection
+
+The public-cache probe selects one product identity using the newest qualification
+run/attempt in the protected release ledger, before filtering disposition or
+publication availability. This means newest qualification, not newest source
+commit. Tied distinct identities fail. The complete supersession graph and merged
+proposal provenance are then checked for that exact identity; an ambiguous,
+revoked, rejected, or unpublished current target never falls back to older bytes.
+Unrelated historical product conflicts remain unresolved and do not confer approval.
+
+The selected product must have matching completed cache and handoff receipts in
+its immutable, content-addressed publication journal. Those receipts are selection
+evidence, not authorization or a substitute for downloading and verifying public
+bytes/signatures. Cache receipts can remain valid for unchanged immutable outputs;
+no new scan-freshness claim is made. Main and journal refs are checked before and
+after the disposable-store probe, and changes fail without a success result.
+This read-only check retains historical merged provenance semantics; it does not
+renew live review authority or change any publication gate.
