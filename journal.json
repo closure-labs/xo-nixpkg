@@ -34,31 +34,31 @@
       "expected": {
         "producer": {
           "repository": "closure-labs/xo-nixpkg",
-          "revision": "ec8f76f553590d9dc0e1d78876f96cae38ab5375",
+          "revision": "02dc8719df57c5fb11707650579493d0c1060b0a",
           "runAttempt": 1,
-          "runId": 42392013836,
+          "runId": 42478026096,
           "sourceRevision": "ec8f76f553590d9dc0e1d78876f96cae38ab5375",
           "workflow": ".github/workflows/qualification.yml"
         },
-        "reference": "ghcr.io/closure-labs/xo-nixpkg-products@sha256:e9b3bda8bbc71f48898265e3009f17b25bba3f5db0363aa3db51a37564667949",
-        "sha256": "db7360959e84884e2cd5fc797b904f0403d6050d22224d4a2ecac2c98f4720fa"
+        "reference": "ghcr.io/closure-labs/xo-nixpkg-products@sha256:09c445b35df0e96211c8e98eb6817e72bb18f86fdabf0fef3d03ad0bd930975a",
+        "sha256": "db44c4c8ee1be6c88e4f09c7a73646da618687019b30524f8b8dfb0e8af7a927"
       },
       "observed": {
         "producer": {
           "repository": "closure-labs/xo-nixpkg",
-          "revision": "ec8f76f553590d9dc0e1d78876f96cae38ab5375",
+          "revision": "02dc8719df57c5fb11707650579493d0c1060b0a",
           "runAttempt": 1,
-          "runId": 42392013836,
+          "runId": 42478026096,
           "sourceRevision": "ec8f76f553590d9dc0e1d78876f96cae38ab5375",
           "workflow": ".github/workflows/qualification.yml"
         },
-        "reference": "ghcr.io/closure-labs/xo-nixpkg-products@sha256:e9b3bda8bbc71f48898265e3009f17b25bba3f5db0363aa3db51a37564667949",
-        "sha256": "db7360959e84884e2cd5fc797b904f0403d6050d22224d4a2ecac2c98f4720fa"
+        "reference": "ghcr.io/closure-labs/xo-nixpkg-products@sha256:09c445b35df0e96211c8e98eb6817e72bb18f86fdabf0fef3d03ad0bd930975a",
+        "sha256": "db44c4c8ee1be6c88e4f09c7a73646da618687019b30524f8b8dfb0e8af7a927"
       },
       "productHash": "8503ea5a37b148ec32a9044e7ebb0e24d8a2e7c3a91c3612a2d660ae95ab8377",
       "schema": 1,
       "status": "verified",
-      "verifiedAt": "2026-11-07T18:45:57.167326+00:00",
+      "verifiedAt": "2026-11-08T12:26:59.386176+00:00",
       "verifier": "b7573547249bb8fc7359d29ebaea7dfab5f6d67f8c74361ce6eb1cf277fcd187"
     }
   },
@@ -114,14 +114,14 @@
       "identity": {
         "producer": {
           "repository": "closure-labs/xo-nixpkg",
-          "revision": "ec8f76f553590d9dc0e1d78876f96cae38ab5375",
+          "revision": "02dc8719df57c5fb11707650579493d0c1060b0a",
           "runAttempt": 1,
-          "runId": 42392013836,
+          "runId": 42478026096,
           "sourceRevision": "ec8f76f553590d9dc0e1d78876f96cae38ab5375",
           "workflow": ".github/workflows/qualification.yml"
         },
-        "reference": "ghcr.io/closure-labs/xo-nixpkg-products@sha256:e9b3bda8bbc71f48898265e3009f17b25bba3f5db0363aa3db51a37564667949",
-        "sha256": "db7360959e84884e2cd5fc797b904f0403d6050d22224d4a2ecac2c98f4720fa"
+        "reference": "ghcr.io/closure-labs/xo-nixpkg-products@sha256:09c445b35df0e96211c8e98eb6817e72bb18f86fdabf0fef3d03ad0bd930975a",
+        "sha256": "db44c4c8ee1be6c88e4f09c7a73646da618687019b30524f8b8dfb0e8af7a927"
       },
       "name": "handoff",
       "state": "complete"
