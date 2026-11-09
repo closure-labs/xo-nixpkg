@@ -4,6 +4,9 @@ name: Queue trusted automation updates
 on:
   # Event data never selects code or artifacts; the trusted main controller
   # revalidates current candidate identity, SHA, paths, approval and CI itself.
+  # Only PR validation can make a candidate newly enqueueable. Merge-group,
+  # scheduled and manual validation do not need another queue controller;
+  # authority/review wakeups and scheduled/manual recovery remain unchanged.
   workflow_run: # zizmor: ignore[dangerous-triggers] -- observer completion only wakes trusted-main reconciliation.
     workflows:
       - Validate packages
@@ -25,7 +28,7 @@ permissions:
 
 jobs:
   enqueue:
-    if: github.repository == 'closure-labs/xo-nixpkg' && (github.ref == format('refs/heads/{0}', github.event.repository.default_branch) && (github.event_name != 'workflow_run' || (github.event.workflow_run.conclusion == 'success' && (github.event.workflow_run.name != 'Relay update reviews' || vars.XO_AUTHORITY_WAKEUPS_VALIDATED != 'true'))))
+    if: github.repository == 'closure-labs/xo-nixpkg' && (github.ref == format('refs/heads/{0}', github.event.repository.default_branch) && (github.event_name != 'workflow_run' || (github.event.workflow_run.conclusion == 'success' && (github.event.workflow_run.name != 'Validate packages' || github.event.workflow_run.event == 'pull_request') && (github.event.workflow_run.name != 'Relay update reviews' || vars.XO_AUTHORITY_WAKEUPS_VALIDATED != 'true'))))
     name: Reconcile trusted updates
     runs-on: ubuntu-24.04
     timeout-minutes: 20

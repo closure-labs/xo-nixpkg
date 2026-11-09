@@ -34,6 +34,7 @@ jobs:
           github-token: ${{ github.token }}
 
       - name: Scan the immutable channel inventory
+        id: scan
         env:
           GH_TOKEN: ${{ github.token }}
           REGISTRY_TOKEN: ${{ github.token }}
@@ -41,8 +42,17 @@ jobs:
           SECURITY_OUTPUT: security-report
         run: nix run .#devenv -- tasks run --mode single --option 'packages:pkgs!' '' security:review-all
 
+      - name: Upload database preparation diagnostics
+        if: ${{ always() && hashFiles('security-report/database-preparation.json') != '' }}
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: security-review-database
+          path: security-report/database-preparation.json
+          if-no-files-found: error
+          retention-days: 30
+
       - name: Upload latest raw matches and applicability evidence
-        if: always()
+        if: ${{ always() && steps.scan.outputs.database_prepared == 'true' }}
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: security-review-latest
@@ -50,7 +60,7 @@ jobs:
           if-no-files-found: error
           retention-days: 30
       - name: Upload stable raw matches and applicability evidence
-        if: always()
+        if: ${{ always() && steps.scan.outputs.database_prepared == 'true' }}
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: security-review-stable
@@ -58,7 +68,7 @@ jobs:
           if-no-files-found: error
           retention-days: 30
       - name: Upload rolling raw matches and applicability evidence
-        if: always()
+        if: ${{ always() && steps.scan.outputs.database_prepared == 'true' }}
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: security-review-rolling

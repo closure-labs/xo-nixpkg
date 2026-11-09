@@ -172,6 +172,33 @@ after the disposable-store probe, and changes fail without a success result.
 This read-only check retains historical merged provenance semantics; it does not
 renew live review authority or change any publication gate.
 
+### Advisory database preparation failures
+
+The daily channel review retains `security-report/database-preparation.json` in
+`security-review-database`, including the UTC check time, normalized database build time, age, schema,
+the 24-hour limit, preparation stage and updater attempt exit codes. The report
+contains no raw scanner output, local database paths or update URLs and is not an
+authorization receipt. Report writes are atomic and best-effort, so a report I/O
+error cannot replace the original failure or authorize a rejected database.
+An interrupted preparation may leave `result: preparing`;
+only `result: prepared` means preparation completed, not that scans passed.
+
+A recognized transient transport/server updater error gets at most one retry
+after five seconds, within the existing 900-second preparation budget. A
+successful but stale download, a future timestamp, malformed status/schema or a
+permanent updater failure does not trigger another download. Advisory review
+still requires a database no older than 24 hours; admission's 48-hour policy is
+unchanged. If preparation fails, channel scans and their artifact uploads are
+skipped while the review job still fails. Missing channel artifacts remain errors
+once preparation has succeeded.
+
+Focused offline checks:
+
+```bash
+python3 tests/security-database.py
+python3 tests/test_scan_efficiency.py
+```
+
 ### Publication latency diagnostics
 
 The existing `xo-publication-result` artifact also retains
