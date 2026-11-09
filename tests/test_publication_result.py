@@ -92,6 +92,9 @@ class PublicationResult(unittest.TestCase):
         os.environ['XO_NIXPKG_PUBLICATION_PURPOSE'] = 'rolling'
         result = self.execute()
         self.assertEqual(result['status'], 'verified')
+        self.assertEqual(set(result['phaseMilliseconds']), {'admission', 'source-validation', 'journal', 'cache', 'handoff'})
+        self.assertTrue(all(type(value) is int and value >= 0 for value in result['phaseMilliseconds'].values()))
+        self.assertGreaterEqual(result['elapsedMilliseconds'], sum(result['phaseMilliseconds'].values()))
         self.assertEqual(result['productHash'], hashlib.sha256(m.canonical(self.product)).hexdigest())
         self.assertEqual(self.completed, ['cache', 'handoff'])
         for name in ('xoTagLeafInvocations','projectTagInvocations','releasePublishInvocations'):
@@ -148,6 +151,18 @@ class PublicationResult(unittest.TestCase):
         self.assertEqual(partial['failedStage'], 'admission')
         self.assertEqual(partial['completedStages'], [])
         self.assertNotIn('productHash', partial)
+        self.assertEqual(set(partial['phaseMilliseconds']), {'admission'})
+        self.assertGreaterEqual(partial['elapsedMilliseconds'], 0)
+
+    def test_source_validation_failure_preserves_live_gate_and_records_its_own_phase(self):
+        self.descriptor['producer'] = dict(self.producer, runAttempt=99)
+        with self.assertRaisesRegex(ValueError, 'gated producer'):
+            self.execute()
+        partial = json.loads(self.artifact.read_text())
+        self.assertEqual(partial['failedStage'], 'source-validation')
+        self.assertEqual(set(partial['phaseMilliseconds']), {'admission', 'source-validation'})
+        self.assertEqual(partial['completedStages'], [])
+        self.assertEqual(self.calls, [('xo-nixpkg-publication-gate',)])
 
     def test_partial_cache_checkpoint_is_distinguished_from_handoff_attempt(self):
         with self.assertRaises(RuntimeError): self.execute(fail_handoff=True)
@@ -158,7 +173,19 @@ class PublicationResult(unittest.TestCase):
         self.assertFalse(partial['authorityClaim'])
         self.assertNotIn('PRIVATE_TOKEN', self.artifact.read_text())
         self.assertNotIn('/private/path', self.artifact.read_text())
+        self.assertEqual(set(partial['phaseMilliseconds']), {'admission', 'source-validation', 'journal', 'cache', 'handoff'})
 
+
+    def test_phase_timings_use_disjoint_monotonic_intervals_and_snapshot_current_failure(self):
+        with patch.object(m.time, 'monotonic_ns', side_effect=[1_000_000, 4_000_000, 9_000_000, 11_000_000]):
+            timings = m.PhaseTimings()
+            timings.advance('cache')
+            self.assertEqual(timings.summary(), {'elapsedMilliseconds': 8,
+                'phaseMilliseconds': {'admission': 3, 'cache': 5}})
+            self.assertEqual(timings.summary(), {'elapsedMilliseconds': 10,
+                'phaseMilliseconds': {'admission': 3, 'cache': 7}})
+        with self.assertRaisesRegex(ValueError, 'Invalid publication timing stage'):
+            timings.advance('PRIVATE_TOKEN /private/path')
 
     def test_handoff_observation_records_copy_before_execution_only_if_missing(self):
         for missing in (False,True):

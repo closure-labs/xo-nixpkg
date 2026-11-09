@@ -593,11 +593,16 @@ def required_check(cfg, api=None):
 
 def gate(cfg, scan_path, product_path=None, purpose='rolling', api=None):
     raw_api = api or authority.github_api
-    calls, state = 0, 'blocked'
+    calls, api_nanoseconds, state = 0, 0, 'blocked'
+    started = time.monotonic_ns()
     def counted(endpoint):
-        nonlocal calls
+        nonlocal calls, api_nanoseconds
         calls += 1
-        return raw_api(endpoint)
+        request_started = time.monotonic_ns()
+        try:
+            return raw_api(endpoint)
+        finally:
+            api_nanoseconds += time.monotonic_ns() - request_started
     try:
         # The map dies with this gate call. Only full-SHA Git facts qualify;
         # mutable heads, policy, reviews, membership and timelines always pass
@@ -608,7 +613,9 @@ def gate(cfg, scan_path, product_path=None, purpose='rolling', api=None):
         return result
     finally:
         try:
-            observability.authority_requests(calls, state)
+            observability.authority_requests(calls, state,
+                elapsed_milliseconds=(time.monotonic_ns() - started) // 1_000_000,
+                api_milliseconds=api_nanoseconds // 1_000_000)
         except OSError:
             print('Could not retain authority request-count diagnostics.', file=sys.stderr)
 

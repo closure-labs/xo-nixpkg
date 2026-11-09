@@ -28,13 +28,19 @@ def stage(name, started, *, cache=None, transferred_bytes=0, freshness=None, que
     return value
 
 
-def authority_requests(count, status):
+def authority_requests(count, status, *, elapsed_milliseconds=None, api_milliseconds=None):
     """Count only calls through the authority API callback, not all HTTP traffic."""
     import stat
     if type(count) is not int or not 0 <= count <= 100000 or status not in ('passed', 'blocked'):
         raise ValueError('Invalid authority request-count observation')
     value = {'schema': 1, 'scope': 'publication-authority-callback',
              'calls': count, 'status': status, 'authorityClaim': False}
+    for key, duration in [('elapsedMilliseconds', elapsed_milliseconds),
+                          ('apiMilliseconds', api_milliseconds)]:
+        if duration is not None:
+            if type(duration) is not int or duration < 0:
+                raise ValueError('Invalid authority duration observation')
+            value[key] = duration
     if os.environ.get('RUNNER_TEMP'):
         path = Path(os.environ['RUNNER_TEMP']) / 'authority-api-requests.jsonl'
         descriptor = os.open(path, os.O_WRONLY | os.O_APPEND | os.O_CREAT | os.O_NOFOLLOW | os.O_NONBLOCK, 0o600)

@@ -279,6 +279,36 @@ def write_result(result_path, result):
                 temporary.unlink(missing_ok=True)
 
 
+class PhaseTimings:
+    """Disjoint monotonic wall times, never publication or authority evidence."""
+    STAGES = {'admission', 'source-validation', 'journal', 'cache', 'handoff',
+              'xo-tag', 'project-tag', 'github-release'}
+
+    def __init__(self):
+        self.started = self.phase_started = time.monotonic_ns()
+        self.stage = 'admission'
+        self.durations = {}
+
+    def advance(self, stage):
+        if stage not in self.STAGES:
+            raise ValueError('Invalid publication timing stage')
+        now = time.monotonic_ns()
+        self.durations[self.stage] = self.durations.get(self.stage, 0) + now - self.phase_started
+        self.phase_started, self.stage = now, stage
+
+    def summary(self):
+        now = time.monotonic_ns()
+        durations = dict(self.durations)
+        durations[self.stage] = durations.get(self.stage, 0) + now - self.phase_started
+        return {'elapsedMilliseconds': (now - self.started) // 1_000_000,
+                'phaseMilliseconds': {name: duration // 1_000_000 for name, duration in durations.items()}}
+
+
+def stage(progress, name):
+    progress['timings'].advance(name)
+    progress['stage'] = name
+
+
 def main():
     # Diagnostics never supply authority or select a publication operation.
     result_path = Path(os.environ['RUNNER_TEMP']) / 'publication-result.json' if os.environ.get('RUNNER_TEMP') else None
@@ -288,7 +318,7 @@ def main():
                         handoffCopyAttempts=0, handoffPushInvocations=0, xoTagLeafInvocations=0,
                         projectTagInvocations=0, releasePublishInvocations=0,
                         xoTagRequired=False)
-    progress = {'stage': 'admission', 'completedStages': []}
+    progress = {'stage': 'admission', 'completedStages': [], 'timings': PhaseTimings()}
     try:
         # Only immutable bundles cross child gate invocations. No gate result,
         # review, membership, freshness or destination admission is retained.
@@ -300,7 +330,7 @@ def main():
         partial = {'schema': 1, 'status': 'incomplete', 'authorityClaim': False,
                    'failedStage': progress['stage'],
                    'completedStages': progress['completedStages'],
-                   'invocationAttempts': observations}
+                   'invocationAttempts': observations, **progress['timings'].summary()}
         try:
             write_result(result_path, partial)
         except OSError:
@@ -316,6 +346,7 @@ def publish(result_path, observations, progress):
     os.environ['GATED_SHA']=revision
     os.environ['XO_NIXPKG_PUBLICATION_PURPOSE']=os.environ.get('XO_NIXPKG_PUBLICATION_PURPOSE','release')
     run('xo-nixpkg-publication-gate')
+    stage(progress, 'source-validation')
     controller_revision = commit_sha(subprocess.check_output(['git','rev-parse','HEAD'],text=True).strip())
     os.environ['BASE_SHA']=subprocess.check_output(['git','rev-parse',revision+'^'],text=True).strip()
     source_path=directory.with_suffix('.source.json')
@@ -338,9 +369,9 @@ def publish(result_path, observations, progress):
             path=directory/name
             if path.is_symlink() or hashlib.sha256(path.read_bytes()).hexdigest()!=expected:
                 raise ValueError('Publication asset differs from approved immutable bytes')
-    progress['stage'] = 'journal'
+    stage(progress, 'journal')
     journal=Journal(repository,product)
-    progress['stage'] = 'cache'
+    stage(progress, 'cache')
     state=destinations.cache(product,os.environ['XO_NIXPKG_CACHIX_CACHE_URL'])
     if state['status'] in ('conflict','unavailable'):
         raise ValueError('Public cache '+state['status'])
@@ -371,7 +402,7 @@ def publish(result_path, observations, progress):
     proof=destinations.receipt(state,product)
     journal.complete('cache', {'products':product['products'],'roots':product.get('roots',{})},proof)
     progress['completedStages'].append('cache')
-    progress['stage'] = 'handoff'
+    stage(progress, 'handoff')
     if source and not local_handoff:
         packet=remote_handoff(source,descriptor,observations)
     else:
@@ -388,8 +419,8 @@ def publish(result_path, observations, progress):
         finally: packets.REGISTRY,packets.REFERENCE=old_registry,old_reference
     journal.complete('handoff',packet,destinations.receipt(destinations.result('handoff',packet,packet),product))
     progress['completedStages'].append('handoff')
-    progress['stage'] = 'xo-tag'
     if os.environ['XO_NIXPKG_PUBLICATION_PURPOSE']=='release':
+        stage(progress, 'xo-tag')
         observations['xoTagLeafInvocations'] += 1
         run('xo-nixpkg-tag-xo-release')
         before=json.loads(subprocess.check_output(['git','show',os.environ['BASE_SHA']+':nix/sources/xen-orchestra.json']))['channels']['latest']
@@ -402,7 +433,7 @@ def publish(result_path, observations, progress):
             xo_identity['tag']=tag
         journal.complete('xo-tag',{'revision':revision},destinations.receipt(destinations.result('xo-tag',xo_identity,xo_identity),product))
         progress['completedStages'].append('xo-tag')
-        progress['stage'] = 'project-tag'
+        stage(progress, 'project-tag')
         version=subprocess.check_output(['git','show',revision+':VERSION'],text=True).strip();tag='v'+version
         existing=subprocess.run(['git','rev-parse','--verify',tag+'^{commit}'],capture_output=True,text=True)
         if existing.returncode==0 and existing.stdout.strip()!=revision:
@@ -416,7 +447,7 @@ def publish(result_path, observations, progress):
             identity={'tag':tag,'revision':revision}
             journal.complete('project-tag',identity,destinations.receipt(destinations.result('project-tag',identity,identity),product))
             progress['completedStages'].append('project-tag')
-            progress['stage'] = 'github-release'
+            stage(progress, 'github-release')
             observations['releasePublishInvocations'] += 1
             run('xo-nixpkg-publish-release')
             release=api(repository,'releases/tags/'+tag)
@@ -429,7 +460,7 @@ def publish(result_path, observations, progress):
               'journalRef':journal.branch, 'sourceRevision':revision,
               'controllerRevision':controller_revision,
               'producer':scans['producer'], 'metadataSourceAvailable':source is not None,
-              'operations':observations}
+              'operations':observations, **progress['timings'].summary()}
     write_result(result_path, result)
     print(json.dumps(result))
 

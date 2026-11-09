@@ -171,3 +171,32 @@ no new scan-freshness claim is made. Main and journal refs are checked before an
 after the disposable-store probe, and changes fail without a success result.
 This read-only check retains historical merged provenance semantics; it does not
 renew live review authority or change any publication gate.
+
+### Publication latency diagnostics
+
+The existing `xo-publication-result` artifact also retains
+`publication-fetch-source.json`. Its fixed status distinguishes an exact retained
+packet from `no-exact-packet`, ambiguous packets, and validation failure. Discovery,
+metadata materialization, and total lookup durations explain the metadata-first
+path without exposing packet references or raw errors. No exact packet still uses
+the existing artifact fallback; a different qualification run/attempt is never a
+substitute, even if its immutable product is unchanged.
+
+`publication-result.json` records disjoint monotonic `phaseMilliseconds` and total
+`elapsedMilliseconds`, including the failed phase on an incomplete run. Cache and
+handoff times include their live checks and journal checkpoints. Release-only
+phases are absent for rolling publication. These times cover the controller, not
+the preceding evidence-fetch workflow step or Nix startup.
+
+The existing `authority-api-requests.jsonl` adds total gate `elapsedMilliseconds`
+and time spent inside its counted live API callback (`apiMilliseconds`). Those
+observations are nested within controller phase times and must not be added to
+them. They do not measure every HTTP request, such as verifier subprocess traffic.
+No timing, count, or source diagnostic supplies authority or skips verification.
+All diagnostics use fixed fields and omit endpoints, bodies, credentials, and
+arbitrary exception text. Run the fixtures with:
+
+```bash
+python3 -m unittest discover -s tests -p 'test_publication*.py'
+PYTHONPATH=ci/decisions python3 -m unittest discover -s tests/decisions -p 'test_authority_request_counts.py'
+```

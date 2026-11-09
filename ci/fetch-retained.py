@@ -1,7 +1,10 @@
 #!/usr/bin/env python3
 # SPDX-License-Identifier: Apache-2.0
 """Recover exact candidate bytes from private, digest-bound reviewed evidence."""
+import json
 import os
+import sys
+import time
 import tempfile
 from pathlib import Path
 import re
@@ -81,18 +84,47 @@ def inventory_only(packet, output):
 
 
 def main():
+    # These observations explain exact-run fallback; they never select evidence.
+    observation = {'schema': 1, 'authorityClaim': False, 'status': 'blocked'}
+    started = time.monotonic_ns()
+    try:
+        return fetch(observation)
+    finally:
+        if os.environ.get('XO_NIXPKG_PUBLICATION_METADATA_ONLY') == 'true' and os.environ.get('RUNNER_TEMP'):
+            observation['elapsedMilliseconds'] = (time.monotonic_ns() - started) // 1_000_000
+            try:
+                # Replace atomically without following an existing diagnostic link.
+                with tempfile.NamedTemporaryFile(mode='w', dir=os.environ['RUNNER_TEMP'], delete=False) as stream:
+                    temporary = Path(stream.name)
+                    try:
+                        json.dump(observation, stream, sort_keys=True)
+                        stream.write('\n')
+                        stream.flush()
+                        os.replace(temporary, Path(os.environ['RUNNER_TEMP']) / 'publication-fetch-source.json')
+                    finally:
+                        temporary.unlink(missing_ok=True)
+            except OSError:
+                print('Could not retain publication source diagnostics.', file=sys.stderr)
+
+
+def fetch(observation):
     cfg = config(Path('ci/decision-policy.json'), live=True)
     run_id, attempt = int(os.environ['QUALIFICATION_RUN']), int(os.environ['QUALIFICATION_ATTEMPT'])
+    started = time.monotonic_ns()
     found = find_packets(cfg, run_id, attempt)
+    observation['discoveryMilliseconds'] = (time.monotonic_ns() - started) // 1_000_000
     if not found:
         if os.environ.get('XO_NIXPKG_PUBLICATION_METADATA_ONLY') == 'true':
+            observation['status'] = 'no-exact-packet'
             raise SystemExit(4)
         raise ValueError('candidate artifact expired without a retained immutable decision packet')
     output = Path(os.environ['XO_NIXPKG_EVIDENCE'])
     if os.environ.get('XO_NIXPKG_PUBLICATION_METADATA_ONLY') == 'true':
         if len(found) != 1:
+            observation['status'] = 'ambiguous-exact-packets'
             raise ValueError('Ambiguous exact-run publication packets')
         packet = found[0]
+        started = time.monotonic_ns()
         values = {name: packets.metadata_bytes(packet['reference'], packet['sha256'], name, producer=packet['producer'])
                   for name in ('product.json', 'scans.json')}
         output.mkdir()
@@ -100,6 +132,7 @@ def main():
         for name, value in values.items():
             (output/name).write_bytes(value)
         output.with_suffix('.source.json').write_text(json.dumps(packet))
+        observation.update(status='exact-packet', metadataMilliseconds=(time.monotonic_ns() - started) // 1_000_000)
         return
     if os.environ.get('XO_NIXPKG_RESCAN_INVENTORY_ONLY') == 'true':
         if len(found) != 1:

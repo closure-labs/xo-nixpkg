@@ -57,6 +57,8 @@ class AuthorityRequests(unittest.TestCase):
                 self.assertEqual(value['calls'], 1)
                 self.assertEqual(value['status'], 'blocked' if fail else 'passed')
                 self.assertFalse(value['authorityClaim'])
+                self.assertGreaterEqual(value['elapsedMilliseconds'], value['apiMilliseconds'])
+                self.assertGreaterEqual(value['apiMilliseconds'], 0)
                 self.assertNotIn('PRIVATE', raw)
                 self.assertNotIn('endpoint', raw)
 
@@ -83,3 +85,40 @@ class AuthorityRequests(unittest.TestCase):
             self.assertEqual(target.read_text(), 'unchanged')
         for count in [-1, True, 100001]:
             with self.assertRaises(ValueError): observability.authority_requests(count, 'passed')
+
+    def test_callback_time_includes_failed_live_requests_without_endpoint_disclosure(self):
+        def gate(cfg, scan, product, purpose, api):
+            api('PRIVATE_ENDPOINT')
+        with tempfile.TemporaryDirectory() as temporary, patch.dict(os.environ, {'RUNNER_TEMP': temporary}), \
+                patch.object(common, '_gate', side_effect=gate), \
+                patch.object(common.time, 'monotonic_ns', side_effect=[1_000_000, 2_000_000, 5_000_000, 7_000_000]):
+            with self.assertRaisesRegex(ValueError, 'PRIVATE_BODY'):
+                common.gate({}, None, api=lambda p: (_ for _ in ()).throw(ValueError('PRIVATE_BODY')))
+            raw = (Path(temporary) / 'authority-api-requests.jsonl').read_text()
+            value = json.loads(raw)
+            self.assertEqual(value['calls'], 1)
+            self.assertEqual(value['status'], 'blocked')
+            self.assertEqual(value['elapsedMilliseconds'], 6)
+            self.assertEqual(value['apiMilliseconds'], 3)
+            self.assertNotIn('PRIVATE', raw)
+
+    def test_invalid_durations_cannot_enter_diagnostics(self):
+        for field in ['elapsed_milliseconds', 'api_milliseconds']:
+            for value in [-1, True, 'PRIVATE_TOKEN', float('nan')]:
+                with self.subTest(field=field, value=value), self.assertRaises(ValueError):
+                    observability.authority_requests(1, 'passed', **{field: value})
+
+    def test_diagnostic_write_failure_preserves_passed_and_blocked_authority(self):
+        import contextlib
+        import io
+        for fail in [False, True]:
+            with patch.object(common, '_gate', return_value={'passed': True},
+                    side_effect=ValueError('actual failure') if fail else None), \
+                    patch.object(observability, 'authority_requests', side_effect=OSError('PRIVATE_TOKEN')), \
+                    contextlib.redirect_stderr(io.StringIO()) as stderr:
+                if fail:
+                    with self.assertRaisesRegex(ValueError, 'actual failure'):
+                        common.gate({}, None)
+                else:
+                    self.assertEqual(common.gate({}, None), {'passed': True})
+            self.assertNotIn('PRIVATE_TOKEN', stderr.getvalue())
