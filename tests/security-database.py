@@ -4,6 +4,7 @@
 import datetime as dt
 import hashlib
 import importlib.util
+import io
 import json
 import os
 from pathlib import Path
@@ -19,7 +20,7 @@ database = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(database)
 
 
-class SnapshotTests(unittest.TestCase):
+class SnapshotFixture(unittest.TestCase):
     def setUp(self):
         self.temp = tempfile.TemporaryDirectory()
         self.addCleanup(self.temp.cleanup)
@@ -56,6 +57,9 @@ class SnapshotTests(unittest.TestCase):
         path.write_text(json.dumps(value))
         return hashlib.sha256(path.read_bytes()).hexdigest()
 
+
+
+class SnapshotTests(SnapshotFixture):
     def test_four_profiles_share_one_online_preparation(self):
         digest = self.prepare()
         for _ in range(4):
@@ -98,6 +102,165 @@ class SnapshotTests(unittest.TestCase):
         with patch.object(database.subprocess, 'run', side_effect=subprocess.CalledProcessError(1, 'grype')):
             with self.assertRaises(subprocess.CalledProcessError): database.prepare(Path(self.temp.name)/'failed')
         self.assertFalse((Path(self.temp.name)/'failed/receipt.json').exists())
+
+
+class PreparationDiagnosticsTests(SnapshotFixture):
+    def setUp(self):
+        super().setUp()
+        self.clock = dt.datetime(2026, 11, 9, 18, tzinfo=dt.timezone.utc)
+        patch.object(database, 'now', return_value=self.clock).start()
+        patch.object(database.sys, 'stderr', new_callable=io.StringIO).start()
+        self.sleep = patch.object(database.time, 'sleep').start()
+        self.status['built'] = (self.clock - dt.timedelta(hours=1)).isoformat()
+        self.report = Path(self.temp.name) / 'report/database-preparation.json'
+
+    def prepare_report(self):
+        return database.prepare(self.root, 24, self.report)
+
+    def read_report(self):
+        return json.loads(self.report.read_text())
+
+    def test_stale_future_and_invalid_status_retain_safe_diagnostics_without_retry(self):
+        original = dict(self.status, path='secret-path', error='secret-error')
+        for index, (change, reason) in enumerate([
+            ({'built': (self.clock-dt.timedelta(hours=36)).isoformat()}, 'stale'),
+            ({'built': (self.clock+dt.timedelta(hours=1)).isoformat()}, 'future_dated'),
+            ({'schemaVersion': 'secret-schema'}, 'invalid_status'),
+            ({'valid': False}, 'invalid_status'),
+            ({'built': 'secret-timestamp'}, 'invalid_timestamp'),
+        ]):
+            with self.subTest(reason=reason):
+                self.root = Path(self.temp.name) / str(index)
+                self.status = dict(original, **change)
+                with self.assertRaises(ValueError): self.prepare_report()
+                value = self.read_report()
+                self.assertEqual(value['result'], 'failed')
+                self.assertEqual(value['database']['reason'], reason)
+                self.assertEqual(value['database']['maximumAgeHours'], 24)
+                self.assertEqual(value['updates'], [{'exitCode': 0}])
+                self.assertFalse((self.root/'receipt.json').exists())
+                self.assertNotIn('secret-', self.report.read_text())
+                if index == 0:
+                    self.assertEqual(value['database']['checkedAt'], self.clock.isoformat())
+                    self.assertEqual(value['database']['ageHours'], 36)
+                    self.assertEqual(value['database']['builtAt'], '2026-11-08T06:00:00+00:00')
+                    self.assertEqual(value['database']['schemaVersion'], 'v6.1.10')
+        self.assertEqual(self.updates, 5)
+        self.sleep.assert_not_called()
+
+    def test_exact_age_boundary_and_future_microsecond(self):
+        for age in (dt.timedelta(hours=24), dt.timedelta(0)):
+            status = dict(self.status, built=(self.clock-age).isoformat())
+            database.validate_status(status, 24)
+        for age in (dt.timedelta(hours=24, microseconds=1), dt.timedelta(microseconds=-1)):
+            with self.assertRaises(ValueError):
+                database.validate_status(dict(self.status, built=(self.clock-age).isoformat()), 24)
+
+    def test_transient_update_recovers_once_and_receipt_verifies(self):
+        calls = []
+        def update(command, **kwargs):
+            calls.append(command)
+            if len(calls) == 1:
+                raise subprocess.CalledProcessError(1, command, stderr='response code: 503 secret-url')
+            return self.fake_run(command, **kwargs)
+        with patch.object(database.subprocess, 'run', side_effect=update):
+            digest = self.prepare_report()
+        self.assertEqual(len(calls), 2)
+        self.sleep.assert_called_once_with(5)
+        database.verify(self.root, digest, 24)
+        value = self.read_report()
+        self.assertEqual(value['result'], 'prepared')
+        self.assertEqual(value['updates'], [{'exitCode': 1, 'transient': True}, {'exitCode': 0}])
+        self.assertNotIn('secret-', self.report.read_text())
+
+    def test_update_retry_is_bounded_and_permanent_errors_are_not_retried(self):
+        for index, (message, attempts) in enumerate([
+            ('i/o timeout secret-url', 2), ('response code: 503', 2),
+            ('response code: 401 secret-url', 1), ('response code: 403 secret-url', 1),
+            ('x509: certificate signed by unknown authority', 1), ('checksum mismatch', 1),
+        ]):
+            with self.subTest(message=message):
+                self.root = Path(self.temp.name) / str(index)
+                error = subprocess.CalledProcessError(1, 'grype', stderr=message)
+                with patch.object(database.subprocess, 'run', side_effect=error) as update:
+                    with self.assertRaises(subprocess.CalledProcessError): self.prepare_report()
+                self.assertEqual(update.call_count, attempts)
+                value = self.read_report()
+                self.assertEqual(value['result'], 'failed')
+                self.assertEqual(value['stage'], 'update')
+                self.assertEqual(len(value['updates']), attempts)
+                self.assertFalse((self.root/'receipt.json').exists())
+                self.assertNotIn('secret-', self.report.read_text())
+
+    def test_recovered_update_still_rejects_stale_database(self):
+        calls = []
+        def update(command, **kwargs):
+            calls.append(command)
+            if len(calls) == 1:
+                raise subprocess.CalledProcessError(1, command, stderr='connection reset by peer')
+            return self.fake_run(command, **kwargs)
+        self.status['built'] = (self.clock-dt.timedelta(hours=36)).isoformat()
+        with patch.object(database.subprocess, 'run', side_effect=update):
+            with self.assertRaises(ValueError): self.prepare_report()
+        self.assertEqual(len(calls), 2)
+        self.assertEqual(self.read_report()['database']['reason'], 'stale')
+        self.assertFalse((self.root/'receipt.json').exists())
+
+    def test_status_command_and_json_failures_never_create_receipt(self):
+        for index, output in enumerate([json.dumps(self.status), 'secret-malformed-json', None]):
+            self.root = Path(self.temp.name) / ('command-' + str(index))
+            error = subprocess.CalledProcessError(1, 'grype', output=output)
+            with patch.object(database.subprocess, 'check_output', side_effect=error):
+                with self.assertRaises(subprocess.CalledProcessError): self.prepare_report()
+            value = self.read_report()
+            self.assertEqual(value['statusExitCode'], 1)
+            self.assertEqual(value['result'], 'failed')
+            self.assertEqual(value['stage'], 'status')
+            self.assertFalse((self.root/'receipt.json').exists())
+            self.assertNotIn('secret-', self.report.read_text())
+            if index == 0:
+                self.assertEqual(value['database']['ageHours'], 1)
+        for index, output in enumerate(['secret-malformed-json', '[]', '{"valid":true}']):
+            self.root = Path(self.temp.name) / ('json-' + str(index))
+            with patch.object(database.subprocess, 'check_output', return_value=output):
+                with self.assertRaises(ValueError): self.prepare_report()
+            self.assertEqual(self.read_report()['result'], 'failed')
+            self.assertFalse((self.root/'receipt.json').exists())
+            self.assertNotIn('secret-', self.report.read_text())
+
+    def test_atomic_diagnostics_replace_symlink_without_touching_target(self):
+        target = Path(self.temp.name)/'do-not-change'
+        target.write_text('original')
+        self.report.parent.mkdir()
+        self.report.symlink_to(target)
+        digest = self.prepare_report()
+        self.assertEqual(target.read_text(), 'original')
+        self.assertFalse(self.report.is_symlink())
+        self.assertEqual(self.read_report()['result'], 'prepared')
+        self.assertEqual(list(self.report.parent.glob('.*')), [])
+        database.verify(self.root, digest, 24)
+
+    def test_diagnostic_io_failure_never_masks_rejection_or_changes_verdict(self):
+        with patch.object(database.os, 'replace', side_effect=OSError('fixture write failure')):
+            self.status['built'] = (self.clock-dt.timedelta(hours=36)).isoformat()
+            with self.assertRaises(database.DatabaseStatusError) as rejected:
+                self.prepare_report()
+            self.assertEqual(rejected.exception.details['reason'], 'stale')
+            self.assertFalse((self.root/'receipt.json').exists())
+            self.root = Path(self.temp.name)/'accepted'
+            self.status['built'] = (self.clock-dt.timedelta(hours=1)).isoformat()
+            digest = self.prepare_report()
+        self.assertFalse(self.report.exists())
+        self.assertIn('Unable to persist', database.sys.stderr.getvalue())
+        self.assertIn('\"reason\": \"stale\"', database.sys.stderr.getvalue())
+        self.assertIn('\"result\": \"prepared\"', database.sys.stderr.getvalue())
+        self.assertEqual(list(self.report.parent.glob('.*')), [])
+        database.verify(self.root, digest, 24)
+
+    def test_diagnostics_cannot_mutate_snapshot(self):
+        with self.assertRaisesRegex(ValueError, 'outside the snapshot'):
+            database.prepare(self.root, 24, self.root/'receipt.json')
+        self.assertFalse(self.root.exists())
 
 
 class ScannerTests(unittest.TestCase):

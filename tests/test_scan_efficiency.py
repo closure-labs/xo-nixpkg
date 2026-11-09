@@ -100,13 +100,71 @@ with Path(os.environ['FIXTURE_LOG']).open('a') as stream:stream.write(json.dumps
 if sys.argv[1]=='prepare':print('a'*64)
 ''');p.chmod(0o755)
             env=dict(os.environ,PATH=str(native)+os.pathsep+os.environ['PATH'],RUNNER_TEMP=tmp,FIXTURE_LOG=str(log),
-                     GH_TOKEN='',REGISTRY_TOKEN='',CACHIX_AUTH_TOKEN='must-strip',DECIDER_KEY='must-strip',ACTIONS_RUNTIME_TOKEN='must-strip')
+                     GH_TOKEN='',REGISTRY_TOKEN='',CACHIX_AUTH_TOKEN='must-strip',DECIDER_KEY='must-strip',ACTIONS_RUNTIME_TOKEN='must-strip',
+                     SECURITY_OUTPUT=str(temp/'report'),GITHUB_OUTPUT=str(temp/'outputs'))
             result=subprocess.run(['bash',str(ROOT/'ci/security-review-all.sh')],env=env,text=True,capture_output=True)
             self.assertEqual(result.returncode,0,result.stderr)
+            self.assertEqual((temp/'outputs').read_text().splitlines(), ['database_prepared=false', 'database_prepared=true'])
             calls=[json.loads(line) for line in log.read_text().splitlines()]
             self.assertEqual(sum(c[1]=='prepare' for c in calls),1)
             self.assertEqual([c[1] for c in calls if c[0]=='xo-nixpkg-security-scan'],['latest','stable','rolling'])
             for call in calls:
                 if call[0]=='xo-nixpkg-security-database':self.assertEqual(call[-2:],['--max-age-hours','24'])
+
+    def test_preparation_failure_retains_report_and_stops_before_channel_scans(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            temp=Path(tmp);native=temp/'bin';native.mkdir()
+            helper=native/'xo-nixpkg-security-database'
+            helper.write_text('#!/bin/sh\nexec "'+sys.executable+'" "'+str(ROOT/'ci/security-database.py')+'" "$@"\n')
+            helper.chmod(0o755)
+            grype=native/'grype'
+            grype.write_text('#!'+sys.executable+'\n'+"""import datetime,json,os,sys
+from pathlib import Path
+args=sys.argv[1:]
+if args[-2:]==['db','update']:
+ root=Path(os.environ['GRYPE_DB_CACHE_DIR']);root.mkdir(parents=True)
+ (root/'vulnerability.db').write_text('fixture bytes')
+ with Path(os.environ['UPDATE_LOG']).open('a') as log: log.write('update\\n')
+else:
+ built=datetime.datetime.now(datetime.timezone.utc)-datetime.timedelta(hours=36)
+ print(json.dumps({'valid':True,'built':built.isoformat(),'schemaVersion':'v6.1.10','path':'secret-path'}))
+""")
+            grype.chmod(0o755)
+            scanner=native/'xo-nixpkg-security-scan'
+            scanner.write_text('#!/bin/sh\nprintf unexpected >>"$SCAN_LOG"\n')
+            scanner.chmod(0o755)
+            env=dict(os.environ,PATH=str(native)+os.pathsep+os.environ['PATH'],RUNNER_TEMP=tmp,
+                     GH_TOKEN='',REGISTRY_TOKEN='',SECURITY_OUTPUT=str(temp/'report'),
+                     GITHUB_OUTPUT=str(temp/'outputs'),UPDATE_LOG=str(temp/'updates'),SCAN_LOG=str(temp/'scans'))
+            result=subprocess.run(['bash',str(ROOT/'ci/security-review-all.sh')],env=env,text=True,capture_output=True)
+            self.assertNotEqual(result.returncode,0)
+            report=json.loads((temp/'report/database-preparation.json').read_text())
+            self.assertEqual(report['result'],'failed')
+            self.assertEqual(report['database']['reason'],'stale')
+            self.assertEqual(report['maximumAgeHours'],24)
+            self.assertNotIn('secret-path',json.dumps(report))
+            self.assertIn('channel scans were not started',result.stderr)
+            self.assertEqual((temp/'outputs').read_text().splitlines(),['database_prepared=false'])
+            self.assertEqual((temp/'updates').read_text().splitlines(),['update'])
+            self.assertFalse((temp/'scans').exists())
+            self.assertEqual(list(temp.glob('advisory-inputs.*')),[])
+            self.assertFalse(list((temp/'report').glob('*/summary.json')))
+
+    def test_workflow_retains_diagnostics_and_uploads_channels_only_after_preparation(self):
+        import yaml
+        workflow=yaml.safe_load((ROOT/'.github/workflows/security-scan.yml').read_text())
+        steps=workflow['jobs']['scan']['steps']
+        self.assertEqual(next(s for s in steps if s.get('id')=='scan')['name'],
+                         'Scan the immutable channel inventory')
+        uploads=[s for s in steps if s.get('uses','').startswith('actions/upload-artifact@')]
+        self.assertEqual(len(uploads),4)
+        report=next(s for s in uploads if s['with']['name']=='security-review-database')
+        self.assertEqual(report['with']['path'],'security-report/database-preparation.json')
+        self.assertIn('always()',report['if'])
+        self.assertIn("hashFiles('security-report/database-preparation.json')",report['if'])
+        for step in uploads:
+            if step is report:continue
+            self.assertEqual(step['if'],"${{ always() && steps.scan.outputs.database_prepared == 'true' }}")
+            self.assertEqual(step['with']['if-no-files-found'],'error')
 
 if __name__=='__main__':unittest.main()
