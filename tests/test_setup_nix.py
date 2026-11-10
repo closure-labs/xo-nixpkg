@@ -2,6 +2,7 @@
 """Keep Determinate features without implicitly enabling FlakeHub Cache."""
 from pathlib import Path
 import os
+import json
 import shutil
 import subprocess
 import tempfile
@@ -68,6 +69,36 @@ class SetupNix(unittest.TestCase):
                       (ROOT / 'ci/fix-nix-hashes.sh').read_text())
         self.assertEqual(steps[1]['name'], 'Verify public bootstrap cache')
 
+    def test_validation_bootstrap_preserves_controller_boundary(self):
+        workflow = read_yaml(ROOT / '.github/workflows/ci.yml')
+        shared = read_yaml(ROOT / '.github/actions/setup-nix/action.yml')['runs']['steps']
+        self.assertEqual(workflow['permissions'], {'contents': 'read'})
+        for name in ['classify', 'preflight', 'validate']:
+            with self.subTest(job=name):
+                job = workflow['jobs'][name]
+                steps = job['steps']
+                installer = next(s for s in steps if s.get('uses', '').startswith('DeterminateSystems/nix-installer-action@'))
+                guard = next(s for s in steps if s.get('name') == 'Verify public bootstrap cache')
+                self.assertEqual(installer['uses'], shared[0]['uses'])
+                self.assertEqual(installer['with']['github-token'], '')
+                self.assertIn('access-tokens =\n', installer['with']['extra-conf'])
+                self.assertEqual(guard['run'], shared[1]['run'])
+                self.assertLess(steps.index(installer), steps.index(guard))
+                self.assertNotIn('write', job.get('permissions', {}).values())
+                for step in steps:
+                    self.assertNotIn('setup-nix', step.get('uses', ''))
+                    if step.get('with', {}).get('path') == 'controller':
+                        self.assertEqual(step['with']['ref'], "${{ github.event.pull_request.base.sha || github.event.merge_group.base_sha || 'main' }}")
+                        self.assertEqual(step['with']['persist-credentials'], 'false')
+                    if 'nix run ' in step.get('run', ''):
+                        self.assertGreater(steps.index(step), steps.index(guard))
+                        expected = '==' if step.get('working-directory') == 'controller' else '!='
+                        self.assertIn(expected, step['if'])
+        trusted = next(s for s in workflow['jobs']['validate']['steps'] if s.get('id') == 'trusted')
+        self.assertEqual(trusted['working-directory'], 'controller')
+        self.assertIn('ci:runtime', trusted['run'])
+        self.assertIn("github.event_name != 'pull_request'", workflow['jobs']['attest-builds']['if'])
+
     def test_effective_cache_guard_rejects_inherited_or_dynamic_caches(self):
         steps = read_yaml(ROOT / '.github/actions/setup-nix/action.yml')['runs']['steps']
         script = steps[1]['run']
@@ -75,28 +106,37 @@ class SetupNix(unittest.TestCase):
         self.assertIsNotNone(bash, 'Bash must be available for the setup fixture')
         with tempfile.TemporaryDirectory() as temp:
             nix = Path(temp) / 'nix'
-            # Fail if setup ever dumps the full config (which can contain tokens).
+            # Supply typed Nix JSON, including a secret that must never be logged.
             nix.write_text(f'#!{bash}\n'
-                           '[[ "$*" == "config show substituters" ]] || exit 90\n'
+                           '[[ "$*" == "config show --json" ]] || exit 90\n'
                            'printf "%s\\n" "$TEST_SUBSTITUTERS"\n')
             nix.chmod(0o755)
             nixd = Path(temp) / 'determinate-nixd'
             nixd.write_text(f'#!{bash}\nexit 0\n')
             nixd.chmod(0o755)
             for caches, success in [
-                ('https://cache.nixos.org', True),
-                ('https://cache.nixos.org https://cache.flakehub.com', False),
-                ('https://edge.cache.flakehub.com', False),
-                ('https://cache.nixos.org https://unexpected.example', False),
-                ('', False),
+                (['https://cache.nixos.org'], True),
+                (['https://cache.nixos.org/'], True),
+                (['https://cache.nixos.org', 'https://cache.flakehub.com'], False),
+                (['https://edge.cache.flakehub.com'], False),
+                (['https://install.determinate.systems'], False),
+                (['https://cache.nixos.org', 'https://user:secret@unexpected.example/token?key=secret'], False),
+                (['https://cache.nixos.org/extra'], False),
+                ([], False),
+                ('https://cache.nixos.org', False),
+                (None, False),
             ]:
                 with self.subTest(caches=caches):
                     result = subprocess.run([bash, '-c', script], capture_output=True,
                                             text=True, env={**os.environ,
                                                            'PATH': temp + os.pathsep + os.environ['PATH'],
-                                                           'TEST_SUBSTITUTERS': caches})
+                                                           'TEST_SUBSTITUTERS': json.dumps({'substituters': {'value': caches},
+                                                                                           'access-tokens': {'value': 'DO-NOT-LOG-SECRET'}}, indent=2)})
                     self.assertEqual(result.returncode == 0, success, result.stderr)
                     self.assertEqual(result.stdout, '')
+                    self.assertNotIn('DO-NOT-LOG-SECRET', result.stderr)
+                    self.assertNotIn('user:secret', result.stderr)
+                    self.assertNotIn('key=secret', result.stderr)
 
 
 if __name__ == '__main__':

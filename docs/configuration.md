@@ -91,7 +91,10 @@ whose daemon setup is handled by the installer. Action-managed hash annotations
 are disabled in this mode; `ci/fix-nix-hashes.sh` still uses the installed daemon.
 
 The shared setup explicitly selects `https://cache.nixos.org` for bootstrap and
-checks the effective substituters before evaluating the repository. The flake
+checks the effective substituters from Nix JSON before evaluating the repository.
+A trailing slash on the public cache URL is accepted; additional caches are not.
+The JSON is piped privately to the verifier, never logged or saved. Failures report
+only cache hostnames, not other configuration or credentials. The flake
 then adds the existing public Cachix cache and signing key. Unexpected inherited
 caches fail setup rather than silently querying FlakeHub. No FlakeHub cache action,
 credentials, or uploads are used; publication remains on the existing Cachix path.
@@ -179,3 +182,10 @@ Imperative network, Git, release, source-lock mutation, plan execution, and
 Cachix operations remain checked-in shell programs under `ci/` and `scripts/`.
 Fixture shells remain where fake commands, temporary repositories, or injected
 failures are the behavior under test.
+
+The validation workflow bootstraps its three build jobs using the same pinned
+vendor installer and public-cache guard directly, with no stored fetch token.
+This allows repairing a broken setup action without executing candidate setup
+code or depending on the protected base's broken copy. Controller checkout refs,
+protected preflight/runtime execution, and the no-certification path for proposed
+workflow changes remain unchanged.

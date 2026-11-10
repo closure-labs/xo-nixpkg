@@ -25,12 +25,16 @@ runs:
       shell: bash
       run: |
         set -euo pipefail
-        # Hash repair must retain Determinate Nixd despite disabling action login.
         command -v determinate-nixd >/dev/null
-        # Inspect only this setting: the full config may contain access tokens.
-        # Cachix is added by flake.nix when the repository is first evaluated.
-        actual=$(nix config show substituters)
-        if [[ "$actual" != https://cache.nixos.org ]]; then
-          echo 'Unexpected bootstrap substituters; refusing to use an implicit cache' >&2
-          exit 1
-        fi
+        # Parse privately: the complete config may contain fetch credentials.
+        nix config show --json | python3 -c '
+        import json, sys
+        from urllib.parse import urlsplit
+        config = json.load(sys.stdin)
+        caches = config.get("substituters", {}).get("value")
+        allowed = {"https://cache.nixos.org", "https://cache.nixos.org/"}
+        if not isinstance(caches, list) or not caches or any(not isinstance(url, str) or url not in allowed for url in caches):
+            hosts = [urlsplit(url).hostname for url in caches if isinstance(url, str)] if isinstance(caches, list) else []
+            print("Unexpected bootstrap cache hosts: " + repr(hosts), file=sys.stderr)
+            sys.exit(1)
+        '

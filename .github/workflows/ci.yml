@@ -55,10 +55,36 @@ jobs:
           path: candidate
           fetch-depth: 0
           persist-credentials: false
-      - name: Set up protected native toolchain
-        uses: ./controller/.github/actions/setup-nix # zizmor: ignore[self-repository] -- protected controller checkout, never the candidate action.
+      # Bootstrap from a pinned vendor action, never controller/candidate setup code.
+      - name: Set up credential-free native toolchain
+        uses: DeterminateSystems/nix-installer-action@33c9ab3ef95cd57c164d9d6eb1f9a46338538d41 # installer for v3.21.9
         with:
-          github-token: ${{ github.token }}
+          determinate: false
+          flakehub: false
+          extra-args: --determinate
+          source-tag: v3.21.9
+          github-token: ''
+          extra-conf: |
+            accept-flake-config = true
+            access-tokens =
+            substituters = https://cache.nixos.org
+      - name: Verify public bootstrap cache
+        shell: bash
+        run: |
+          set -euo pipefail
+          command -v determinate-nixd >/dev/null
+          # Parse privately: the complete config may contain fetch credentials.
+          nix config show --json | python3 -c '
+          import json, sys
+          from urllib.parse import urlsplit
+          config = json.load(sys.stdin)
+          caches = config.get("substituters", {}).get("value")
+          allowed = {"https://cache.nixos.org", "https://cache.nixos.org/"}
+          if not isinstance(caches, list) or not caches or any(not isinstance(url, str) or url not in allowed for url in caches):
+              hosts = [urlsplit(url).hostname for url in caches if isinstance(url, str)] if isinstance(caches, list) else []
+              print("Unexpected bootstrap cache hosts: " + repr(hosts), file=sys.stderr)
+              sys.exit(1)
+          '
       - name: Classify candidate paths using protected code
         id: classify
         if: hashFiles('controller/.github/workflows/ci.yml') == hashFiles('candidate/.github/workflows/ci.yml')
@@ -103,10 +129,36 @@ jobs:
           path: candidate
           fetch-depth: 0
           persist-credentials: false
-      - name: Set up protected native toolchain
-        uses: ./controller/.github/actions/setup-nix # zizmor: ignore[self-repository] -- protected controller checkout, never candidate setup code.
+      # Bootstrap from a pinned vendor action, never controller/candidate setup code.
+      - name: Set up credential-free native toolchain
+        uses: DeterminateSystems/nix-installer-action@33c9ab3ef95cd57c164d9d6eb1f9a46338538d41 # installer for v3.21.9
         with:
-          github-token: '' # No fetch token is installed into candidate-readable Nix configuration.
+          determinate: false
+          flakehub: false
+          extra-args: --determinate
+          source-tag: v3.21.9
+          github-token: ''
+          extra-conf: |
+            accept-flake-config = true
+            access-tokens =
+            substituters = https://cache.nixos.org
+      - name: Verify public bootstrap cache
+        shell: bash
+        run: |
+          set -euo pipefail
+          command -v determinate-nixd >/dev/null
+          # Parse privately: the complete config may contain fetch credentials.
+          nix config show --json | python3 -c '
+          import json, sys
+          from urllib.parse import urlsplit
+          config = json.load(sys.stdin)
+          caches = config.get("substituters", {}).get("value")
+          allowed = {"https://cache.nixos.org", "https://cache.nixos.org/"}
+          if not isinstance(caches, list) or not caches or any(not isinstance(url, str) or url not in allowed for url in caches):
+              hosts = [urlsplit(url).hostname for url in caches if isinstance(url, str)] if isinstance(caches, list) else []
+              print("Unexpected bootstrap cache hosts: " + repr(hosts), file=sys.stderr)
+              sys.exit(1)
+          '
       - name: Scan event-bound new commits and run pure preflight through protected code
         if: hashFiles('controller/.github/workflows/ci.yml') == hashFiles('candidate/.github/workflows/ci.yml')
         working-directory: controller
@@ -164,10 +216,36 @@ jobs:
         with:
           path: candidate
           persist-credentials: false
-      - name: Set up protected native toolchain
-        uses: ./controller/.github/actions/setup-nix # zizmor: ignore[self-repository] -- protected controller checkout, never candidate setup code.
+      # Bootstrap from a pinned vendor action, never controller/candidate setup code.
+      - name: Set up credential-free native toolchain
+        uses: DeterminateSystems/nix-installer-action@33c9ab3ef95cd57c164d9d6eb1f9a46338538d41 # installer for v3.21.9
         with:
-          github-token: ${{ github.token }}
+          determinate: false
+          flakehub: false
+          extra-args: --determinate
+          source-tag: v3.21.9
+          github-token: ''
+          extra-conf: |
+            accept-flake-config = true
+            access-tokens =
+            substituters = https://cache.nixos.org
+      - name: Verify public bootstrap cache
+        shell: bash
+        run: |
+          set -euo pipefail
+          command -v determinate-nixd >/dev/null
+          # Parse privately: the complete config may contain fetch credentials.
+          nix config show --json | python3 -c '
+          import json, sys
+          from urllib.parse import urlsplit
+          config = json.load(sys.stdin)
+          caches = config.get("substituters", {}).get("value")
+          allowed = {"https://cache.nixos.org", "https://cache.nixos.org/"}
+          if not isinstance(caches, list) or not caches or any(not isinstance(url, str) or url not in allowed for url in caches):
+              hosts = [urlsplit(url).hostname for url in caches if isinstance(url, str)] if isinstance(caches, list) else []
+              print("Unexpected bootstrap cache hosts: " + repr(hosts), file=sys.stderr)
+              sys.exit(1)
+          '
       - name: Download successful preflight from this run and attempt
         if: hashFiles('controller/.github/workflows/ci.yml') == hashFiles('candidate/.github/workflows/ci.yml')
         uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
