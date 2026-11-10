@@ -74,6 +74,20 @@ does so in the validation job's existing Nix store. GitHub-hosted runners are
 ephemeral, so CI does not garbage-collect an isolated local store after the
 job. No runner-local or Determinate substituter is required.
 
+The pinned Determinate installer normally logs in to FlakeHub when the job has
+OIDC credentials (including jobs that need OIDC only for attestations). Each
+installer step deliberately clears its two `ACTIONS_ID_TOKEN_REQUEST_*`
+environment values. This skips the installer's automatic FlakeHub login without
+removing job-level attestation permissions or replacing Determinate Nix, which
+is still needed for automatic hash repairs. This behavior is checked against
+both the 3.21.9 and 3.24.1 installer action implementations.
+
+The shared setup explicitly selects `https://cache.nixos.org` for bootstrap and
+checks the effective substituters before evaluating the repository. The flake
+then adds the existing public Cachix cache and signing key. Unexpected inherited
+caches fail setup rather than silently querying FlakeHub. No FlakeHub cache action,
+credentials, or uploads are used; publication remains on the existing Cachix path.
+
 The three supply-protector outputs are ordinary Nix store outputs in the same
 publication plan. Their `assertion.json` identifies the exact XO store path,
 channel, upstream revision, closure-graph digest, document digests, and Cachix
