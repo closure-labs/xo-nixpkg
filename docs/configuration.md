@@ -74,13 +74,21 @@ does so in the validation job's existing Nix store. GitHub-hosted runners are
 ephemeral, so CI does not garbage-collect an isolated local store after the
 job. No runner-local or Determinate substituter is required.
 
-The pinned Determinate installer normally logs in to FlakeHub when the job has
-OIDC credentials (including jobs that need OIDC only for attestations). Each
-installer step deliberately clears its two `ACTIONS_ID_TOKEN_REQUEST_*`
-environment values. This skips the installer's automatic FlakeHub login without
-removing job-level attestation permissions or replacing Determinate Nix, which
-is still needed for automatic hash repairs. This behavior is checked against
-both the 3.21.9 and 3.24.1 installer action implementations.
+The pinned installer action uses `determinate: false` and `flakehub: false` to
+skip action-managed FlakeHub authentication. It separately passes
+`extra-args: --determinate` and pins `source-tag` to retain Determinate Nix and
+`determinate-nixd` for the repository's hash-repair task. The installer explicitly
+prioritizes `--determinate` over the action's `--prefer-upstream-nix` fallback in
+both pinned releases (3.21.9 and 3.24.1). See the
+[installer distribution selector](https://github.com/DeterminateSystems/nix-installer/blob/v3.24.1/src/settings.rs)
+and the [action login branch](https://github.com/DeterminateSystems/nix-installer-action/blob/9383ce2bf08796b65508822f5982f49151badc4e/src/index.ts).
+
+Clearing OIDC environment variables in YAML is insufficient: GitHub's Node
+action runner injects fresh OIDC values after applying that environment. The
+installer's explicit login toggle works even in attestation jobs with OIDC;
+job permissions are unchanged. These workflows use Ubuntu systemd runners,
+whose daemon setup is handled by the installer. Action-managed hash annotations
+are disabled in this mode; `ci/fix-nix-hashes.sh` still uses the installed daemon.
 
 The shared setup explicitly selects `https://cache.nixos.org` for bootstrap and
 checks the effective substituters before evaluating the repository. The flake

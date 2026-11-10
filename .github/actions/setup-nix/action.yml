@@ -10,12 +10,13 @@ runs:
   using: composite
   steps:
     - name: Install Determinate Nix
-      uses: DeterminateSystems/determinate-nix-action@61cbfe2efc2d4e7a8a6d56967c3c1058e846c858 # v3.21.9
-      # Keep OIDC for attestations, but never log this installer into FlakeHub.
-      env:
-        ACTIONS_ID_TOKEN_REQUEST_URL: ''
-        ACTIONS_ID_TOKEN_REQUEST_TOKEN: ''
+      uses: DeterminateSystems/nix-installer-action@33c9ab3ef95cd57c164d9d6eb1f9a46338538d41 # installer for v3.21.9
+      # Disable action-managed login; select Determinate in the installer itself.
       with:
+        determinate: false
+        flakehub: false
+        extra-args: --determinate
+        source-tag: v3.21.9
         github-token: ${{ inputs.github-token }}
         extra-conf: |
           accept-flake-config = true
@@ -24,6 +25,8 @@ runs:
       shell: bash
       run: |
         set -euo pipefail
+        # Hash repair must retain Determinate Nixd despite disabling action login.
+        command -v determinate-nixd >/dev/null
         # Inspect only this setting: the full config may contain access tokens.
         # Cachix is added by flake.nix when the repository is first evaluated.
         actual=$(nix config show substituters)

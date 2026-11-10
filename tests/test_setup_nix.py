@@ -27,18 +27,29 @@ class SetupNix(unittest.TestCase):
         installers = 0
         for path in paths:
             document = read_yaml(path)
-            # OIDC must remain available to later attestation steps.
+            # The Node runner reinjects OIDC, so clearing it is not a login toggle.
             self.assertFalse(set(OIDC_ENV) & document.get('env', {}).keys())
             jobs = document.get('jobs', {'composite': document.get('runs', {})})
             for job in jobs.values():
                 self.assertFalse(set(OIDC_ENV) & job.get('env', {}).keys())
                 for step in job.get('steps', []):
                     uses = step.get('uses', '')
-                    if uses.startswith('DeterminateSystems/determinate-nix-action@'):
+                    self.assertNotIn('DeterminateSystems/determinate-nix-action@', uses)
+                    if uses.startswith('DeterminateSystems/nix-installer-action@'):
                         installers += 1
                         with self.subTest(path=path.name):
-                            self.assertEqual(step.get('env'), OIDC_ENV)
-                            self.assertRegex(uses, r'@[a-f0-9]{40}$')
+                            self.assertFalse(set(OIDC_ENV) & step.get('env', {}).keys())
+                            inputs = step['with']
+                            self.assertEqual(inputs['determinate'], 'false')
+                            self.assertEqual(inputs['flakehub'], 'false')
+                            self.assertEqual(inputs['extra-args'], '--determinate')
+                            releases = {
+                                '33c9ab3ef95cd57c164d9d6eb1f9a46338538d41': 'v3.21.9',
+                                '9383ce2bf08796b65508822f5982f49151badc4e': 'v3.24.1',
+                            }
+                            self.assertEqual(inputs['source-tag'], releases[uses.split('@')[1]])
+                            if 'runs-on' in job:
+                                self.assertEqual(job['runs-on'], 'ubuntu-24.04')
                     else:
                         self.assertFalse(set(OIDC_ENV) & step.get('env', {}).keys())
                     self.assertNotIn('flakehub-cache-action', uses)
@@ -69,6 +80,9 @@ class SetupNix(unittest.TestCase):
                            '[[ "$*" == "config show substituters" ]] || exit 90\n'
                            'printf "%s\\n" "$TEST_SUBSTITUTERS"\n')
             nix.chmod(0o755)
+            nixd = Path(temp) / 'determinate-nixd'
+            nixd.write_text(f'#!{bash}\nexit 0\n')
+            nixd.chmod(0o755)
             for caches, success in [
                 ('https://cache.nixos.org', True),
                 ('https://cache.nixos.org https://cache.flakehub.com', False),
