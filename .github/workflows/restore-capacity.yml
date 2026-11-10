@@ -45,7 +45,7 @@ jobs:
       - name: Validate diagnostic guards
         run: python3 -m unittest discover -s diagnostic/tests -p test_restore_capacity.py
       - name: Install pinned Nix without stored GitHub credentials
-        uses: DeterminateSystems/determinate-nix-action@61cbfe2efc2d4e7a8a6d56967c3c1058e846c858 # v3.21.9
+        uses: DeterminateSystems/determinate-nix-action@92957199488000b908fdad19f63711000965d8f3 # v3.24.1
         # Keep OIDC for attestations, but never log this installer into FlakeHub.
         env:
           ACTIONS_ID_TOKEN_REQUEST_URL: ''

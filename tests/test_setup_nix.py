@@ -2,6 +2,7 @@
 """Keep Determinate features without implicitly enabling FlakeHub Cache."""
 from pathlib import Path
 import os
+import shutil
 import subprocess
 import tempfile
 import unittest
@@ -59,10 +60,12 @@ class SetupNix(unittest.TestCase):
     def test_effective_cache_guard_rejects_inherited_or_dynamic_caches(self):
         steps = read_yaml(ROOT / '.github/actions/setup-nix/action.yml')['runs']['steps']
         script = steps[1]['run']
+        bash = shutil.which('bash')
+        self.assertIsNotNone(bash, 'Bash must be available for the setup fixture')
         with tempfile.TemporaryDirectory() as temp:
             nix = Path(temp) / 'nix'
             # Fail if setup ever dumps the full config (which can contain tokens).
-            nix.write_text('#!/bin/bash\n'
+            nix.write_text(f'#!{bash}\n'
                            '[[ "$*" == "config show substituters" ]] || exit 90\n'
                            'printf "%s\\n" "$TEST_SUBSTITUTERS"\n')
             nix.chmod(0o755)
@@ -74,7 +77,7 @@ class SetupNix(unittest.TestCase):
                 ('', False),
             ]:
                 with self.subTest(caches=caches):
-                    result = subprocess.run(['bash', '-c', script], capture_output=True,
+                    result = subprocess.run([bash, '-c', script], capture_output=True,
                                             text=True, env={**os.environ,
                                                            'PATH': temp + os.pathsep + os.environ['PATH'],
                                                            'TEST_SUBSTITUTERS': caches})
