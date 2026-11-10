@@ -10,24 +10,44 @@ runs:
   using: composite
   steps:
     - name: Install Determinate Nix
-      uses: DeterminateSystems/determinate-nix-action@61cbfe2efc2d4e7a8a6d56967c3c1058e846c858 # v3.21.9
-      # Keep OIDC for attestations, but never log this installer into FlakeHub.
-      env:
-        ACTIONS_ID_TOKEN_REQUEST_URL: ''
-        ACTIONS_ID_TOKEN_REQUEST_TOKEN: ''
+      uses: DeterminateSystems/nix-installer-action@33c9ab3ef95cd57c164d9d6eb1f9a46338538d41 # installer for v3.21.9
+      # Disable action-managed login; select Determinate in the installer itself.
       with:
+        determinate: false
+        flakehub: false
+        extra-args: --determinate
+        source-tag: v3.21.9
         github-token: ${{ inputs.github-token }}
         extra-conf: |
           accept-flake-config = true
           substituters = https://cache.nixos.org
+    - name: Select public Nix caches
+      shell: bash
+      run: |
+        python3 - <<'PYTHON'
+        import os, uuid
+        config = os.environ.get("NIX_CONFIG", "")
+        config += "\nsubstituters = https://cache.nixos.org\nextra-substituters =\n"
+        delimiter = "nix_config_" + uuid.uuid4().hex
+        while delimiter in config:
+            delimiter = "nix_config_" + uuid.uuid4().hex
+        with open(os.environ["GITHUB_ENV"], "a") as output:
+            print("NIX_CONFIG<<" + delimiter + "\n" + config + "\n" + delimiter, file=output)
+        PYTHON
     - name: Verify public bootstrap cache
       shell: bash
       run: |
         set -euo pipefail
-        # Inspect only this setting: the full config may contain access tokens.
-        # Cachix is added by flake.nix when the repository is first evaluated.
-        actual=$(nix config show substituters)
-        if [[ "$actual" != https://cache.nixos.org ]]; then
-          echo 'Unexpected bootstrap substituters; refusing to use an implicit cache' >&2
-          exit 1
-        fi
+        command -v determinate-nixd >/dev/null
+        # Parse privately: the complete config may contain fetch credentials.
+        nix config show --json | python3 -c '
+        import json, sys
+        from urllib.parse import urlsplit
+        config = json.load(sys.stdin)
+        caches = config.get("substituters", {}).get("value")
+        allowed = {"https://cache.nixos.org", "https://cache.nixos.org/"}
+        if not isinstance(caches, list) or not caches or any(not isinstance(url, str) or url not in allowed for url in caches):
+            hosts = [urlsplit(url).hostname for url in caches if isinstance(url, str)] if isinstance(caches, list) else []
+            print("Unexpected bootstrap cache hosts: " + repr(hosts), file=sys.stderr)
+            sys.exit(1)
+        '

@@ -45,16 +45,30 @@ jobs:
       - name: Validate diagnostic guards
         run: python3 -m unittest discover -s diagnostic/tests -p test_restore_capacity.py
       - name: Install pinned Nix without stored GitHub credentials
-        uses: DeterminateSystems/determinate-nix-action@92957199488000b908fdad19f63711000965d8f3 # v3.24.1
-        # Keep OIDC for attestations, but never log this installer into FlakeHub.
-        env:
-          ACTIONS_ID_TOKEN_REQUEST_URL: ''
-          ACTIONS_ID_TOKEN_REQUEST_TOKEN: ''
+        uses: DeterminateSystems/nix-installer-action@9383ce2bf08796b65508822f5982f49151badc4e # installer for v3.24.1
+        # Disable action-managed login; select Determinate in the installer itself.
         with:
+          determinate: false
+          flakehub: false
+          extra-args: --determinate
+          source-tag: v3.24.1
           github-token: ''
           extra-conf: |
             accept-flake-config = true
             access-tokens =
+      - name: Select public Nix caches
+        shell: bash
+        run: |
+          python3 - <<'PYTHON'
+          import os, uuid
+          config = os.environ.get("NIX_CONFIG", "")
+          config += "\nsubstituters = https://cache.nixos.org\nextra-substituters =\n"
+          delimiter = "nix_config_" + uuid.uuid4().hex
+          while delimiter in config:
+              delimiter = "nix_config_" + uuid.uuid4().hex
+          with open(os.environ["GITHUB_ENV"], "a") as output:
+              print("NIX_CONFIG<<" + delimiter + "\n" + config + "\n" + delimiter, file=output)
+          PYTHON
       - name: Stop daemons before capped direct local-store work
         run: |
           set -euo pipefail

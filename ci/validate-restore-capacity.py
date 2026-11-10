@@ -228,7 +228,8 @@ def bootstrap(source, metrics):
 
 
 def execute(source, work, metrics):
-    os.environ['NIX_CONFIG'] = 'post-build-hook =\nbuilders =\n'
+    os.environ['NIX_CONFIG'] = ('post-build-hook =\nbuilders =\n'
+                               'substituters = https://cache.nixos.org\nextra-substituters =\n')
     bootstrap(source, metrics)
     caps()
     sys_path = str(source / 'ci/decisions')
