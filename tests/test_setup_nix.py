@@ -40,6 +40,10 @@ class SetupNix(unittest.TestCase):
                         installers += 1
                         with self.subTest(path=path.name):
                             self.assertFalse(set(OIDC_ENV) & step.get('env', {}).keys())
+                            following = job['steps'][job['steps'].index(step) + 1]
+                            self.assertEqual(following['name'], 'Select public Nix caches')
+                            canonical = read_yaml(ROOT / '.github/actions/setup-nix/action.yml')['runs']['steps'][1]
+                            self.assertEqual(following['run'], canonical['run'])
                             inputs = step['with']
                             self.assertEqual(inputs['determinate'], 'false')
                             self.assertEqual(inputs['flakehub'], 'false')
@@ -67,7 +71,8 @@ class SetupNix(unittest.TestCase):
         self.assertIn('xen-orchestra-ce.cachix.org-1:WAOajkFLXWTaFiwMbLidlGa5kWB7Icu29eJnYbeMG7E=', flake)
         self.assertIn('determinate-nixd fix hashes --auto-apply',
                       (ROOT / 'ci/fix-nix-hashes.sh').read_text())
-        self.assertEqual(steps[1]['name'], 'Verify public bootstrap cache')
+        self.assertEqual(steps[1]['name'], 'Select public Nix caches')
+        self.assertEqual(steps[2]['name'], 'Verify public bootstrap cache')
 
     def test_validation_bootstrap_preserves_controller_boundary(self):
         workflow = read_yaml(ROOT / '.github/workflows/ci.yml')
@@ -82,7 +87,7 @@ class SetupNix(unittest.TestCase):
                 self.assertEqual(installer['uses'], shared[0]['uses'])
                 self.assertEqual(installer['with']['github-token'], '')
                 self.assertIn('access-tokens =\n', installer['with']['extra-conf'])
-                self.assertEqual(guard['run'], shared[1]['run'])
+                self.assertEqual(guard['run'], shared[2]['run'])
                 self.assertLess(steps.index(installer), steps.index(guard))
                 self.assertNotIn('write', job.get('permissions', {}).values())
                 for step in steps:
@@ -99,9 +104,33 @@ class SetupNix(unittest.TestCase):
         self.assertIn('ci:runtime', trusted['run'])
         self.assertIn("github.event_name != 'pull_request'", workflow['jobs']['attest-builds']['if'])
 
+    def test_final_cache_layer_preserves_existing_settings_privately(self):
+        steps = read_yaml(ROOT / '.github/actions/setup-nix/action.yml')['runs']['steps']
+        script = next(s['run'] for s in steps if s.get('name') == 'Select public Nix caches')
+        bash = shutil.which('bash')
+        self.assertIsNotNone(bash)
+        for existing in ['', 'cores = 2', 'access-tokens = github.com=DO-NOT-LOG-SECRET\nextra-substituters = https://install.determinate.systems']:
+            with self.subTest(existing=bool(existing)), tempfile.TemporaryDirectory() as temp:
+                envfile = Path(temp) / 'github-env'
+                result = subprocess.run([bash, '-c', script], text=True, capture_output=True,
+                                        env={**os.environ, 'NIX_CONFIG': existing, 'GITHUB_ENV': str(envfile)})
+                self.assertEqual(result.returncode, 0, result.stderr)
+                self.assertEqual(result.stdout + result.stderr, '')
+                header, value = envfile.read_text().split('\n', 1)
+                self.assertTrue(header.startswith('NIX_CONFIG<<'))
+                delimiter = header.split('<<', 1)[1]
+                self.assertTrue(value.endswith(delimiter + '\n'))
+                config = value[:-(len(delimiter) + 1)]
+                self.assertTrue(config.startswith(existing + '\n'))
+                self.assertTrue(config.endswith('substituters = https://cache.nixos.org\nextra-substituters =\n\n'))
+        restore = (ROOT / 'ci/validate-restore-capacity.py').read_text()
+        reset = restore.split("os.environ['NIX_CONFIG'] = ", 1)[1].split('bootstrap(source, metrics)', 1)[0]
+        self.assertIn('substituters = https://cache.nixos.org', reset)
+        self.assertIn('extra-substituters =', reset)
+
     def test_effective_cache_guard_rejects_inherited_or_dynamic_caches(self):
         steps = read_yaml(ROOT / '.github/actions/setup-nix/action.yml')['runs']['steps']
-        script = steps[1]['run']
+        script = next(s['run'] for s in steps if s.get('name') == 'Verify public bootstrap cache')
         bash = shutil.which('bash')
         self.assertIsNotNone(bash, 'Bash must be available for the setup fixture')
         with tempfile.TemporaryDirectory() as temp:

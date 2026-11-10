@@ -90,6 +90,19 @@ job permissions are unchanged. These workflows use Ubuntu systemd runners,
 whose daemon setup is handled by the installer. Action-managed hash annotations
 are disabled in this mode; `ci/fix-nix-hashes.sh` still uses the installed daemon.
 
+Determinate Nixd also adds `install.determinate.systems` when logged out. That
+endpoint proxies FlakeHub Cache, so disabling login alone is insufficient.
+The generated system config includes `nix.custom.conf` before its cache additions;
+installer `extra-conf` therefore cannot be the final cache policy.
+
+After each installer, CI preserves the current `NIX_CONFIG` and appends a public
+`substituters` reset with no extra substituters, using GitHub's environment file
+without logging the configuration. Nix applies this environment layer after
+system configuration and sends it as an override to the daemon for the trusted
+runner. The repository flake can still add its existing Cachix cache and key.
+Environment-isolated diagnostics either set explicit public cache options or
+disable substitution; the retained-restore bootstrap also resets its cache list.
+
 The shared setup explicitly selects `https://cache.nixos.org` for bootstrap and
 checks the effective substituters from Nix JSON before evaluating the repository.
 A trailing slash on the public cache URL is accepted; additional caches are not.

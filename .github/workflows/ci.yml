@@ -68,6 +68,19 @@ jobs:
             accept-flake-config = true
             access-tokens =
             substituters = https://cache.nixos.org
+      - name: Select public Nix caches
+        shell: bash
+        run: |
+          python3 - <<'PYTHON'
+          import os, uuid
+          config = os.environ.get("NIX_CONFIG", "")
+          config += "\nsubstituters = https://cache.nixos.org\nextra-substituters =\n"
+          delimiter = "nix_config_" + uuid.uuid4().hex
+          while delimiter in config:
+              delimiter = "nix_config_" + uuid.uuid4().hex
+          with open(os.environ["GITHUB_ENV"], "a") as output:
+              print("NIX_CONFIG<<" + delimiter + "\n" + config + "\n" + delimiter, file=output)
+          PYTHON
       - name: Verify public bootstrap cache
         shell: bash
         run: |
@@ -142,6 +155,19 @@ jobs:
             accept-flake-config = true
             access-tokens =
             substituters = https://cache.nixos.org
+      - name: Select public Nix caches
+        shell: bash
+        run: |
+          python3 - <<'PYTHON'
+          import os, uuid
+          config = os.environ.get("NIX_CONFIG", "")
+          config += "\nsubstituters = https://cache.nixos.org\nextra-substituters =\n"
+          delimiter = "nix_config_" + uuid.uuid4().hex
+          while delimiter in config:
+              delimiter = "nix_config_" + uuid.uuid4().hex
+          with open(os.environ["GITHUB_ENV"], "a") as output:
+              print("NIX_CONFIG<<" + delimiter + "\n" + config + "\n" + delimiter, file=output)
+          PYTHON
       - name: Verify public bootstrap cache
         shell: bash
         run: |
@@ -229,6 +255,19 @@ jobs:
             accept-flake-config = true
             access-tokens =
             substituters = https://cache.nixos.org
+      - name: Select public Nix caches
+        shell: bash
+        run: |
+          python3 - <<'PYTHON'
+          import os, uuid
+          config = os.environ.get("NIX_CONFIG", "")
+          config += "\nsubstituters = https://cache.nixos.org\nextra-substituters =\n"
+          delimiter = "nix_config_" + uuid.uuid4().hex
+          while delimiter in config:
+              delimiter = "nix_config_" + uuid.uuid4().hex
+          with open(os.environ["GITHUB_ENV"], "a") as output:
+              print("NIX_CONFIG<<" + delimiter + "\n" + config + "\n" + delimiter, file=output)
+          PYTHON
       - name: Verify public bootstrap cache
         shell: bash
         run: |
