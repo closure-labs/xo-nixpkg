@@ -22,6 +22,10 @@ jobs:
           persist-credentials: false
       - name: Install pinned Nix without fetch credentials
         uses: DeterminateSystems/determinate-nix-action@92957199488000b908fdad19f63711000965d8f3 # v3.24.1
+        # Keep OIDC for attestations, but never log this installer into FlakeHub.
+        env:
+          ACTIONS_ID_TOKEN_REQUEST_URL: ''
+          ACTIONS_ID_TOKEN_REQUEST_TOKEN: ''
         with:
           github-token: ''
           extra-conf: |

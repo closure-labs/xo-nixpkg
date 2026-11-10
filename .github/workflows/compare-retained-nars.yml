@@ -34,6 +34,10 @@ jobs:
         run: python3 -m unittest discover -s tests -p test_retained_nar_comparison.py
       - name: Install trusted archive reader
         uses: DeterminateSystems/determinate-nix-action@92957199488000b908fdad19f63711000965d8f3 # v3.24.1
+        # Keep OIDC for attestations, but never log this installer into FlakeHub.
+        env:
+          ACTIONS_ID_TOKEN_REQUEST_URL: ''
+          ACTIONS_ID_TOKEN_REQUEST_TOKEN: ''
         with:
           github-token: ''
           extra-conf: |
