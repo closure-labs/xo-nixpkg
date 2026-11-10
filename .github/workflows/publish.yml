@@ -111,6 +111,8 @@ jobs:
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: xo-publication-result
-          path: ${{ runner.temp }}/publication-result.json
+          path: |
+            ${{ runner.temp }}/publication-result.json
+            ${{ runner.temp }}/publication-fetch-source.json
           if-no-files-found: ignore
           retention-days: 30
