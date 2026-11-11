@@ -227,3 +227,45 @@ arbitrary exception text. Run the fixtures with:
 python3 -m unittest discover -s tests -p 'test_publication*.py'
 PYTHONPATH=ci/decisions python3 -m unittest discover -s tests/decisions -p 'test_authority_request_counts.py'
 ```
+
+
+### Exact-run reconciliation artifact transport
+
+Reconciliation first runs its existing current-candidate and duplicate-work
+checks, then selects a complete, unambiguous catalog entry named
+`qualified-products-<run>-<attempt>`. The hosted workflow downloads that exact
+artifact ID with the pinned official `actions/download-artifact` action. Its
+streaming extraction and idle retries replace the CLI's one-shot temporary ZIP
+transfer, within the same ten-minute optional transport budget. Digest mismatch
+is an error. The full product tree, including closure parts, is used in place;
+there is no inventory-only substitute or extra bulk copy.
+
+The resume step pins the selected run and attempt, rereads producer metadata,
+and retains the existing scan/product authentication, freshness, exact-packet,
+and live authority checks. A failed or skipped action cannot supply partial
+bytes: only the existing authenticated immutable-packet recovery may continue.
+A missing packet is reported as missing, not as proof that an Actions artifact
+expired. Planning metadata and successful transport never authorize admission.
+
+The existing diagnostic upload also retains `reconciliation-transport.jsonl`.
+It records catalog state and artifact ID/size/expired metadata, transport outcome,
+and separate retained-recovery outcome. Standalone CLI downloads record their
+actual exit code (including 124 for timeout) and duration. Hosted SDK downloads
+record the Actions outcome; exit code and duration are null because their step
+owns those measurements. No signed URLs, tokens, raw API bodies, local paths, or
+arbitrary errors are retained. Diagnostic writes are best-effort and cannot
+change the authority result. A job stopped before resume may only retain its
+catalog observation; inspect the download step's status and duration as well.
+
+Focused offline regression checks:
+
+```bash
+python3 -m unittest discover -s tests -p 'test_reconcile_retained.py'
+python3 -m unittest discover -s tests -p 'test_evidence_download.py'
+python3 -m unittest discover -s tests -p 'test_workflow_contracts.py'
+python3 -m unittest discover -s tests -p 'test_publication_fetch_source.py'
+```
+
+Hosted acceptance still requires an exact-run reconciliation of a live full
+product artifact. Offline fixtures verify selection, staging, failure recovery,
+and unchanged authority boundaries, not network throughput.

@@ -117,7 +117,7 @@ def fetch(observation):
         if os.environ.get('XO_NIXPKG_PUBLICATION_METADATA_ONLY') == 'true':
             observation['status'] = 'no-exact-packet'
             raise SystemExit(4)
-        raise ValueError('candidate artifact expired without a retained immutable decision packet')
+        raise ValueError('no retained immutable decision packet for the requested qualification run and attempt')
     output = Path(os.environ['XO_NIXPKG_EVIDENCE'])
     if os.environ.get('XO_NIXPKG_PUBLICATION_METADATA_ONLY') == 'true':
         if len(found) != 1:

@@ -54,18 +54,47 @@ jobs:
           permission-actions: write
           permission-administration: read
           permission-members: read
-      - name: Persist evidence, reconcile proposals and resume admitted candidates
+      - name: Select exact evidence transport
+        id: transport
         env:
+          XO_NIXPKG_RECONCILE_PLAN_ONLY: 'true'
           GH_TOKEN: ${{ steps.proposer.outputs.token }}
           REGISTRY_TOKEN: ${{ github.token }}
           QUALIFICATION_RUN: ${{ inputs.qualification_run || (github.event_name == 'workflow_run' && github.event.workflow_run.name == 'Qualify release products' && github.event.workflow_run.id) || '' }}
           QUALIFICATION_ATTEMPT: ${{ github.event_name == 'workflow_run' && github.event.workflow_run.name == 'Qualify release products' && github.event.workflow_run.run_attempt || '' }}
+        run: nix run .#devenv -- tasks run --mode single --option 'packages:pkgs!' '' security:resume
+      - name: Download complete exact-run products
+        id: products
+        if: steps.transport.outputs.artifact_id != ''
+        # Streaming extraction and bounded idle retries replace the opaque CLI
+        # transfer. Keep the existing ten-minute optional-transport budget.
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        timeout-minutes: 10
+        continue-on-error: true # Authenticated retained recovery remains available.
+        with:
+          artifact-ids: ${{ steps.transport.outputs.artifact_id }}
+          run-id: ${{ steps.transport.outputs.run_id }}
+          repository: ${{ github.repository }}
+          github-token: ${{ github.token }}
+          digest-mismatch: error
+          path: ${{ runner.temp }}/reconciliation-evidence
+      - name: Persist evidence, reconcile proposals and resume admitted candidates
+        if: steps.transport.outputs.run_id != ''
+        env:
+          GH_TOKEN: ${{ steps.proposer.outputs.token }}
+          REGISTRY_TOKEN: ${{ github.token }}
+          QUALIFICATION_RUN: ${{ steps.transport.outputs.run_id }}
+          QUALIFICATION_ATTEMPT: ${{ steps.transport.outputs.attempt }}
+          XO_NIXPKG_RECONCILE_DOWNLOAD_OUTCOME: ${{ steps.products.outcome }}
+          XO_NIXPKG_RECONCILE_DOWNLOADED_EVIDENCE: ${{ runner.temp }}/reconciliation-evidence
         run: nix run .#devenv -- tasks run --mode single --option 'packages:pkgs!' '' security:resume
       - name: Retain immutable decision byte reuse observations
         if: always()
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: xo-decision-byte-reuse-${{ github.job }}
-          path: ${{ runner.temp }}/decision-git-blobs/*/observations.jsonl
+          path: |
+            ${{ runner.temp }}/decision-git-blobs/*/observations.jsonl
+            ${{ runner.temp }}/reconciliation-transport.jsonl
           if-no-files-found: ignore
           retention-days: 30

@@ -68,6 +68,8 @@ elif name == 'retained.py':
     if fixture.get('fallback_exit'):
         sys.exit(fixture['fallback_exit'])
     evidence(directory)
+elif name == 'xo-nixpkg-decision-reconcile':
+    record(['reconcile-files', sorted(p.name for p in pathlib.Path(os.environ['XO_NIXPKG_EVIDENCE']).iterdir())])
 elif name in ('xo-nixpkg-publication-gate', 'xo-nixpkg-decision-publication'):
     sys.exit(fixture.get('gate_exit', 0))
 '''
@@ -88,6 +90,7 @@ class EvidenceDownload(unittest.TestCase):
     def run_leaf(self, leaf, *, environment=None, **fixture):
         self.sequence += 1
         work = self.root / str(self.sequence)
+        self.work = work
         native = work / 'bin'
         native.mkdir(parents=True)
         for name in ('timeout', 'gh', 'oras', 'retained.py', 'xo-nixpkg-publication-gate',
@@ -105,9 +108,17 @@ class EvidenceDownload(unittest.TestCase):
                    XO_NIXPKG_EVIDENCE=str(work / 'evidence'),
                    XO_NIXPKG_RETAINED_FETCH_SOURCE=str(native / 'retained.py'),
                    DOWNLOAD_FIXTURE=str(fixture_path), DOWNLOAD_CALLS=str(calls_path),
-                   DOWNLOAD_REAL_TIMEOUT=shutil.which('timeout'))
+                   DOWNLOAD_REAL_TIMEOUT=shutil.which('timeout'), RUNNER_TEMP=str(work))
         env.pop('XO_NIXPKG_FETCH_FOR_RESCAN', None)
         env.update(environment or {})
+        if fixture.get('staged_evidence'):
+            staged = work / 'staged'
+            staged.mkdir()
+            (staged / 'scans.json').write_text(json.dumps({'producer': {
+                'runId': fixture.get('evidence_run', 123), 'runAttempt': fixture.get('evidence_attempt', 2)}}))
+            (staged / 'product.json').write_text('{}')
+            (staged / 'closure.nar-part-000').write_bytes(b'complete immutable closure')
+            env['XO_NIXPKG_RECONCILE_DOWNLOADED_EVIDENCE'] = str(staged)
         started = time.monotonic()
         result = subprocess.run(['bash', str(ROOT / 'ci' / leaf)], cwd=work, env=env,
                                 capture_output=True, text=True, timeout=15)
@@ -181,6 +192,81 @@ class EvidenceDownload(unittest.TestCase):
                     self.assertEqual(result.returncode, 2)
                 self.assert_validation_reached(leaf, calls)
                 self.assertFalse(any(call[:3] == ['gh', 'workflow', 'run'] for call in calls))
+
+    def observations(self):
+        return [json.loads(line) for line in (self.work / 'reconciliation-transport.jsonl').read_text().splitlines()]
+
+    def test_cli_failure_retains_real_exit_code_and_separate_recovery_status(self):
+        for code in (124, 137, 1):
+            result, _, _ = self.run_leaf('reconcile-retained.sh', download_exit=code, fallback_exit=7)
+            self.assertEqual(result.returncode, 7)
+            observations = self.observations()
+            self.assertEqual([(o['phase'], o['exitCode']) for o in observations],
+                             [('download', code), ('retained-recovery', 7)])
+            self.assertTrue(all(not o['authorityClaim'] for o in observations))
+            self.assertNotIn('fixture-registry-token', json.dumps(observations))
+            self.assertNotIn('http', json.dumps(observations))
+            self.assertTrue(all(o['elapsedSeconds'] >= 0 for o in observations))
+
+    def test_hosted_success_preserves_full_closure_and_all_gates_without_cli_download(self):
+        result, calls, _ = self.run_leaf('reconcile-retained.sh', staged_evidence=True,
+            environment={'XO_NIXPKG_RECONCILE_DOWNLOAD_OUTCOME': 'success'})
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertFalse(any(c[0] in ('timeout', 'retained.py') for c in calls))
+        self.assert_validation_reached('reconcile-retained.sh', calls)
+        for call in calls:
+            if call[0] == 'reconcile-files':
+                self.assertIn('closure.nar-part-000', call[1])
+        observation = self.observations()[0]
+        self.assertEqual(observation['transport'], 'actions-artifact')
+        self.assertIsNone(observation['exitCode'])
+        self.assertIsNone(observation['elapsedSeconds'])
+
+    def test_hosted_partial_failure_or_missing_artifact_only_uses_exact_retained_recovery(self):
+        for outcome in ('failure', 'skipped'):
+            result, calls, _ = self.run_leaf('reconcile-retained.sh', staged_evidence=True,
+                environment={'XO_NIXPKG_RECONCILE_DOWNLOAD_OUTCOME': outcome})
+            self.assertEqual(result.returncode, 0, result.stderr)
+            self.assertFalse(any(c[0] == 'timeout' for c in calls))
+            self.assertEqual([c for c in calls if c[0] == 'fallback-state'],
+                             [['fallback-state', False, '123', '2']])
+            self.assert_validation_reached('reconcile-retained.sh', calls)
+            self.assertTrue(all('closure.nar-part-000' not in c[1] for c in calls if c[0] == 'reconcile-files'))
+            self.assertEqual(self.observations()[0]['outcome'], outcome)
+
+    def test_hosted_wrong_identity_or_unknown_outcome_fails_before_authority(self):
+        for env, fixture in [
+                ({'XO_NIXPKG_RECONCILE_DOWNLOAD_OUTCOME': 'success'}, {'evidence_attempt': 1}),
+                ({'XO_NIXPKG_RECONCILE_DOWNLOAD_OUTCOME': 'success'}, {'evidence_run': 124}),
+                ({'XO_NIXPKG_RECONCILE_DOWNLOAD_OUTCOME': 'success', 'QUALIFICATION_ATTEMPT': '1'}, {}),
+                ({'XO_NIXPKG_RECONCILE_DOWNLOAD_OUTCOME': ''}, {}),
+                ({'XO_NIXPKG_RECONCILE_DOWNLOAD_OUTCOME': 'unexpected PRIVATE_TOKEN'}, {})]:
+            result, calls, _ = self.run_leaf('reconcile-retained.sh', staged_evidence=True,
+                                            environment=env, **fixture)
+            self.assertNotEqual(result.returncode, 0)
+            self.assert_no_validation(calls)
+            self.assertNotIn('PRIVATE_TOKEN', result.stderr)
+
+    def test_hosted_failure_cannot_bypass_failed_packet_recovery_or_live_gate(self):
+        result, calls, _ = self.run_leaf('reconcile-retained.sh', staged_evidence=True, fallback_exit=8,
+            environment={'XO_NIXPKG_RECONCILE_DOWNLOAD_OUTCOME': 'failure'})
+        self.assertEqual(result.returncode, 8)
+        self.assert_no_validation(calls)
+        result, calls, _ = self.run_leaf('reconcile-retained.sh', staged_evidence=True, gate_exit=2,
+            environment={'XO_NIXPKG_RECONCILE_DOWNLOAD_OUTCOME': 'success'})
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assert_validation_reached('reconcile-retained.sh', calls)
+        self.assertFalse(any(c[:3] == ['gh', 'workflow', 'run'] for c in calls))
+
+    def test_diagnostic_write_error_does_not_change_success_or_original_failure(self):
+        for fixture, expected in [({}, 0), ({'download_exit': 124, 'fallback_exit': 9}, 9)]:
+            result, calls, _ = self.run_leaf('reconcile-retained.sh',
+                environment={'RUNNER_TEMP': '/dev/null'}, **fixture)
+            self.assertEqual(result.returncode, expected, result.stderr)
+            if expected == 0:
+                self.assert_validation_reached('reconcile-retained.sh', calls)
+            else:
+                self.assert_no_validation(calls)
 
     def test_real_gnu_timeout_terminates_stalled_and_term_ignoring_downloads(self):
         for leaf in LEAVES:
