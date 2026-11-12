@@ -40,7 +40,9 @@ if name == 'gh' and args[0] == 'api':
     endpoint = args[1]
     if fixture.get('api_failure') and fixture['api_failure'] in endpoint:
         sys.exit(1)
-    if '/actions/runs/' in endpoint:
+    if '/artifacts?' in endpoint:
+        print(json.dumps(fixture.get('artifact_catalog', {'total_count': 0, 'artifacts': []})))
+    elif '/actions/runs/' in endpoint:
         print(json.dumps(fixture['producer']))
     elif 'qualification.yml/runs' in endpoint and 'status=success' in endpoint:
         print(json.dumps({'workflow_runs': [] if fixture.get('empty') else [fixture['producer']]}))
@@ -79,7 +81,7 @@ elif name == 'xo-nixpkg-decision-publication' and not fixture['admitted']:
         env = dict(os.environ, PATH=str(self.bin) + os.pathsep + os.environ['PATH'],
                    GITHUB_REPOSITORY=REPOSITORY, GITHUB_ACTOR='fixture',
                    REGISTRY_TOKEN='fixture-registry-token', FIXTURE_CALLS=str(self.calls),
-                   FIXTURE_DATA=str(self.data))
+                   FIXTURE_DATA=str(self.data), RUNNER_TEMP=str(self.root))
         env.pop('QUALIFICATION_RUN', None)
         env.pop('QUALIFICATION_ATTEMPT', None)
         env.update(environment)
@@ -100,6 +102,83 @@ elif name == 'xo-nixpkg-decision-publication' and not fixture['admitted']:
     @staticmethod
     def dispatches(calls):
         return [call for call in calls if call[:3] == ['gh', 'workflow', 'run']]
+
+    def plan(self):
+        output = self.root / 'outputs'
+        result, calls = self.run_scheduler(XO_NIXPKG_RECONCILE_PLAN_ONLY='true',
+                                          GITHUB_OUTPUT=str(output))
+        values = dict(line.split('=', 1) for line in output.read_text().splitlines()) if output.exists() else {}
+        return result, calls, values
+
+    def artifact(self):
+        return dict(id=456, name='qualified-products-123-2', size_in_bytes=2745535254,
+                    expired=False, workflow_run={'id': 123})
+
+    def test_hosted_plan_selects_only_exact_full_artifact_without_downloading(self):
+        self.fixture['artifact_catalog'] = {'total_count': 1, 'artifacts': [self.artifact()]}
+        result, calls, outputs = self.plan()
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(outputs, {'run_id': '123', 'attempt': '2', 'artifact_id': '456'})
+        self.assertFalse(any(c[:3] == ['gh', 'run', 'download'] for c in calls))
+        self.assertFalse(any(c[0].startswith('xo-nixpkg-decision') for c in calls))
+        self.assertEqual(self.dispatches(calls), [])
+        self.assertTrue(any('/actions/runs/123/artifacts?name=qualified-products-123-2&per_page=100' in str(c) for c in calls))
+        observation = json.loads((self.root / 'reconciliation-transport.jsonl').read_text())
+        self.assertEqual(observation['artifact'], {'id': 456, 'sizeBytes': 2745535254, 'expired': False})
+        self.assertEqual(observation['outcome'], 'available')
+        self.assertFalse(observation['authorityClaim'])
+
+    def test_missing_or_expired_artifact_plans_exact_retained_recovery(self):
+        for expired in (False, True):
+            with self.subTest(expired=expired):
+                artifact = self.artifact()
+                artifact['expired'] = True
+                self.fixture['artifact_catalog'] = {'total_count': int(expired), 'artifacts': [artifact] if expired else []}
+                result, calls, outputs = self.plan()
+                self.assertEqual(result.returncode, 0, result.stderr)
+                self.assertEqual(outputs['artifact_id'], '')
+                self.assertEqual(outputs['run_id'], '123')
+                self.assertEqual(outputs['attempt'], '2')
+                self.assertFalse(any(c[:3] == ['gh', 'run', 'download'] for c in calls))
+
+    def test_invalid_or_ambiguous_catalog_fails_before_hosted_download(self):
+        artifact = self.artifact()
+        catalogs = [
+            {'total_count': 2, 'artifacts': [artifact]},
+            {'total_count': 2, 'artifacts': [artifact, artifact]},
+            {'total_count': 0, 'artifacts': [artifact]},
+            {'total_count': 1, 'artifacts': [dict(artifact, name='qualified-inventories-123-2')]},
+            {'total_count': 1, 'artifacts': [dict(artifact, name='qualified-products-123-1')]},
+            {'total_count': 1, 'artifacts': [dict(artifact, workflow_run={'id': 124})]},
+            {'total_count': 1, 'artifacts': [dict(artifact, id='456\nINJECTED=true')]},
+            {'total_count': 1, 'artifacts': [dict(artifact, expired='false')]},
+            {'total_count': 1, 'artifacts': [dict(artifact, size_in_bytes=-1)]},
+            {},
+        ]
+        for catalog in catalogs:
+            with self.subTest(catalog=catalog):
+                self.fixture['artifact_catalog'] = catalog
+                result, calls, outputs = self.plan()
+                self.assertNotEqual(result.returncode, 0)
+                self.assertEqual(outputs, {})
+                self.assertFalse(any(c[:3] == ['gh', 'run', 'download'] for c in calls))
+                self.assertEqual(self.dispatches(calls), [])
+
+    def test_catalog_api_failure_never_becomes_missing_artifact(self):
+        self.fixture['api_failure'] = '/artifacts?'
+        result, _, outputs = self.plan()
+        self.assertNotEqual(result.returncode, 0)
+        self.assertEqual(outputs, {})
+        observation = json.loads((self.root / 'reconciliation-transport.jsonl').read_text())
+        self.assertEqual((observation['phase'], observation['outcome'], observation['exitCode']),
+                         ('catalog', 'failure', 1))
+
+    def test_active_exact_publication_skips_plan_and_artifact_api(self):
+        self.fixture['publish'] = [self.workflow()]
+        result, calls, outputs = self.plan()
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(outputs, {})
+        self.assertFalse(any('/artifacts?' in str(c) for c in calls))
 
     def test_authenticated_obsolete_policy_waits_without_refresh_or_publication(self):
         for published in [False, True]:

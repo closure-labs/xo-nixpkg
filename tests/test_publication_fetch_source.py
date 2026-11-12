@@ -60,6 +60,13 @@ class PublicationFetchSource(unittest.TestCase):
         self.assertGreaterEqual(value['elapsedMilliseconds'], value['discoveryMilliseconds'] + value['metadataMilliseconds'])
         self.assertNotIn('reference', self.artifact.read_text())
 
+    def test_no_full_packet_does_not_misreport_live_artifact_as_expired(self):
+        with patch.dict(os.environ, {'XO_NIXPKG_PUBLICATION_METADATA_ONLY': 'false'}):
+            with self.assertRaisesRegex(ValueError, 'no retained immutable decision packet') as error:
+                self.execute([])
+        self.assertNotIn('expired', str(error.exception))
+        self.assertFalse(self.output.exists())
+
     def test_no_exact_source_keeps_exit_four_and_no_materialization(self):
         with self.assertRaises(SystemExit) as error:
             self.execute([])

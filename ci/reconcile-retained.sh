@@ -105,12 +105,105 @@ if [[ $publication_state == complete ]]; then
     exit 0
   fi
 fi
-# Bound optional artifact transport before the existing authenticated recovery path.
-if ! timeout --signal=TERM --kill-after=10s 600s gh run download "$run_id" --repo "$GITHUB_REPOSITORY" --name "qualified-products-$run_id-$attempt" --dir "$XO_NIXPKG_EVIDENCE"; then
+# Transport observations are not receipts or authority. Keep only fixed fields;
+# best-effort diagnostic I/O must never change the evidence/authority outcome.
+transport_observation() {
+  local phase=$1 transport=$2 outcome=$3 code=$4 seconds=$5
+  printf 'Evidence transport: phase=%s transport=%s outcome=%s exit=%s seconds=%s\n' \
+    "$phase" "$transport" "$outcome" "$code" "$seconds" >&2
+  if [[ -n ${RUNNER_TEMP:-} ]]; then
+    if ! jq -cn --arg phase "$phase" --arg transport "$transport" --arg outcome "$outcome" \
+      --argjson exitCode "$code" --argjson seconds "$seconds" \
+      --argjson run "$run_id" --argjson attempt "$attempt" \
+      --argjson artifact "${artifact:-null}" \
+      '{schema: 1, authorityClaim: false, phase: $phase, transport: $transport,
+        outcome: $outcome, exitCode: $exitCode, elapsedSeconds: $seconds,
+        runId: $run, runAttempt: $attempt, artifact: $artifact}' \
+      >>"$RUNNER_TEMP/reconciliation-transport.jsonl"; then
+      echo 'Unable to retain transport observation; evidence checks are unchanged.' >&2
+    fi
+  fi
+}
+
+# The hosted workflow uses the official streaming/retrying artifact action.
+# Select one full product artifact, never inventories or a different attempt.
+# The name-filtered catalog must be complete and unambiguous. Metadata is only
+# transport selection: resume repeats producer identity and all evidence gates.
+if [[ ${XO_NIXPKG_RECONCILE_PLAN_ONLY:-false} == true ]]; then
+  : "${GITHUB_OUTPUT:?}"
+  started=$SECONDS
+  catalog_exit=0
+  catalog=$(gh api "repos/$GITHUB_REPOSITORY/actions/runs/$run_id/artifacts?name=qualified-products-$run_id-$attempt&per_page=100") || catalog_exit=$?
+  if (( catalog_exit != 0 )); then
+    transport_observation catalog actions-artifact failure "$catalog_exit" "$((SECONDS - started))"
+    exit "$catalog_exit"
+  fi
+  artifact=$(jq -c --arg name "qualified-products-$run_id-$attempt" --argjson run "$run_id" '
+    if (.artifacts | type) != "array" or .total_count != (.artifacts | length) or .total_count > 1
+      then error("Incomplete or ambiguous exact artifact catalog")
+    elif .total_count == 0 then null
+    else .artifacts[0] |
+      if .name != $name or .workflow_run.id != $run or
+        (.id | type != "number" or . <= 0 or floor != .) or
+        (.size_in_bytes | type != "number" or . < 0 or floor != .) or
+        (.expired | type != "boolean")
+      then error("Invalid exact artifact metadata")
+      else {id, sizeBytes: .size_in_bytes, expired} end
+    end' <<<"$catalog") || {
+      transport_observation catalog actions-artifact invalid-metadata 1 "$((SECONDS - started))"
+      exit 1
+    }
+  artifact_id=''
+  if [[ $artifact == null ]]; then
+    artifact_state=missing
+  elif [[ $(jq -r .expired <<<"$artifact") == true ]]; then
+    artifact_state=expired
+  else
+    artifact_state=available
+    artifact_id=$(jq -r .id <<<"$artifact")
+  fi
+  transport_observation catalog actions-artifact "$artifact_state" 0 "$((SECONDS - started))"
+  printf 'run_id=%s\nattempt=%s\nartifact_id=%s\n' "$run_id" "$attempt" "$artifact_id" >>"$GITHUB_OUTPUT"
+  exit 0
+fi
+
+started=$SECONDS
+download_exit=0
+if [[ ${XO_NIXPKG_RECONCILE_DOWNLOAD_OUTCOME+set} == set ]]; then
+  # An action failure (including digest mismatch) must never admit partial bytes.
+  # Only the fixed hosted staging path is handed over; producer/attestation
+  # verification below remains mandatory even after successful SDK transport.
+  case "$XO_NIXPKG_RECONCILE_DOWNLOAD_OUTCOME" in
+    success)
+      : "${XO_NIXPKG_RECONCILE_DOWNLOADED_EVIDENCE:?}"
+      [[ -d $XO_NIXPKG_RECONCILE_DOWNLOADED_EVIDENCE && ! -L $XO_NIXPKG_RECONCILE_DOWNLOADED_EVIDENCE ]]
+      # Use the full staged tree in place; do not copy gigabytes across mounts.
+      export XO_NIXPKG_EVIDENCE="$XO_NIXPKG_RECONCILE_DOWNLOADED_EVIDENCE"
+      ;;
+    failure|skipped) download_exit=1 ;;
+    *) echo 'Invalid hosted artifact outcome.' >&2; exit 1 ;;
+  esac
+  # Actions exposes an outcome, not the SDK process exit code. Do not invent it
+  # or count staging time as download time; the workflow step owns its timing.
+  transport_observation download actions-artifact "$XO_NIXPKG_RECONCILE_DOWNLOAD_OUTCOME" null null
+else
+  # Preserve bounded standalone CLI use, now recording its actual failure code.
+  timeout --signal=TERM --kill-after=10s 600s gh run download "$run_id" --repo "$GITHUB_REPOSITORY" --name "qualified-products-$run_id-$attempt" --dir "$XO_NIXPKG_EVIDENCE" || download_exit=$?
+  outcome=success
+  (( download_exit == 0 )) || outcome=failure
+  transport_observation download gh-cli "$outcome" "$download_exit" "$((SECONDS - started))"
+fi
+if (( download_exit != 0 )); then
   rm -rf -- "$XO_NIXPKG_EVIDENCE"
   printf '%s' "$REGISTRY_TOKEN" | oras login ghcr.io --username "$GITHUB_ACTOR" --password-stdin
   export QUALIFICATION_RUN="$run_id" QUALIFICATION_ATTEMPT="$attempt"
-  python3 "$XO_NIXPKG_RETAINED_FETCH_SOURCE"
+  started=$SECONDS
+  recovery_exit=0
+  python3 "$XO_NIXPKG_RETAINED_FETCH_SOURCE" || recovery_exit=$?
+  outcome=success
+  (( recovery_exit == 0 )) || outcome=failure
+  transport_observation retained-recovery immutable-packet "$outcome" "$recovery_exit" "$((SECONDS - started))"
+  (( recovery_exit == 0 )) || exit "$recovery_exit"
 fi
 jq -e --argjson run "$run_id" --argjson attempt "$attempt" \
   '.producer.runId == $run and .producer.runAttempt == $attempt' \

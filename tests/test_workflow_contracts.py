@@ -97,3 +97,34 @@ class WorkflowContracts(unittest.TestCase):
         for step in after_mint:
             self.assertNotRegex(step.get('run', ''), r'\bnix\s+(?:run|build|eval)\b|\bdevenv\s|\./ci/|\./scripts/')
         self.assertEqual(source.count('steps.writer.outputs.token'), 1)
+
+    def test_reconcile_uses_exact_official_transport_without_expanding_budget_or_permissions(self):
+        import yaml
+        workflow = yaml.load((WORKFLOWS / 'security-reconcile.yml').read_text(), Loader=yaml.BaseLoader)
+        self.assertEqual(workflow['permissions'], {'contents': 'read', 'actions': 'read',
+            'packages': 'write', 'attestations': 'read'})
+        self.assertEqual(list(workflow['jobs']), ['reconcile'])
+        steps = workflow['jobs']['reconcile']['steps']
+        plan = next(step for step in steps if step.get('id') == 'transport')
+        download = next(step for step in steps if step.get('id') == 'products')
+        resume = next(step for step in steps if 'XO_NIXPKG_RECONCILE_DOWNLOAD_OUTCOME' in step.get('env', {}))
+        self.assertLess(steps.index(plan), steps.index(download))
+        self.assertLess(steps.index(download), steps.index(resume))
+        self.assertEqual(plan['env']['XO_NIXPKG_RECONCILE_PLAN_ONLY'], 'true')
+        self.assertEqual(download['uses'], 'actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333')
+        self.assertEqual(download['if'], "steps.transport.outputs.artifact_id != ''")
+        self.assertEqual(download['timeout-minutes'], '10')
+        self.assertEqual(download['continue-on-error'], 'true')
+        self.assertEqual(download['with']['artifact-ids'], '${{ steps.transport.outputs.artifact_id }}')
+        self.assertEqual(download['with']['run-id'], '${{ steps.transport.outputs.run_id }}')
+        self.assertEqual(download['with']['github-token'], '${{ github.token }}')
+        self.assertEqual(download['with']['digest-mismatch'], 'error')
+        self.assertNotIn('name', download['with'])
+        self.assertEqual(resume['if'], "steps.transport.outputs.run_id != ''")
+        self.assertEqual(resume['env']['QUALIFICATION_RUN'], '${{ steps.transport.outputs.run_id }}')
+        self.assertEqual(resume['env']['QUALIFICATION_ATTEMPT'], '${{ steps.transport.outputs.attempt }}')
+        self.assertEqual(resume['env']['XO_NIXPKG_RECONCILE_DOWNLOAD_OUTCOME'], '${{ steps.products.outcome }}')
+        self.assertEqual(resume['env']['XO_NIXPKG_RECONCILE_DOWNLOADED_EVIDENCE'], download['with']['path'])
+        retained = steps[-1]
+        self.assertEqual(retained['if'], 'always()')
+        self.assertIn('reconciliation-transport.jsonl', retained['with']['path'])
