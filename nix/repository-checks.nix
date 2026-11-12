@@ -201,6 +201,10 @@ let
           PYTHONDONTWRITEBYTECODE=1 python3 source/tests/test_dependency_update.py
           bash source/tests/security-scan.sh
           node source/tests/isolated-file-restore.mjs
+          node source/tests/isolated-file-restore-patch.mjs \
+            ${self.packages.${pkgs.stdenv.hostPlatform.system}.latest.src} \
+            ${self.packages.${pkgs.stdenv.hostPlatform.system}.stable.src} \
+            ${self.packages.${pkgs.stdenv.hostPlatform.system}.rolling.src}
           node source/tests/reproducible-generators.cjs
           PYTHONDONTWRITEBYTECODE=1 python3 source/tests/test_independent_build_proof.py
           bash source/tests/trusted-update.sh
