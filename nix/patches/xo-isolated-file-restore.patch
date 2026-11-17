@@ -46,26 +46,18 @@
      const devicePath = yield this.getDisk(diskId)
      if (partitionId === undefined) {
        debug(
-@@ -370,6 +388,9 @@
-   },
- 
+@@ -372,2 +390,5 @@
    listPartitionFiles(diskId, partitionId, path) {
 +    if (isolatedFileRestore !== undefined) {
 +      return Disposable.use(this.getDisk(diskId), disk => isolatedFileRestore.listPartitionFiles(disk, partitionId, path))
 +    }
      return Disposable.use(this.getPartition(diskId, partitionId), async rootPath => {
-       path = resolveSubpath(rootPath, path)
-       const entriesMap = {}
-@@ -397,6 +418,9 @@
-   },
- 
-   listPartitions(diskId) {
+@@ -399 +420,4 @@
+-  listPartitions(diskId) {
++  listPartitions(diskId) {
 +    if (isolatedFileRestore !== undefined) {
 +      return Disposable.use(this.getDisk(diskId), disk => isolatedFileRestore.listPartitions(disk))
 +    }
-     return Disposable.use(this.getDisk(diskId), async devicePath => {
-       // partx may return empty on FUSE-backed files (vhd0); a loop device
-       // presents proper block-device semantics that partx reads reliably.
 --- a/packages/xo-server/src/xo-mixins/file-restore-ng.mjs
 +++ b/packages/xo-server/src/xo-mixins/file-restore-ng.mjs
 @@ -37,6 +37,7 @@
