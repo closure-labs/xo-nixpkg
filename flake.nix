@@ -21,7 +21,7 @@ rec {
       flake = false;
     };
     xo-rolling = {
-      url = "github:vatesfr/xen-orchestra/3c6d3e66e497be40bd7d8545c77d079b51444022";
+      url = "github:vatesfr/xen-orchestra/1ac84b488c7cbcf29b41b8d6c8361b61705f3741";
       flake = false;
     };
   };
