@@ -40,7 +40,7 @@ jobs:
       workflow: ${{ steps.classify.outputs.workflow || steps.bootstrap_classify.outputs.workflow }}
     steps:
       - name: Audit runner traffic
-        uses: step-security/harden-runner@46b06cea07f9e64621fdf066ba77ac6915163d43 # v2
+        uses: step-security/harden-runner@1d88384fd173af6ecb012dfd0264a306b711241a # v2.22.4
         with:
           egress-policy: audit
       - name: Checkout protected controller
@@ -57,7 +57,7 @@ jobs:
           persist-credentials: false
       # Bootstrap from a pinned vendor action, never controller/candidate setup code.
       - name: Set up credential-free native toolchain
-        uses: DeterminateSystems/nix-installer-action@33c9ab3ef95cd57c164d9d6eb1f9a46338538d41 # installer for v3.21.9
+        uses: DeterminateSystems/nix-installer-action@2559b44fed7d4fc978e8dd0e379661afb8b73590 # installer for v3.21.9
         with:
           determinate: false
           flakehub: false
@@ -127,7 +127,7 @@ jobs:
       PREPARED_CI_WORKFLOW: ${{ needs.classify.outputs.workflow }}
     steps:
       - name: Audit runner traffic
-        uses: step-security/harden-runner@46b06cea07f9e64621fdf066ba77ac6915163d43 # v2
+        uses: step-security/harden-runner@1d88384fd173af6ecb012dfd0264a306b711241a # v2.22.4
         with:
           egress-policy: audit
       - name: Checkout protected controller
@@ -144,7 +144,7 @@ jobs:
           persist-credentials: false
       # Bootstrap from a pinned vendor action, never controller/candidate setup code.
       - name: Set up credential-free native toolchain
-        uses: DeterminateSystems/nix-installer-action@33c9ab3ef95cd57c164d9d6eb1f9a46338538d41 # installer for v3.21.9
+        uses: DeterminateSystems/nix-installer-action@2559b44fed7d4fc978e8dd0e379661afb8b73590 # installer for v3.21.9
         with:
           determinate: false
           flakehub: false
@@ -228,7 +228,7 @@ jobs:
       PREPARED_CI_WORKFLOW: ${{ needs.classify.outputs.workflow }}
     steps:
       - name: Audit runner traffic
-        uses: step-security/harden-runner@46b06cea07f9e64621fdf066ba77ac6915163d43 # v2
+        uses: step-security/harden-runner@1d88384fd173af6ecb012dfd0264a306b711241a # v2.22.4
         with:
           egress-policy: audit
       - name: Checkout protected controller
@@ -244,7 +244,7 @@ jobs:
           persist-credentials: false
       # Bootstrap from a pinned vendor action, never controller/candidate setup code.
       - name: Set up credential-free native toolchain
-        uses: DeterminateSystems/nix-installer-action@33c9ab3ef95cd57c164d9d6eb1f9a46338538d41 # installer for v3.21.9
+        uses: DeterminateSystems/nix-installer-action@2559b44fed7d4fc978e8dd0e379661afb8b73590 # installer for v3.21.9
         with:
           determinate: false
           flakehub: false
@@ -370,7 +370,7 @@ jobs:
       VALIDATE_ENABLED: ${{ needs.classify.result == 'success' && fromJSON(needs.classify.outputs.workflow).jobs.validate.enabled || false }}
     steps:
       - name: Audit runner traffic
-        uses: step-security/harden-runner@46b06cea07f9e64621fdf066ba77ac6915163d43 # v2
+        uses: step-security/harden-runner@1d88384fd173af6ecb012dfd0264a306b711241a # v2.22.4
         with:
           egress-policy: audit
       - name: Checkout protected verdict controller

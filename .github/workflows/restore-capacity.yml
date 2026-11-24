@@ -26,7 +26,7 @@ jobs:
       packages: read
     steps:
       - name: Audit runner traffic
-        uses: step-security/harden-runner@46b06cea07f9e64621fdf066ba77ac6915163d43 # v2.22.3
+        uses: step-security/harden-runner@1d88384fd173af6ecb012dfd0264a306b711241a # v2.22.4
         with:
           egress-policy: audit
       - name: Checkout diagnostic code
@@ -45,7 +45,7 @@ jobs:
       - name: Validate diagnostic guards
         run: python3 -m unittest discover -s diagnostic/tests -p test_restore_capacity.py
       - name: Install pinned Nix without stored GitHub credentials
-        uses: DeterminateSystems/nix-installer-action@9383ce2bf08796b65508822f5982f49151badc4e # installer for v3.24.1
+        uses: DeterminateSystems/nix-installer-action@2559b44fed7d4fc978e8dd0e379661afb8b73590 # installer for v3.24.1
         # Disable action-managed login; select Determinate in the installer itself.
         with:
           determinate: false
