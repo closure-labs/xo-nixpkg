@@ -49,6 +49,8 @@ elif name == 'gh' and args[0] == 'api':
         print(json.dumps({'workflow_runs': []}))
 elif name == 'xo-nixpkg-inspect-qualification':
     print(json.dumps({'schema': 1, 'status': 'current' if os.environ.get('XO_NIXPKG_INSPECT_LOCAL_EVIDENCE') == 'true' else 'unretained'}))
+elif name == 'xo-nixpkg-decision-readiness':
+    sys.exit(fixture.get('graph_exit', 0))
 elif name == 'gh' and args[:2] == ['run', 'download']:
     directory = pathlib.Path(args[args.index('--dir') + 1])
     if fixture.get('real_deadline'):
@@ -94,7 +96,8 @@ class EvidenceDownload(unittest.TestCase):
         native = work / 'bin'
         native.mkdir(parents=True)
         for name in ('timeout', 'gh', 'oras', 'retained.py', 'xo-nixpkg-publication-gate',
-                     'xo-nixpkg-decision-reconcile', 'xo-nixpkg-decision-publication', 'xo-nixpkg-inspect-qualification'):
+                     'xo-nixpkg-decision-reconcile', 'xo-nixpkg-decision-publication', 'xo-nixpkg-inspect-qualification',
+                     'xo-nixpkg-decision-readiness'):
             executable = native / name
             executable.write_text('#!' + sys.executable + '\n' + FAKE)
             executable.chmod(0o755)
@@ -129,12 +132,15 @@ class EvidenceDownload(unittest.TestCase):
         if leaf == 'fetch-evidence.sh':
             self.assertEqual(sum(call[0] == 'xo-nixpkg-publication-gate' for call in calls), 1)
         else:
+            self.assertEqual(calls[0], ['xo-nixpkg-decision-readiness', '--config',
+                                       'ci/decision-policy.json', '--graph-only'])
             decisions = [call[-1] for call in calls if call[0] == 'xo-nixpkg-decision-reconcile']
             self.assertEqual(decisions, ['security-findings', 'release-product'])
             self.assertEqual(sum(call[0] == 'xo-nixpkg-decision-publication' for call in calls), 1)
 
     def assert_no_validation(self, calls):
-        self.assertFalse(any(call[0].startswith('xo-nixpkg-') for call in calls))
+        self.assertFalse(any(call[0].startswith('xo-nixpkg-') and
+                             call[0] != 'xo-nixpkg-decision-readiness' for call in calls))
         self.assertFalse(any(call[:3] == ['gh', 'workflow', 'run'] for call in calls))
 
     def test_success_keeps_exact_artifact_and_validation_without_retained_fallback(self):
@@ -149,6 +155,12 @@ class EvidenceDownload(unittest.TestCase):
                 self.assertEqual(sum(call[:3] == ['gh', 'run', 'download'] for call in calls), 1)
                 self.assertFalse(any(call[0] in ('retained.py', 'fallback-state') for call in calls))
                 self.assert_validation_reached(leaf, calls)
+
+    def test_graph_failure_prevents_download_fallback_and_admission(self):
+        result, calls, _ = self.run_leaf('reconcile-retained.sh', graph_exit=2)
+        self.assertEqual(result.returncode, 2)
+        self.assertEqual(calls, [['xo-nixpkg-decision-readiness', '--config',
+                                 'ci/decision-policy.json', '--graph-only']])
 
     def test_timeout_kill_and_ordinary_failure_clean_partial_files_before_exact_fallback(self):
         for leaf in LEAVES:
