@@ -64,6 +64,16 @@ with an explicit recovery diagnostic. Failed producer completions do not wake th
 expensive reconciliation job. A tick downloads at most one complete product packet,
 instead of replaying up to 20 historical packets.
 
+Before transport selection, the reconciler runs
+`xo-nixpkg-decision-readiness --config ci/decision-policy.json --graph-only`.
+This checks the current-main ledger structure without requiring a live accepted
+baseline or claiming publication authority. Concurrent unsuperseded decisions,
+cycles and invalid supersession parents stop both planning and execution before
+artifact or registry access. An ambiguous graph requires an explicitly reviewed
+decision superseding every conflicting leaf; the scheduler cannot select a winner
+or rewrite historical records. Full readiness and publication still require their
+independent live human and evidence checks.
+
 ## Publication and recovery
 
 `publish.yml` downloads data from a successful completed producer and runs trusted

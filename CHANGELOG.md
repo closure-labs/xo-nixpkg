@@ -10,6 +10,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- Validate the current security decision graph before reconciliation downloads
+  complete products or accesses the registry. Ambiguous decisions still require
+  explicit maintainer reconciliation; planning never grants admission.
+
 - Publish rolling candidates with the exact Decider App identity already trusted
   by CI admission, using a late repository-scoped Contents/PR-write token and an
   immutable publisher. Keep other updater identities and human authority intact.

@@ -52,6 +52,10 @@ if name == 'gh' and args[0] == 'api':
         page = int(parse_qs(urlsplit(endpoint).query).get('page', ['1'])[0])
         records = pages[page - 1] if pages and page <= len(pages) else fixture[key]
         print(json.dumps({'workflow_runs': records}))
+elif name == 'xo-nixpkg-decision-readiness':
+    if fixture.get('graph_failure'):
+        print('Ambiguous concurrent security decisions require explicit reconciliation', file=sys.stderr)
+        sys.exit(2)
 elif name == 'xo-nixpkg-inspect-qualification':
     if fixture.get('inspection_failure'):
         sys.exit(2)
@@ -70,7 +74,8 @@ elif name == 'xo-nixpkg-decision-publication' and not fixture['admitted']:
     sys.exit(2)
 '''
         for name in ('gh', 'oras', 'xo-nixpkg-decision-reconcile', 'xo-nixpkg-decision-publication',
-                     'xo-nixpkg-publication-gate', 'xo-nixpkg-inspect-qualification'):
+                     'xo-nixpkg-publication-gate', 'xo-nixpkg-inspect-qualification',
+                     'xo-nixpkg-decision-readiness'):
             executable = self.bin / name
             executable.write_text(fake)
             executable.chmod(0o755)
@@ -120,13 +125,23 @@ elif name == 'xo-nixpkg-decision-publication' and not fixture['admitted']:
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertEqual(outputs, {'run_id': '123', 'attempt': '2', 'artifact_id': '456'})
         self.assertFalse(any(c[:3] == ['gh', 'run', 'download'] for c in calls))
-        self.assertFalse(any(c[0].startswith('xo-nixpkg-decision') for c in calls))
+        self.assertFalse(any(c[0].startswith('xo-nixpkg-decision') and c[0] != 'xo-nixpkg-decision-readiness' for c in calls))
         self.assertEqual(self.dispatches(calls), [])
         self.assertTrue(any('/actions/runs/123/artifacts?name=qualified-products-123-2&per_page=100' in str(c) for c in calls))
         observation = json.loads((self.root / 'reconciliation-transport.jsonl').read_text())
         self.assertEqual(observation['artifact'], {'id': 456, 'sizeBytes': 2745535254, 'expired': False})
         self.assertEqual(observation['outcome'], 'available')
         self.assertFalse(observation['authorityClaim'])
+
+    def test_ambiguous_security_graph_stops_before_discovery_download_or_registry_access(self):
+        self.fixture['graph_failure'] = True
+        for environment in ({}, {'XO_NIXPKG_RECONCILE_PLAN_ONLY': 'true'}):
+            self.calls.unlink(missing_ok=True)
+            result, calls = self.run_scheduler(**environment)
+            self.assertEqual(result.returncode, 2)
+            self.assertIn('explicit reconciliation', result.stderr)
+            self.assertEqual(calls, [['xo-nixpkg-decision-readiness', '--config',
+                                     'ci/decision-policy.json', '--graph-only']])
 
     def test_missing_or_expired_artifact_plans_exact_retained_recovery(self):
         for expired in (False, True):
@@ -189,14 +204,14 @@ elif name == 'xo-nixpkg-decision-publication' and not fixture['admitted']:
             self.assertEqual(result.returncode, 0, result.stderr)
             self.assertIn('awaiting-current-evidence', result.stdout)
             self.assertEqual(self.dispatches(calls), [])
-            self.assertFalse(any(c[0].startswith('xo-nixpkg-decision') for c in calls))
+            self.assertFalse(any(c[0].startswith('xo-nixpkg-decision') and c[0] != 'xo-nixpkg-decision-readiness' for c in calls))
 
     def test_policy_authentication_failure_never_becomes_wait_or_dispatch(self):
         self.fixture['inspection_failure'] = True
         result, calls = self.run_scheduler()
         self.assertNotEqual(result.returncode, 0)
         self.assertEqual(self.dispatches(calls), [])
-        self.assertFalse(any(c[0].startswith('xo-nixpkg-decision') for c in calls))
+        self.assertFalse(any(c[0].startswith('xo-nixpkg-decision') and c[0] != 'xo-nixpkg-decision-readiness' for c in calls))
 
     def test_explicit_trigger_identity_avoids_latest_success_discovery(self):
         result, calls = self.run_scheduler(QUALIFICATION_RUN='123', QUALIFICATION_ATTEMPT='2')
@@ -238,7 +253,7 @@ elif name == 'xo-nixpkg-decision-publication' and not fixture['admitted']:
                 result, calls = self.run_scheduler()
                 self.assertEqual(result.returncode, 0, result.stderr)
                 self.assertFalse(self.dispatches(calls))
-                self.assertFalse(any(c[0].startswith('xo-nixpkg-decision') for c in calls))
+                self.assertFalse(any(c[0].startswith('xo-nixpkg-decision') and c[0] != 'xo-nixpkg-decision-readiness' for c in calls))
 
     def test_release_publication_suppresses_duplicate_rolling_delivery(self):
         for status, conclusion in [('in_progress', None), ('completed', 'success')]:
@@ -248,7 +263,7 @@ elif name == 'xo-nixpkg-decision-publication' and not fixture['admitted']:
                 result, calls = self.run_scheduler()
                 self.assertEqual(result.returncode, 0, result.stderr)
                 self.assertEqual(self.dispatches(calls), [])
-                self.assertFalse(any(c[0].startswith('xo-nixpkg-decision') for c in calls))
+                self.assertFalse(any(c[0].startswith('xo-nixpkg-decision') and c[0] != 'xo-nixpkg-decision-readiness' for c in calls))
 
     def test_failed_release_does_not_forge_success_or_suppress_fresh_rolling_gate(self):
         self.fixture['publish'] = [self.workflow(purpose='release', status='completed', conclusion='failure')]
@@ -290,7 +305,7 @@ elif name == 'xo-nixpkg-decision-publication' and not fixture['admitted']:
         self.assertEqual(len(dispatch), 1)
         self.assertEqual(dispatch[0][3], 'qualification.yml')
         self.assertIn('qualification_attempt=2', dispatch[0])
-        self.assertFalse(any(c[0].startswith('xo-nixpkg-decision') for c in calls))
+        self.assertFalse(any(c[0].startswith('xo-nixpkg-decision') and c[0] != 'xo-nixpkg-decision-readiness' for c in calls))
 
     def test_active_refresh_suppresses_only_matching_attempt(self):
         self.fixture.update(expiresAt='2000-01-01T00:00:00Z',
@@ -316,7 +331,7 @@ elif name == 'xo-nixpkg-decision-publication' and not fixture['admitted']:
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertFalse(self.dispatches(calls))
         self.assertIn('awaiting successful qualification; no evidence authority claimed', result.stdout)
-        self.assertFalse(any(c[0].startswith('xo-nixpkg-') for c in calls))
+        self.assertFalse(any(c[0].startswith('xo-nixpkg-') and c[0] != 'xo-nixpkg-decision-readiness' for c in calls))
 
     def test_discovery_failure_and_invalid_inputs_fail_before_side_effects(self):
         for changes, environment in [({'api_failure': 'qualification.yml/runs'}, {}),
@@ -329,7 +344,7 @@ elif name == 'xo-nixpkg-decision-publication' and not fixture['admitted']:
             result, calls = self.run_scheduler(**environment)
             self.assertNotEqual(result.returncode, 0, result.stdout + result.stderr)
             self.assertFalse(self.dispatches(calls))
-            self.assertFalse(any(c[0].startswith('xo-nixpkg-decision') for c in calls))
+            self.assertFalse(any(c[0].startswith('xo-nixpkg-decision') and c[0] != 'xo-nixpkg-decision-readiness' for c in calls))
             self.fixture = original
 
     def test_dispatch_lookup_failure_cannot_be_treated_as_no_active_work(self):

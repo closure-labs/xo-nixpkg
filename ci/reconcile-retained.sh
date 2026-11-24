@@ -4,6 +4,10 @@ set -euo pipefail
 : "${GITHUB_REPOSITORY:?}"
 : "${REGISTRY_TOKEN:?}"
 
+# Reject inconsistent decision history before hosted artifact downloads, retained
+# recovery or registry writes. The publisher still repeats every admission gate.
+xo-nixpkg-decision-readiness --config ci/decision-policy.json --graph-only
+
 # Reconciliation schedules work; the decision leaves and publisher authenticate
 # evidence and repeat live authority. Historical products remain explicit work,
 # rather than being resurrected on every hourly tick.
