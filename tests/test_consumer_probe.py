@@ -71,11 +71,12 @@ class ConsumerProbe(unittest.TestCase):
 class ConsumerSelection(unittest.TestCase):
     def setUp(self):
         from unittest.mock import patch
+        from test_native_approvals import cfg
         self.provenance = patch.object(probe.common, 'historical_provenance').start()
         self.addCleanup(patch.stopall)
         probe.common.packets.REFERENCE = __import__('re').compile(
             r'ghcr.io/closure-labs/xo-nixpkg-decisions@sha256:[0-9a-f]{64}')
-        self.cfg = probe.native.policy(ROOT / 'ci/publication-policy.json')
+        self.cfg = cfg()
 
     def proposal(self, run, product=None, disposition='accepted'):
         import copy

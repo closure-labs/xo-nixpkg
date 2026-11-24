@@ -713,8 +713,8 @@ class PolicyCredentialTests(unittest.TestCase):
         from unittest.mock import patch
         sys.path.insert(0, str(ROOT / 'ci/decisions'))
         audit = module('audit-policy')
-        from test_native_approvals import cfg, rules as native_rules, environment
-        policy = cfg()
+        from test_native_approvals import rules as native_rules, environment
+        policy = audit.native.policy(ROOT / 'ci/publication-policy.json')
         prefix = 'repos/closure-labs/xo-nixpkg/'
         revision = 'a' * 40
         def blob(raw):
