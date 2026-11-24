@@ -723,7 +723,8 @@ class PolicyCredentialTests(unittest.TestCase):
                     'content': base64.b64encode(raw).decode()}
         rules = [{'type': 'deletion'}, {'type': 'non_fast_forward'},
                  {'type': 'pull_request', 'parameters': {'required_review_thread_resolution': True}},
-                 {'type': 'merge_queue', 'parameters': {'max_entries_to_merge': 1}},
+                 {'type': 'merge_queue', 'parameters': {'max_entries_to_merge': 1,
+                                                      'check_response_timeout_minutes': 300}},
                  {'type': 'required_status_checks', 'parameters': {'required_status_checks': [
                      {'context': 'Maintainer decision authority', 'integration_id': policy['appId']}]}}]
 
@@ -747,6 +748,11 @@ class PolicyCredentialTests(unittest.TestCase):
             with self.assertRaisesRegex(ValueError, 'App-bound'):
                 audit.main()
             rules[:] = good
+            for timeout in (None, 0, 180, 299, True, '300'):
+                rules[3]['parameters']['check_response_timeout_minutes'] = timeout
+                with self.subTest(timeout=timeout), self.assertRaisesRegex(ValueError, 'response timeout'):
+                    audit.main()
+            rules[3]['parameters']['check_response_timeout_minutes'] = 300
             rules[3]['parameters']['max_entries_to_merge'] = 2
             with self.assertRaisesRegex(ValueError, 'single-PR'):
                 audit.main()

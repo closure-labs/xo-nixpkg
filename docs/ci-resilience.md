@@ -44,6 +44,14 @@ No percentage savings are claimed from the incident-heavy audit sample.
 
 ## Package 2: bounded operations and queues
 
+The merge queue response limit is at least 300 minutes. The validation graph's
+configured critical path is bounded by 5 minutes for classification, 60 for
+preflight, 180 for runtime validation, 10 for receipt attestation and 5 for the
+verdict: 260 minutes total. The daily effective-policy audit checks the queue
+limit, and a fixture checks that future job deadline changes still fit it.
+Individual job deadlines, App-bound required checks and single-PR merge behavior
+remain independent requirements.
+
 The weekly clean-store consumer uses the repository's Cachix cache and
 `cache.nixos.org` with their pinned signing keys. Cachix deliberately omits
 dependencies already available from its official upstream. The probe substitutes

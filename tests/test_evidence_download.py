@@ -114,6 +114,7 @@ class EvidenceDownload(unittest.TestCase):
                    DOWNLOAD_REAL_TIMEOUT=shutil.which('timeout'), RUNNER_TEMP=str(work))
         env.pop('XO_NIXPKG_FETCH_FOR_RESCAN', None)
         env.update(environment or {})
+        self.readiness_output = str(Path(env['RUNNER_TEMP']) / 'reconciliation-readiness.json')
         if fixture.get('staged_evidence'):
             staged = work / 'staged'
             staged.mkdir()
@@ -133,7 +134,8 @@ class EvidenceDownload(unittest.TestCase):
             self.assertEqual(sum(call[0] == 'xo-nixpkg-publication-gate' for call in calls), 1)
         else:
             self.assertEqual(calls[0], ['xo-nixpkg-decision-readiness', '--config',
-                                       'ci/decision-policy.json', '--graph-only'])
+                                       'ci/decision-policy.json', '--graph-only', '--output',
+                                       self.readiness_output])
             decisions = [call[-1] for call in calls if call[0] == 'xo-nixpkg-decision-reconcile']
             self.assertEqual(decisions, ['security-findings', 'release-product'])
             self.assertEqual(sum(call[0] == 'xo-nixpkg-decision-publication' for call in calls), 1)
@@ -160,7 +162,8 @@ class EvidenceDownload(unittest.TestCase):
         result, calls, _ = self.run_leaf('reconcile-retained.sh', graph_exit=2)
         self.assertEqual(result.returncode, 2)
         self.assertEqual(calls, [['xo-nixpkg-decision-readiness', '--config',
-                                 'ci/decision-policy.json', '--graph-only']])
+                                 'ci/decision-policy.json', '--graph-only', '--output',
+                                 self.readiness_output]])
 
     def test_timeout_kill_and_ordinary_failure_clean_partial_files_before_exact_fallback(self):
         for leaf in LEAVES:

@@ -8,12 +8,32 @@ import tempfile
 
 import decision_authority as authority
 import decision_packets as packets
-from common import (require, command, scans, product, ledger, active_security, active_release,
+from common import (require, command, scans, product, ledger, active_security, active_release, security_leaves,
                     authorize, historical_provenance, config, attest, required_check,
                     security_contexts, accepted_contexts, compare_security_contexts, main_revision)
 from security_decisions import load_json, canonical_hash, normalize_findings, compare_findings
 
 CHECK_CONFIG = None
+
+
+def validate_queue_security_graph(entries, repository, api=None, cfg=None):
+    """Reject forks in the exact queued ledger, including earlier queue entries."""
+    cfg = cfg or CHECK_CONFIG
+    require(cfg is not None and cfg['repository'] == repository, 'Checked queue policy required')
+    api = api or authority.github_api
+    records = {}
+    for path, (kind, mode, sha, size) in entries.items():
+        if not path.startswith('automation/decisions/security/'):
+            continue
+        require(kind == 'blob' and mode == '100644', 'Queued decisions must be regular Git blobs')
+        proposal = authority.document_blob(api, repository, sha, size)
+        require(authority.proposal_path(proposal) == path,
+                'Queued decision differs from its canonical Git tree path')
+        records[canonical_hash(proposal)] = proposal
+    require(records, 'Queued security proposals must be present in the complete Git tree')
+    leaves = security_leaves(cfg, records, api)
+    require(len(leaves) <= 1,
+            'Merge-group security graph has concurrent decisions; refresh supersession against the queued ledger')
 
 
 def validate_proposal_parent(proposal, cfg):

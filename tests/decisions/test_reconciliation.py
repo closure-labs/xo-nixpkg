@@ -11,7 +11,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[2] / 'ci/decisions'))
 import common
 import reconciliation
 import decision_authority as authority
-from test_core import CFG, scan
+from test_core import CFG, Core, scan
 from test_authority import GitHub, verify
 
 
@@ -21,6 +21,62 @@ def release(product, supersedes=None, rationale='First approval'):
         'supersedes': supersedes or [],
         'packet': {'reference': common.packets.REGISTRY + '@sha256:' + 'a' * 64,
                    'sha256': 'b' * 64, 'producer': {}}}}
+
+
+class QueueSecurityGraph(unittest.TestCase):
+    def validate(self, proposals, *, mutate=None):
+        documents, entries = {}, {}
+        for index, proposal in enumerate(proposals, 1):
+            sha = f'{index:040x}'
+            documents[sha] = proposal
+            entries[authority.proposal_path(proposal)] = ('blob', '100644', sha, len(json.dumps(proposal)))
+        # Unrelated tree entries must not be interpreted as decisions.
+        entries['ci/check.py'] = ('blob', '100644', 'f' * 40, 10)
+        if mutate:
+            mutate(entries)
+        api = lambda endpoint: self.fail('Unexpected network request: ' + endpoint)
+        with patch.object(authority, 'document_blob', side_effect=lambda api, repo, sha, size: documents[sha]), \
+                patch.object(common, 'historical_provenance') as historical, \
+                patch.object(common, 'authorize') as authorize, \
+                patch.object(common, 'persisted_risk') as persisted:
+            reconciliation.validate_queue_security_graph(entries, CFG['repository'], api, CFG)
+            authorize.assert_not_called()
+            persisted.assert_not_called()
+            return historical
+
+    def test_single_leaf_and_linear_history_grant_no_authority(self):
+        parent = Core().proposal()
+        self.validate([parent]).assert_not_called()
+        child = Core().proposal(supersedes=[common.canonical_hash(parent)])
+        self.validate([parent, child]).assert_called_once_with(CFG, parent, unittest.mock.ANY)
+
+    def test_queued_sibling_is_rejected_even_when_each_proposal_has_valid_main_parent(self):
+        parent = Core().proposal()
+        first = Core().proposal(supersedes=[common.canonical_hash(parent)])
+        second = deepcopy(first)
+        second['payload']['rationale'] = 'A separately approved scan of the same scope.'
+        with self.assertRaisesRegex(ValueError, 'concurrent decisions'):
+            self.validate([parent, first, second])
+
+    def test_complete_ledger_is_required(self):
+        child = Core().proposal(supersedes=['a' * 64])
+        with self.assertRaisesRegex(ValueError, 'supersession parents'):
+            self.validate([child])
+        with self.assertRaisesRegex(ValueError, 'complete Git tree'):
+            self.validate([])
+
+    def test_git_blob_identity_and_canonical_path_are_required(self):
+        proposal = Core().proposal()
+        def symlink(entries):
+            path = authority.proposal_path(proposal)
+            kind, _, sha, size = entries[path]
+            entries[path] = (kind, '120000', sha, size)
+        with self.assertRaisesRegex(ValueError, 'regular Git blobs'):
+            self.validate([proposal], mutate=symlink)
+        def rename(entries):
+            entries['automation/decisions/security/' + 'f' * 64 + '.json'] = entries.pop(authority.proposal_path(proposal))
+        with self.assertRaisesRegex(ValueError, 'canonical Git tree path'):
+            self.validate([proposal], mutate=rename)
 
 
 class Reconciliation(unittest.TestCase):

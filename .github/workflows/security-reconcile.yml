@@ -96,5 +96,6 @@ jobs:
           path: |
             ${{ runner.temp }}/decision-git-blobs/*/observations.jsonl
             ${{ runner.temp }}/reconciliation-transport.jsonl
+            ${{ runner.temp }}/reconciliation-readiness.json
           if-no-files-found: ignore
           retention-days: 30
