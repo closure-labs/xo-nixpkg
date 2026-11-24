@@ -15,8 +15,15 @@ import native_approvals as native
 import common
 
 
+def public_policy_binding():
+    # This is public scanner-policy identity, never a credential or secret value.
+    return {'policyId': 'fixture-public-scanner-policy', 'policySha256': '0' * 64}
+
+
 def cfg():
-    return native.policy(ROOT / native.POLICY)
+    policy = native.policy(ROOT / native.POLICY)
+    policy['repositorySecretPolicy'] = public_policy_binding()
+    return policy
 
 
 def request():
@@ -24,7 +31,7 @@ def request():
     product = {'schema': 1, 'repository': policy['repository'], 'revision': 'a' * 40,
                'products': {name: {'storePath': '/nix/store/' + 'a' * 32 + '-' + name,
                                     'narHash': 'sha256-' + 'A' * 43 + '='} for name in policy['profiles']},
-               'assets': {}, 'roots': {}, 'repositorySecretPolicy': policy['repositorySecretPolicy']}
+               'assets': {}, 'roots': {}, 'repositorySecretPolicy': public_policy_binding()}
     return {'schema': 1, 'approvalMode': policy['approvalMode'], 'repository': policy['repository'],
             'sourceRevision': product['revision'], 'qualificationRun': 123, 'qualificationAttempt': 2,
             'purpose': 'rolling', 'environment': 'publication', 'policyHash': common.canonical_hash(policy),
@@ -147,9 +154,10 @@ class ReleaseRequest(unittest.TestCase):
                 native.current_request(cfg(), current)
 
     def test_repository_request_is_valid_when_present(self):
-        path = ROOT / cfg()['releaseRequestPath']
+        policy = native.policy(ROOT / native.POLICY)
+        path = ROOT / policy['releaseRequestPath']
         if path.exists():
-            native.read_request(cfg(), path)
+            native.read_request(policy, path)
 
     def test_qualification_never_rebuilds_for_a_release_request_alone(self):
         import yaml
@@ -222,7 +230,7 @@ class QualifiedPlanner(unittest.TestCase):
     def setUp(self):
         self.cfg = cfg()
         self.product = request()['product']
-        self.scan = {'schema': 1, 'revision': 'a' * 40, 'repositorySecretPolicy': self.cfg['repositorySecretPolicy'],
+        self.scan = {'schema': 1, 'revision': 'a' * 40, 'repositorySecretPolicy': public_policy_binding(),
                      'producer': {'runId': 123, 'runAttempt': 2},
                      'profiles': {name: {'status': 'complete', 'scannerHealth': 'healthy', 'observations': []}
                                   for name in self.cfg['profiles']}}
