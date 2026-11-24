@@ -55,7 +55,7 @@ def tree(api, repository, sha):
             raise authority.AuthorityError('Invalid tree response')
         if item['path'] in entries:
             raise authority.AuthorityError('Duplicate merge-group tree path')
-        entries[item['path']] = (item.get('type'), item.get('mode'), item.get('sha'))
+        entries[item['path']] = (item.get('type'), item.get('mode'), item.get('sha'), item.get('size'))
     return entries
 
 
@@ -63,6 +63,11 @@ def validate_proposal_packet(proposal):
     # Loaded only from the trusted main checkout, never from PR contents.
     from reconciliation import validate_proposal_packet as validate
     return validate(proposal)
+
+
+def validate_queue_security_graph(entries, repository, api):
+    from reconciliation import validate_queue_security_graph as validate
+    return validate(entries, repository, api)
 
 
 def check_pr(repository, number, expected_bot, target_sha=None, github=None, *, reviewer_policy=None):
@@ -110,6 +115,8 @@ def check_pr(repository, number, expected_bot, target_sha=None, github=None, *, 
         for path in proposals:
             if canonical_hash(authority.document_at(api, repository, path, target_sha)) != canonical_hash(authority.document_at(api, repository, path, head)):
                 raise authority.AuthorityError('Merge-group proposal differs from exact approved PR head')
+        if any(path.startswith('automation/decisions/security/') for path in proposals):
+            validate_queue_security_graph(queued, repository, api)
     latest = api(endpoint)
     if latest.get('head', {}).get('sha') != head or latest.get('state') != 'open':
         raise authority.AuthorityError('PR changed while authority was being evaluated')

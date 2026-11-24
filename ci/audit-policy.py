@@ -9,6 +9,8 @@ import subprocess
 import decision_authority as authority
 from common import config, require, required_check
 
+MINIMUM_QUEUE_TIMEOUT_MINUTES = 300
+
 
 def repository_api(endpoint):
     """Read source metadata without expanding the administration audit App."""
@@ -40,6 +42,10 @@ def main():
             'effective main protections are incomplete')
     require(any(rule['type'] == 'merge_queue' and rule['parameters']['max_entries_to_merge'] == 1 for rule in rules),
             'decision authority requires a single-PR merge queue')
+    require(any(rule['type'] == 'merge_queue'
+                and type(rule['parameters'].get('check_response_timeout_minutes')) is int
+                and rule['parameters']['check_response_timeout_minutes'] >= MINIMUM_QUEUE_TIMEOUT_MINUTES
+                for rule in rules), 'Merge queue response timeout is shorter than the bounded CI lifecycle')
     require(any(rule['type'] == 'pull_request' and rule['parameters']['required_review_thread_resolution'] is True for rule in rules),
             'main review threads must be resolved')
     print(json.dumps({'schema': 1, 'status': 'verified', 'publicationEnabled': cfg['enabled']}))

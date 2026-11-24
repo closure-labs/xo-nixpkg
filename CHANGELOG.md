@@ -10,6 +10,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- Check the complete queued security ledger before authorizing a security
+  proposal's merge group, rejecting parallel decisions that would fork the
+  supersession graph. Ordinary code-fix PRs can still repair an existing fork.
+- Retain a bounded security-graph report before reconciliation transport,
+  including conflicting parent identities, policy/main snapshot hashes and
+  whether their recorded scopes match. Keep ambiguous graphs blocked and show
+  the required maintainer action in the job summary.
+- Audit a minimum 300-minute merge-queue response timeout, covering the
+  260-minute bounded CI critical path without extending individual jobs.
+
 - Validate the current security decision graph before reconciliation downloads
   complete products or accesses the registry. Ambiguous decisions still require
   explicit maintainer reconciliation; planning never grants admission.
