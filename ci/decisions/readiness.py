@@ -5,11 +5,19 @@ from common import parser, config, required_check, ledger, active_security, emit
 
 
 def main():
-    args = parser(__doc__).parse_args()
+    cli = parser(__doc__)
+    cli.add_argument('--graph-only', action='store_true',
+                     help='Validate current-main supersession before bulk transport; grants no admission')
+    args = cli.parse_args()
     cfg = config(args.config, live=True, enabled=True)
-    required_check(cfg)
+    if not args.graph_only:
+        required_check(cfg)
     _, records = ledger(cfg)
-    digest, decision = active_security(cfg, records)
+    digest, decision = active_security(cfg, records, authenticate=not args.graph_only)
+    if args.graph_only:
+        emit({'schema': 1, 'status': 'valid-security-graph', 'repository': cfg['repository'],
+              'decisionHash': digest, 'authorityClaim': False}, args.output)
+        return
     require(decision is not None and decision['payload']['disposition'] == 'accepted', 'Accepted initial baseline required')
     emit({'schema': 1, 'status': 'ready', 'repository': cfg['repository'], 'decisionHash': digest}, args.output)
 
