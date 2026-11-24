@@ -74,6 +74,16 @@ decision superseding every conflicting leaf; the scheduler cannot select a winne
 or rewrite historical records. Full readiness and publication still require their
 independent live human and evidence checks.
 
+Every reconciliation attempt retains `reconciliation-readiness.json` in the
+existing observation artifact, including attempts stopped before transport.
+It records the protected main revision, graph and policy hashes, each leaf's
+identity and disposition, per-profile finding counts and a hash of its recorded
+findings/context scope. The same conflicting parents appear in the job summary.
+`authorityClaim` and `publicationReady` remain false even for a single leaf;
+this is structural scheduling data, not packet authentication or admission.
+Identical recorded scopes still require explicit reconciliation and do not permit
+the scheduler to choose a winner. Malformed parents and cycles remain errors.
+
 ## Publication and recovery
 
 `publish.yml` downloads data from a successful completed producer and runs trusted
@@ -150,6 +160,16 @@ failures. Expired Actions artifacts fall back to digest-bound packets referenced
 by merged decisions or pending bot proposals; consumers verify producer identity,
 attestations and every file. The independently admitted `xo-nixpkg-products`
 package carries downstream handoffs after publication.
+
+## Queued security graph validation
+
+A security proposal's merge-group authority check also validates the complete
+immutable queued ledger, including preceding queue entries. Individually valid
+proposals cannot introduce concurrent unsuperseded decisions through the same
+queue. Proposal bytes must retain their canonical paths and regular Git blob
+identity, and historical parent provenance is checked independently of live
+human approval. Ordinary code-fix PRs do not require an unambiguous ledger;
+they can repair the controller while publication remains blocked.
 
 ## Automatic CI admission for trusted authors
 

@@ -211,7 +211,8 @@ def compare_security_contexts(native, payload):
             for profile in native['profiles']}
 
 
-def active_security(cfg, records, api=None, authenticate=True):
+def security_leaves(cfg, records, api=None):
+    """Validate the complete graph and historical ancestry; grant no live authority."""
     candidates = {h: p for h, p in records.items() if p['kind'] in ('security-findings', 'security-revocation')}
     superseded = set()
     for digest, proposal in candidates.items():
@@ -252,7 +253,12 @@ def active_security(cfg, records, api=None, authenticate=True):
         visit(digest)
     for digest in superseded:
         historical_provenance(cfg, candidates[digest], api)
-    leaves = set(candidates) - superseded
+    return {digest: candidates[digest] for digest in sorted(set(candidates) - superseded)}
+
+
+def active_security(cfg, records, api=None, authenticate=True):
+    candidates = security_leaves(cfg, records, api)
+    leaves = set(candidates)
     require(len(leaves) <= 1, 'Ambiguous concurrent security decisions require explicit reconciliation')
     if not leaves:
         return None, None

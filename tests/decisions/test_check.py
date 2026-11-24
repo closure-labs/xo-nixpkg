@@ -50,6 +50,9 @@ class Checks(unittest.TestCase):
         patcher = mock.patch.object(mod, 'validate_proposal_packet', return_value={})
         self.packet_validator = patcher.start()
         self.addCleanup(patcher.stop)
+        queue = mock.patch.object(mod, 'validate_queue_security_graph', return_value=None)
+        self.queue_validator = queue.start()
+        self.addCleanup(queue.stop)
 
     def test_regular_pr_passes_without_approval(self):
         api = GitHub()
@@ -92,9 +95,27 @@ class Checks(unittest.TestCase):
     def test_queue_requires_exact_reviewed_governed_tree(self):
         api = GitHub()
         self.assertEqual(mod.check_pr(REPO, 7, BOT, MERGE, api)['status'], 'authorized')
+        self.queue_validator.assert_called_once_with(mod.tree(api, REPO, MERGE), REPO, api)
         api.queue_tree = {'truncated': False, 'tree': []}
         with self.assertRaises(mod.authority.AuthorityError):
             mod.check_pr(REPO, 7, BOT, MERGE, api)
+
+    def test_queue_graph_failure_cannot_grant_authority_and_pr_checks_remain_independent(self):
+        self.queue_validator.side_effect = ValueError('concurrent queued decisions')
+        self.assertEqual(mod.check_pr(REPO, 7, BOT, github=GitHub())['status'], 'authorized')
+        self.queue_validator.assert_not_called()
+        with self.assertRaisesRegex(ValueError, 'concurrent queued decisions'):
+            mod.check_pr(REPO, 7, BOT, MERGE, GitHub())
+
+    def test_queued_controller_fixes_do_not_depend_on_the_existing_security_graph(self):
+        api = GitHub()
+        api.files = [{'filename': 'ci/decisions/common.py', 'status': 'modified'}]
+        api.head_tree = {'truncated': False, 'tree': [
+            {'path': api.files[0]['filename'], 'type': 'blob', 'mode': '100644', 'sha': 'd' * 40, 'size': 100}]}
+        api.queue_tree = api.head_tree
+        self.queue_validator.side_effect = ValueError('existing ledger conflict')
+        self.assertEqual(mod.check_pr(REPO, 7, BOT, MERGE, api)['status'], 'authorized')
+        self.queue_validator.assert_not_called()
 
     def test_queue_truncation_fails_closed(self):
         api = GitHub()

@@ -3,6 +3,7 @@
 import itertools
 import os
 from pathlib import Path
+import re
 import subprocess
 import unittest
 import yaml
@@ -11,6 +12,15 @@ ROOT = Path(__file__).resolve().parents[1]
 
 
 class GateOverhead(unittest.TestCase):
+    def test_merge_queue_policy_covers_the_bounded_ci_critical_path(self):
+        jobs = yaml.safe_load((ROOT / '.github/workflows/ci.yml').read_text())['jobs']
+        critical_path = sum(jobs[name]['timeout-minutes']
+                            for name in ('classify', 'preflight', 'validate', 'attest-builds', 'gate'))
+        audit = (ROOT / 'ci/audit-policy.py').read_text()
+        minimum = int(re.search(r'^MINIMUM_QUEUE_TIMEOUT_MINUTES = ([0-9]+)$', audit, re.M)[1])
+        self.assertLessEqual(critical_path, minimum,
+                             'Update the declared and live queue limit before extending CI deadlines')
+
     def test_existing_verdict_truth_table(self):
         for classify, preflight, enabled, validate in itertools.product(
                 ('success', 'failure'), ('success', 'failure'),

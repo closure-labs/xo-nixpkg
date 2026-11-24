@@ -141,7 +141,8 @@ elif name == 'xo-nixpkg-decision-publication' and not fixture['admitted']:
             self.assertEqual(result.returncode, 2)
             self.assertIn('explicit reconciliation', result.stderr)
             self.assertEqual(calls, [['xo-nixpkg-decision-readiness', '--config',
-                                     'ci/decision-policy.json', '--graph-only']])
+                                     'ci/decision-policy.json', '--graph-only', '--output',
+                                     str(self.root / 'reconciliation-readiness.json')]])
 
     def test_missing_or_expired_artifact_plans_exact_retained_recovery(self):
         for expired in (False, True):

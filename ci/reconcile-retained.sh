@@ -6,7 +6,8 @@ set -euo pipefail
 
 # Reject inconsistent decision history before hosted artifact downloads, retained
 # recovery or registry writes. The publisher still repeats every admission gate.
-xo-nixpkg-decision-readiness --config ci/decision-policy.json --graph-only
+xo-nixpkg-decision-readiness --config ci/decision-policy.json --graph-only \
+  --output "${RUNNER_TEMP:-${TMPDIR:-/tmp}}/reconciliation-readiness.json"
 
 # Reconciliation schedules work; the decision leaves and publisher authenticate
 # evidence and repeat live authority. Historical products remain explicit work,
