@@ -1,9 +1,13 @@
-# Native maintainer governance: inactive migration proposal
+# Historical native maintainer governance proposal
+
+This earlier proposal is superseded by [Native approvals migration](native-approvals-migration.md).
+The implemented workflow uses GitHub PR reviews for code and releases; see
+[Security decisions](security-decisions.md) for the active workflow.
 
 This draft changes no live workflow, ruleset, environment, risk decision,
 credential or publishing gate. Its Python reference model is test-only; it is
-not a signature verifier, issuer or deployment authorization. Production still
-uses the legacy access-loss policy until an explicitly reviewed cutover.
+not a signature verifier, issuer or deployment authorization. When this proposal
+was written, production used the legacy access-loss policy.
 
 ## Baseline and chosen objective
 

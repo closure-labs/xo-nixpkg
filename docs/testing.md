@@ -1,6 +1,11 @@
 <!-- SPDX-License-Identifier: Apache-2.0 -->
 # Testing Guide
 
+For the active approval and publication workflow, use [Security decisions](security-decisions.md)
+and [Native approvals migration](native-approvals-migration.md). Legacy decision
+recipes below document retained historical fixtures; their retired CLI entrypoints
+are no longer packaged.
+
 ## Local Checks
 
 ```bash
