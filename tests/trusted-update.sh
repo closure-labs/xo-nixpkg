@@ -26,8 +26,9 @@ if [[ "$1 $2" == 'pr view' ]]; then
     --arg head "$head" \
     --arg author "${FAKE_AUTHOR:-github-actions[bot]}" \
     --arg repository "${FAKE_REPOSITORY:-example/xo-nixpkg}" \
+    --arg decision "${FAKE_REVIEW_DECISION:-REVIEW_REQUIRED}" \
     --argjson auto_merge "$auto_merge" \
-    '{author:{login:$author},autoMergeRequest:$auto_merge,baseRefName:"main",headRefName:"automation/test",headRefOid:$head,headRepository:{nameWithOwner:$repository},isDraft:false,state:"OPEN",title:"Trusted update",url:"https://example.invalid/pr/1"}'
+    '{author:{login:$author},autoMergeRequest:$auto_merge,reviewDecision:$decision,baseRefName:"main",headRefName:"automation/test",headRefOid:$head,headRepository:{nameWithOwner:$repository},isDraft:false,state:"OPEN",title:"Trusted update",url:"https://example.invalid/pr/1"}'
 elif [[ "$1 $2" == 'run list' ]]; then
   if [[ ${FAKE_RUN_MISSING:-false} == true ]]; then
     printf '[]\n'
@@ -139,72 +140,26 @@ run_trusted automatic "$temporary/result.json" >/dev/null
 assert_status queued "$temporary/result.json"
 grep -Fq -- '--match-head-commit abc123' "$temporary/merge.log"
 
-# Versioned release updates need a current-head approval by a collaborator
-# whose effective repository permission is write, maintain, or admin.
+# Native GitHub rules own effective approval, stale dismissal and CODEOWNERS.
 rm -f "$temporary/merge.log"
-run_trusted trusted-maintainer "$temporary/result.json" >/dev/null
+for decision in REVIEW_REQUIRED CHANGES_REQUESTED; do
+  run_trusted trusted-maintainer "$temporary/result.json" FAKE_REVIEW_DECISION="$decision" >/dev/null
+  assert_status awaiting-review "$temporary/result.json"
+  [[ ! -e $temporary/merge.log ]]
+done
+run_trusted trusted-maintainer "$temporary/result.json" FAKE_AUTO_MERGE=true >/dev/null
 assert_status awaiting-review "$temporary/result.json"
-[[ ! -e $temporary/merge.log ]]
-
-# A pre-existing auto-merge request does not bypass release approval policy.
-run_trusted trusted-maintainer "$temporary/result.json" \
-  FAKE_AUTO_MERGE=true >/dev/null
-assert_status awaiting-review "$temporary/result.json"
-[[ ! -e $temporary/merge.log ]]
-
-approval='[{"id":1,"state":"APPROVED","commit_id":"abc123","user":{"login":"maintainer"}}]'
-run_trusted trusted-maintainer "$temporary/result.json" \
-  FAKE_REVIEWS_JSON="$approval" >/dev/null
+run_trusted trusted-maintainer "$temporary/result.json" FAKE_REVIEW_DECISION=APPROVED >/dev/null
 assert_status queued "$temporary/result.json"
 grep -Fq -- '--match-head-commit abc123' "$temporary/merge.log"
-
+# Comment commands and custom permission observations cannot approve a release.
 rm -f "$temporary/merge.log"
-stale='[{"id":1,"state":"APPROVED","commit_id":"oldsha","user":{"login":"maintainer"}}]'
 run_trusted trusted-maintainer "$temporary/result.json" \
-  FAKE_REVIEWS_JSON="$stale" >/dev/null
+  FAKE_REVIEWS_JSON='[{"id":1,"state":"COMMENTED","body":"/decider approve abc123","commit_id":"abc123","user":{"login":"maintainer"}}]' >/dev/null
 assert_status awaiting-review "$temporary/result.json"
 [[ ! -e $temporary/merge.log ]]
-
-run_trusted trusted-maintainer "$temporary/result.json" \
-  FAKE_REVIEWS_JSON="$approval" FAKE_PERMISSION=read >/dev/null
-assert_status awaiting-review "$temporary/result.json"
-[[ ! -e $temporary/merge.log ]]
-
-withdrawn='[
-  {"id":1,"state":"APPROVED","commit_id":"abc123","user":{"login":"maintainer"}},
-  {"id":2,"state":"CHANGES_REQUESTED","commit_id":"abc123","user":{"login":"maintainer"}}
-]'
-run_trusted trusted-maintainer "$temporary/result.json" \
-  FAKE_REVIEWS_JSON="$withdrawn" >/dev/null
-assert_status awaiting-review "$temporary/result.json"
-[[ ! -e $temporary/merge.log ]]
-
-# Authenticated exact-head Comment reviews use the native authority protocol.
-command_review='[{"id":1,"state":"COMMENTED","commit_id":"abc123","body":"/decider approve abc123","user":{"login":"maintainer"}}]'
-run_trusted trusted-maintainer "$temporary/result.json" \
-  FAKE_REVIEWS_JSON="$command_review" >/dev/null
-assert_status queued "$temporary/result.json"
-rm -f "$temporary/merge.log"
-for body in '/decider withdraw abc123' '/decider approve oldsha' 'approved' $'/decider approve abc123\nextra'; do
-  reviews=$(jq --arg body "$body" '.[0].body = $body' <<<"$command_review")
-  run_trusted trusted-maintainer "$temporary/result.json" FAKE_REVIEWS_JSON="$reviews" >/dev/null
-  assert_status awaiting-review "$temporary/result.json"
-  [[ ! -e $temporary/merge.log ]]
-done
-for state in COMMENTED CHANGES_REQUESTED DISMISSED; do
-  reviews=$(jq --arg state "$state" '. + [.[0] | .id = 2 | .state = $state | .body = "/decider withdraw abc123"]' <<<"$command_review")
-  run_trusted trusted-maintainer "$temporary/result.json" FAKE_REVIEWS_JSON="$reviews" >/dev/null
-  assert_status awaiting-review "$temporary/result.json"
-  [[ ! -e $temporary/merge.log ]]
-done
-run_trusted trusted-maintainer "$temporary/result.json" \
-  FAKE_REVIEWS_JSON="$command_review" FAKE_PERMISSION=read >/dev/null
-assert_status awaiting-review "$temporary/result.json"
-[[ ! -e $temporary/merge.log ]]
-
-if run_trusted trusted-maintainer "$temporary/result.json" \
-  FAKE_REVIEWS_JSON='{"malformed":true}' >/dev/null 2>&1; then
-  echo 'Trusted queue treated malformed review state as a missing approval' >&2
+if run_trusted trusted-maintainer "$temporary/result.json" FAKE_REVIEW_DECISION=UNKNOWN >/dev/null 2>&1; then
+  echo 'Trusted queue accepted an unavailable native review decision' >&2
   exit 1
 fi
 

@@ -44,13 +44,10 @@ in
     "security:review".exec = "nix run .#security-scan";
     "security:refresh".exec = "nix run .#refresh-products";
     "security:fetch-rescan".exec = "nix run .#fetch-evidence";
-    "security:collect".exec = "nix run .#decision-collect";
-    "security:authority".exec = "nix run .#decision-authority";
-    "security:inspect".exec = "nix run .#inspect-qualification";
-    "security:resume".exec = "nix run .#reconcile-retained";
     "security:qualify".exec = "nix run .#qualify-products";
-    "security:readiness".exec = "nix run .#decision-readiness";
-    "security:reconcile".exec = "nix run .#decision-reconcile";
+    "release:plan".exec =
+      "nix run .#publication-plan -- plan --output \"$RUNNER_TEMP/publication-plan.json\"";
+    "release:retain".exec = "nix run .#publication-plan -- retain";
     "release:resume".exec = "nix run .#publication-controller";
     "release:fetch".exec = "nix run .#fetch-evidence";
     "release:publish".exec = "nix run .#publish";

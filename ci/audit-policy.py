@@ -7,16 +7,16 @@ import os
 import subprocess
 
 import decision_authority as authority
-from common import config, require, required_check
-
-MINIMUM_QUEUE_TIMEOUT_MINUTES = 300
+from common import require
+import native_approvals as native
 
 
 def repository_api(endpoint):
     """Read source metadata without expanding the administration audit App."""
     prefix = 'repos/closure-labs/xo-nixpkg/'
     require(endpoint == prefix + 'git/ref/heads/main'
-            or endpoint.startswith(prefix + 'contents/ci/decision-policy.json?ref='),
+            or endpoint.startswith(prefix + 'contents/ci/publication-policy.json?ref=')
+            or endpoint.startswith(prefix + 'contents/.github/CODEOWNERS?ref='),
             'Unexpected repository metadata endpoint')
     token = os.environ.get('REPOSITORY_READ_TOKEN')
     require(isinstance(token, str) and token.strip(), 'Scoped repository metadata reader required')
@@ -28,26 +28,16 @@ def repository_api(endpoint):
 
 def audit_api(endpoint):
     """Keep effective rules on the administration reader, metadata on contents."""
-    if endpoint == 'repos/closure-labs/xo-nixpkg/rules/branches/main':
+    if endpoint in ('repos/closure-labs/xo-nixpkg/rules/branches/main',
+                    'repos/closure-labs/xo-nixpkg/rulesets/21015412',
+                    'repos/closure-labs/xo-nixpkg/environments/publication'):
         return authority.github_api(endpoint)
     return repository_api(endpoint)
 
 
 def main():
-    cfg = config(Path('ci/decision-policy.json'), live=True, api=audit_api)
-    required_check(cfg)
-    rules = authority.github_api(f'repos/{cfg["repository"]}/rules/branches/main')
-    types = {rule['type'] for rule in rules}
-    require({'deletion', 'non_fast_forward', 'pull_request', 'merge_queue', 'required_status_checks'} <= types,
-            'effective main protections are incomplete')
-    require(any(rule['type'] == 'merge_queue' and rule['parameters']['max_entries_to_merge'] == 1 for rule in rules),
-            'decision authority requires a single-PR merge queue')
-    require(any(rule['type'] == 'merge_queue'
-                and type(rule['parameters'].get('check_response_timeout_minutes')) is int
-                and rule['parameters']['check_response_timeout_minutes'] >= MINIMUM_QUEUE_TIMEOUT_MINUTES
-                for rule in rules), 'Merge queue response timeout is shorter than the bounded CI lifecycle')
-    require(any(rule['type'] == 'pull_request' and rule['parameters']['required_review_thread_resolution'] is True for rule in rules),
-            'main review threads must be resolved')
+    cfg = native.policy(Path(native.POLICY), live=True, api=audit_api)
+    native.protections(cfg, audit_api)
     print(json.dumps({'schema': 1, 'status': 'verified', 'publicationEnabled': cfg['enabled']}))
 
 

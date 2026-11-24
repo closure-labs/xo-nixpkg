@@ -169,6 +169,27 @@
   ],
   "pathRules": [
     {
+      "pattern": "^\\.github/release-request\\.json$",
+      "validation": [
+        "repository-policy",
+        "automation-fixtures"
+      ],
+      "publication": []
+    },
+    {
+      "pattern": "^(?:ci/(?:publication-plan|propose-release|configure-native-approvals)\\.(?:py|sh)|ci/publication-policy\\.json|tests/test_native_approvals\\.py|\\.github/CODEOWNERS)$",
+      "validation": [
+        "repository-policy",
+        "ci-runtime-fixtures",
+        "application-composition",
+        "automation-fixtures",
+        "automation-runtime"
+      ],
+      "publication": [
+        "automation-runtime"
+      ]
+    },
+    {
       "pattern": "^(?:ci/validate-restore-capacity\\.py|tests/test_restore_capacity\\.py|\\.github/workflows/restore-capacity\\.yml)$",
       "validation": [
         "*"

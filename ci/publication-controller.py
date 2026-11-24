@@ -206,7 +206,11 @@ def registry():
 
 def source_descriptor(source):
     import decision_packets as packets
-    packets.REGISTRY='ghcr.io/closure-labs/xo-nixpkg-decisions'
+    allowed = {'ghcr.io/closure-labs/xo-nixpkg-decisions', 'ghcr.io/closure-labs/xo-nixpkg-products'}
+    packet_registry = source['reference'].split('@')[0]
+    if packet_registry not in allowed:
+        raise ValueError('Publication source must use the exact private evidence or public product registry')
+    packets.REGISTRY=packet_registry
     packets.REFERENCE=re.compile(re.escape(packets.REGISTRY)+r'@sha256:[0-9a-f]{64}')
     with registry(), operations.budget(90), tempfile.TemporaryDirectory() as temp:
         _, members = packets.inspect(source['reference'])

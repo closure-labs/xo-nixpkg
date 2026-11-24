@@ -30,14 +30,14 @@ class ControllerWakeups(unittest.TestCase):
     def test_queue_waits_for_candidate_validation_or_authority(self):
         _, events = workflow('queue-automation.yml')
         self.assertEqual(events['workflow_run']['workflows'], [
-            'Validate packages', 'Verify merge approval', 'Relay update reviews'])
+            'Validate packages', 'Collect PR and queue events'])
         self.assertIn('schedule', events)
         self.assertIn('workflow_dispatch', events)
 
     def test_queue_skips_validation_that_cannot_enqueue_a_new_candidate(self):
         value, _ = workflow('queue-automation.yml')
         condition = value['jobs']['enqueue']['if'].replace('&&', ' and ').replace('||', ' or ')
-        for workflow_name in ['Validate packages', 'Verify merge approval', 'Relay update reviews']:
+        for workflow_name in ['Validate packages', 'Collect PR and queue events']:
             for source in ['pull_request', 'merge_group', 'schedule', 'workflow_dispatch', 'workflow_run']:
                 for conclusion in ['success', 'failure', 'cancelled', 'skipped']:
                     for validated in ['true', 'false']:
@@ -49,7 +49,7 @@ class ControllerWakeups(unittest.TestCase):
                         scope = {'github': github, 'vars': variables, 'format': lambda pattern, value: pattern.format(value)}
                         expected = (conclusion == 'success'
                             and (workflow_name != 'Validate packages' or source == 'pull_request')
-                            and (workflow_name != 'Relay update reviews' or validated != 'true'))
+                            and (workflow_name != 'Collect PR and queue events' or source == 'pull_request_review'))
                         with self.subTest(workflow=workflow_name, source=source, conclusion=conclusion, validated=validated):
                             self.assertEqual(bool(eval(condition, {'__builtins__': {}}, scope)), expected)
         for event_name in ['schedule', 'workflow_dispatch']:
@@ -61,12 +61,12 @@ class ControllerWakeups(unittest.TestCase):
                         {'github': github, 'format': lambda pattern, value: pattern.format(value)})),
                         repository == 'closure-labs/xo-nixpkg' and ref == 'refs/heads/main')
 
-    def test_reconcile_still_observes_review_qualification_and_merged_decisions(self):
-        _, events = workflow('security-reconcile.yml')
-        self.assertEqual(events['workflow_run']['workflows'], ['Qualify release products', 'Verify merge approval'])
-        self.assertEqual(events['push']['paths'], ['automation/decisions/**'])
-        self.assertIn('schedule', events)
+    def test_native_release_proposals_only_observe_qualification(self):
+        _, events = workflow('release-proposal.yml')
+        self.assertEqual(events['workflow_run']['workflows'], ['Qualify release products'])
+        self.assertNotIn('schedule', events)
         self.assertIn('workflow_dispatch', events)
+        self.assertFalse((W / 'security-reconcile.yml').exists())
 
 
 if __name__ == '__main__':

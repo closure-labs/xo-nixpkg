@@ -12,7 +12,6 @@ from decision_authority import AuthorityError, collection, eligible, github_api
 import dependency_update as dependency
 
 COLLECTOR = '.github/workflows/decision-events.yml'
-AUTHORITY = '.github/workflows/decision-authority.yml'
 
 
 def trusted(api, policy, user):
@@ -199,12 +198,6 @@ def wake_runs(api, policy, run_id):
         if len(current) != 1:
             raise AuthorityError('Review wake-up lacks one current native PR')
         return pending_runs(api, policy, run['head_sha'])
-    if (run.get('path') == AUTHORITY and run.get('event') == 'workflow_run'
-            and run.get('head_branch') == 'main'
-            and run.get('head_repository', {}).get('id') == policy['repositoryId']
-            and run.get('head_repository', {}).get('full_name') == policy['repository']
-            and run.get('conclusion') in ('success', 'failure')):
-        return pending_runs(api, policy)
     raise AuthorityError('Unsupported CI wake-up event')
 
 

@@ -128,7 +128,7 @@ let
           grep -F -- '${pkgs.lib.getExe applications.updateXo} --rolling' \
             ${pkgs.lib.getExe applications.updateXoRolling}
           grep -F '${pkgs.diffutils}/bin' ${pkgs.lib.getExe applications.updateXo}
-          grep -F 'XO_NIXPKG_REVIEW_PROTOCOL=${../ci/decisions/review_protocol.py}' \
+          grep -F 'reviewDecision' \
             ${pkgs.lib.getExe applications.trustedUpdate}
           grep -F 'rolling-candidate' ${pkgs.lib.getExe applications.prewarmRolling}
           grep -F 'cachix push "$XO_NIXPKG_CACHIX_CACHE_NAME"' source/ci/publish.sh

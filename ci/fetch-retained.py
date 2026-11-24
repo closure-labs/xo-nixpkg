@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # SPDX-License-Identifier: Apache-2.0
-"""Recover exact candidate bytes from private, digest-bound reviewed evidence."""
+"""Recover exact candidate bytes from authenticated Actions or immutable handoff evidence."""
 import json
 import os
 import sys
@@ -8,35 +8,92 @@ import time
 import tempfile
 from pathlib import Path
 import re
+import subprocess
 
 import decision_authority as authority
 import decision_packets as packets
-from common import config
+from native_approvals import policy as config
+import publication_receipts
 
-PROPOSAL = re.compile(r'automation/decisions/(security|releases)/[0-9a-f]{64}\.json')
+
+def optional_metadata(endpoint):
+    result = subprocess.run(['gh', 'api', '--method', 'GET', endpoint], text=True,
+                            capture_output=True, timeout=30)
+    if result.returncode and re.search(r'HTTP 404\b', result.stderr):
+        return None
+    if result.returncode:
+        raise ValueError('Publication transport metadata is unavailable')
+    return packets.decode_json(result.stdout)
+
+
+def published_packet(cfg, run_id, attempt):
+    """An exact completed public handoff can supply retry bytes, never approval."""
+    if 'releaseRequestPath' not in cfg:
+        return None
+    prefix = 'repos/' + cfg['repository']
+    revision = authority.github_api(prefix + '/git/ref/heads/main')['object']['sha']
+    metadata = optional_metadata(prefix + '/contents/' + cfg['releaseRequestPath'] + '?ref=' + revision)
+    if metadata is None:
+        return None
+    from native_approvals import validate_request
+    request = validate_request(cfg, packets.decode_json(authority.decode_blob(metadata, metadata.get('sha'), metadata.get('size'))))
+    if (request['qualificationRun'], request['qualificationAttempt']) != (run_id, attempt):
+        return None
+    ref = optional_metadata(prefix + '/git/ref/heads/automation/publication-' + request['productHash'])
+    if ref is None:
+        return None
+    commit = ref.get('object', {}).get('sha')
+    if ref.get('object', {}).get('type') != 'commit' or not isinstance(commit, str) or not authority.SHA.fullmatch(commit):
+        raise ValueError('Publication journal reference has an invalid identity')
+    journal = authority.document_at(authority.github_api, cfg['repository'], 'journal.json', commit)
+    receipts = publication_receipts.read(journal, request['productHash'])
+    if 'handoff' not in receipts:
+        return None
+    packet = receipts['handoff']['expected']
+    producer = packet.get('producer', {})
+    if not any(step.get('name') == 'handoff' and step.get('state') == 'complete'
+               and step.get('identity') == packet for step in journal.get('steps', [])):
+        raise ValueError('Public handoff has no completed exact journal step')
+    if (producer.get('repository') != cfg['repository'] or producer.get('runId') != run_id
+            or producer.get('runAttempt') != attempt):
+        return None
+    registry = 'ghcr.io/' + cfg['repository'].lower() + '-products'
+    if (not isinstance(packet.get('reference'), str)
+            or not re.fullmatch(re.escape(registry) + r'@sha256:[a-f0-9]{64}', packet['reference'])
+            or not isinstance(packet.get('sha256'), str) or not re.fullmatch(r'[a-f0-9]{64}', packet['sha256'])):
+        raise ValueError('Public handoff transport reference differs')
+    packets.REGISTRY, packets.REFERENCE = registry, re.compile(re.escape(registry) + r'@sha256:[a-f0-9]{64}')
+    return packet
 
 
 def find_packets(cfg, run_id, attempt):
-    repository = cfg['repository']
-    revision = authority.github_api(f'repos/{repository}/git/ref/heads/main')['object']['sha']
-    tree = authority.github_api(f'repos/{repository}/git/trees/{revision}?recursive=1')
-    if tree.get('truncated') is not False:
-        raise ValueError('incomplete retained decision inventory')
-    candidates = [(item['path'], revision) for item in tree['tree'] if PROPOSAL.fullmatch(item['path'])]
-    for pull in authority.collection(authority.github_api, f'repos/{repository}/pulls?state=open&base=main'):
-        if pull.get('user', {}).get('login') != cfg['botLogin'] or not pull.get('head', {}).get('ref', '').startswith('automation/decision-'):
-            continue
-        files = authority.collection(authority.github_api, f'repos/{repository}/pulls/{pull["number"]}/files')
-        candidates += [(item['filename'], pull['head']['sha']) for item in files if PROPOSAL.fullmatch(item['filename'])]
+    """Compatibility discovery for historical transport, never approval.
+
+    New release requests use native Actions artifacts. Old immutable OCI packets
+    remain readable for restoring pre-migration products; graph shape, decision
+    disposition and prior reviews have no role in native release admission.
+    """
+    from common import ledger
+    if any(type(value) is not int or value <= 0 for value in (run_id, attempt)):
+        raise ValueError('Exact qualification run and attempt required')
+    published = published_packet(cfg, run_id, attempt)
+    if published is not None:
+        return [published]
+    if cfg.get('approvalMode') == 'github-pr-v1' and os.environ.get('XO_NIXPKG_PUBLICATION_METADATA_ONLY') == 'true':
+        # A first native publication uses its fresh Actions artifact. Historical
+        # decisions must not become a dependency of the new approval path.
+        return []
+    _, records = ledger(cfg)
     found = {}
-    for path, source in candidates:
-        document = authority.document_at(authority.github_api, repository, path, source)
+    for document in records.values():
         packet = document.get('payload', {}).get('packet', {})
         producer = packet.get('producer', {})
-        if producer.get('runId') == run_id and producer.get('runAttempt') == attempt and producer.get('repository') == repository:
+        if (producer.get('repository') == cfg['repository'] and producer.get('runId') == run_id
+                and producer.get('runAttempt') == attempt):
             reference, digest = packet.get('reference'), packet.get('sha256')
-            if not isinstance(reference, str) or not packets.REFERENCE.fullmatch(reference) or not isinstance(digest, str) or not re.fullmatch(r'[a-f0-9]{64}', digest):
-                raise ValueError('unsafe retained candidate reference')
+            if (not isinstance(reference, str) or not packets.REFERENCE.fullmatch(reference)
+                    or not isinstance(digest, str) or not re.fullmatch(r'[a-f0-9]{64}', digest)):
+                raise ValueError('Unsafe historical transport reference')
             found[(reference, digest)] = packet
     return list(found.values())
 
@@ -108,7 +165,7 @@ def main():
 
 
 def fetch(observation):
-    cfg = config(Path('ci/decision-policy.json'), live=True)
+    cfg = config(live=True)
     run_id, attempt = int(os.environ['QUALIFICATION_RUN']), int(os.environ['QUALIFICATION_ATTEMPT'])
     started = time.monotonic_ns()
     found = find_packets(cfg, run_id, attempt)

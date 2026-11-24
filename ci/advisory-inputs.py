@@ -9,6 +9,7 @@ from pathlib import Path
 import sys
 import tempfile
 import common
+import native_approvals
 import decision_authority as authority
 import decision_packets as packets
 import operations
@@ -34,7 +35,7 @@ def main():
         output=Path(sys.argv[1])
         with operations.budget(90):
             revision=operations.run(['git','rev-parse','HEAD'],capture_output=True,text=True,check=True,timeout=30).stdout.strip()
-            cfg=common.config(Path('ci/decision-policy.json'),live=True)
+            cfg=native_approvals.policy(live=True)
             runs=authority.github_api(f'repos/{cfg["repository"]}/actions/workflows/qualification.yml/runs?status=success&head_sha={revision}&per_page=20')['workflow_runs']
             runs=[r for r in runs if r.get('head_sha')==revision and r.get('head_branch')=='main'
                   and r.get('status')=='completed' and r.get('head_repository',{}).get('full_name')==cfg['repository'] and r.get('conclusion')=='success'

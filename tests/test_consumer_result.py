@@ -22,9 +22,7 @@ SPEC.loader.exec_module(consumer)
 
 
 def proposal(run):
-    return {'kind': 'release-product', 'payload': {
-        'disposition': 'accepted', 'product': {'fixture': run},
-        'packet': {'producer': {'runId': run, 'runAttempt': 1}}}}
+    return {'product': {'fixture': run}, 'qualificationRun': run, 'qualificationAttempt': 1}
 
 
 class ConsumerResult(unittest.TestCase):
@@ -33,20 +31,17 @@ class ConsumerResult(unittest.TestCase):
         self.addCleanup(self.temporary.cleanup)
         self.old, self.selected = proposal(10), proposal(20)
         self.result = {'schema': 1, 'status': 'verified', 'roots': 8,
-                       'productHash': consumer.common.canonical_hash(self.selected['payload']['product']),
+                       'productHash': consumer.common.canonical_hash(self.selected['product']),
                        'downloadedBytesVerified': True, 'signaturesVerified': True}
         self.artifact = Path(self.temporary.name) / 'public-consumer-result.json'
         patches = [
             patch.dict(os.environ, {'RUNNER_TEMP': self.temporary.name}),
             patch.object(sys, 'argv', ['consumer', '--config', 'fixture',
                                       '--cache', 'https://cache.example', '--key', 'public']),
-            patch.object(consumer.common, 'config', return_value={}),
+            patch.object(consumer.native, 'policy', return_value={}),
             patch.object(consumer, 'publication_snapshot', return_value=('journal', 'commit')),
             patch.object(consumer, 'unchanged'),
-            patch.object(consumer.common, 'ledger', return_value=(
-                'main', {'old': self.old, 'selected': self.selected}, {})),
-            patch.object(consumer.common, 'active_release', side_effect=lambda cfg, records, product, authenticate:
-                         (None, self.old if product == self.old['payload']['product'] else self.selected)),
+            patch.object(consumer, 'current_product', return_value=('main', self.selected)),
         ]
         for pending in patches:
             pending.start()
@@ -66,14 +61,14 @@ class ConsumerResult(unittest.TestCase):
     def test_hosted_result_identifies_the_exact_selected_product(self):
         result = self.invoke()
         self.assertEqual(json.loads(self.artifact.read_text()), result)
-        self.assertEqual(result, dict(self.result, proposalHash=consumer.common.canonical_hash(self.selected)))
-        self.probe.assert_called_once_with(self.selected['payload']['product'], 'https://cache.example', 'public')
-        self.assertEqual(self.provenance.call_count, 1)
+        self.assertEqual(result, dict(self.result, requestHash=consumer.common.canonical_hash(self.selected)))
+        self.probe.assert_called_once_with(self.selected['product'], 'https://cache.example', 'public')
+        self.provenance.assert_not_called()
 
     def test_local_result_remains_available_on_stdout(self):
         with patch.dict(os.environ, {'RUNNER_TEMP': ''}):
             result = self.invoke()
-        self.assertEqual(result['proposalHash'], consumer.common.canonical_hash(self.selected))
+        self.assertEqual(result['requestHash'], consumer.common.canonical_hash(self.selected))
         self.assertFalse(self.artifact.exists())
 
     def test_failed_probe_does_not_retain_a_verified_result(self):

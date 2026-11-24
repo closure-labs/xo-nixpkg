@@ -1,6 +1,6 @@
 {
   "schema": 1,
-  "enabled": true,
+  "enabled": false,
   "repository": "closure-labs/xo-nixpkg",
   "botLogin": "cl-decider[bot]",
   "appId": 5384448,

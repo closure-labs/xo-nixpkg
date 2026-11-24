@@ -47,7 +47,7 @@ fail() {
 read_pr() {
   gh pr view "$PR_NUMBER" \
     --repo "$GITHUB_REPOSITORY" \
-    --json author,autoMergeRequest,baseRefName,headRefName,headRefOid,headRepository,isDraft,state,title,url
+    --json author,autoMergeRequest,baseRefName,headRefName,headRefOid,headRepository,isDraft,reviewDecision,state,title,url
 }
 
 validate_pr() {
@@ -66,38 +66,15 @@ validate_pr() {
 }
 
 has_exact_head_maintainer_approval() {
-  local reviews reviewers reviewer permission_error permission review_protocol
-  if ! reviews=$(gh api --paginate \
-    "repos/${GITHUB_REPOSITORY}/pulls/${PR_NUMBER}/reviews?per_page=100" \
-    --slurp); then
-    return 2
-  fi
-
-  review_protocol=${XO_NIXPKG_REVIEW_PROTOCOL:-$(dirname "${BASH_SOURCE[0]}")/decisions/review_protocol.py}
-  if ! reviewers=$(python3 "$review_protocol" \
-    "$EXPECTED_HEAD_SHA" <<<"$reviews"); then
-    return 2
-  fi
-
-  while IFS= read -r reviewer; do
-    [[ -n $reviewer ]] || continue
-    permission_error=$(mktemp)
-    if permission=$(gh api \
-      "repos/${GITHUB_REPOSITORY}/collaborators/${reviewer}/permission" \
-      --jq '.permission // .role_name' 2>"$permission_error"); then
-      rm -f "$permission_error"
-      case "$permission" in
-        admin | maintain | write) return 0 ;;
-      esac
-    elif [[ $(<"$permission_error") == *"HTTP 404"* ]]; then
-      rm -f "$permission_error"
-    else
-      cat "$permission_error" >&2
-      rm -f "$permission_error"
-      return 2
-    fi
-  done <<<"$reviewers"
-  return 1
+  local current decision
+  if ! current=$(read_pr); then return 2; fi
+  validate_pr "$current"
+  decision=$(jq -er '.reviewDecision' <<<"$current") || return 2
+  case "$decision" in
+    APPROVED) return 0 ;;
+    REVIEW_REQUIRED | CHANGES_REQUESTED) return 1 ;;
+    *) return 2 ;;
+  esac
 }
 
 if ! pr=$(read_pr); then

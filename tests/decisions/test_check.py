@@ -261,13 +261,9 @@ class Checks(unittest.TestCase):
         mod.run_checks(REPO, 2, BOT, 123, api, post, expected=(7, HEAD, HEAD))
         self.assertEqual(post.call_args.args[1]['conclusion'], 'failure')
 
-    def test_workflow_serializes_each_native_target_without_canceling_active_checks(self):
-        text = (ROOT / '.github/workflows/decision-authority.yml').read_text()
-        self.assertIn('group: authority-${{ github.repository_id }}-${{ matrix.number }}-${{ matrix.target }}', text)
-        self.assertIn('cancel-in-progress: false', text)
-        self.assertIn('ref: main', text)
-        self.assertIn('--resolve-targets', text)
-        self.assertNotIn('issue_comment:', text)
+    def test_native_migration_retires_the_custom_authority_workflow(self):
+        self.assertFalse((ROOT / '.github/workflows/decision-authority.yml').exists())
+        self.assertNotIn('decision-authority =', (ROOT / 'flake.nix').read_text())
 
     def test_late_review_rechecks_current_queue_and_head(self):
         api = GitHub()

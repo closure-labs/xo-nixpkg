@@ -1,6 +1,7 @@
 # SPDX-License-Identifier: Apache-2.0
 """Execute the existing verdict truth table without Nix or candidate code."""
 import itertools
+import json
 import os
 from pathlib import Path
 import re
@@ -16,8 +17,7 @@ class GateOverhead(unittest.TestCase):
         jobs = yaml.safe_load((ROOT / '.github/workflows/ci.yml').read_text())['jobs']
         critical_path = sum(jobs[name]['timeout-minutes']
                             for name in ('classify', 'preflight', 'validate', 'attest-builds', 'gate'))
-        audit = (ROOT / 'ci/audit-policy.py').read_text()
-        minimum = int(re.search(r'^MINIMUM_QUEUE_TIMEOUT_MINUTES = ([0-9]+)$', audit, re.M)[1])
+        minimum = json.loads((ROOT / 'ci/publication-policy.json').read_text())['minimumQueueTimeoutMinutes']
         self.assertLessEqual(critical_path, minimum,
                              'Update the declared and live queue limit before extending CI deadlines')
 

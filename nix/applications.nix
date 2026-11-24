@@ -234,52 +234,6 @@ rec {
       export XO_NIXPKG_DISTRIBUTION_CACHE_SOURCE=${../ci/distribution-cache.py}
     '';
   };
-  decisionCollect = mkRepositoryApplication {
-    name = "xo-nixpkg-decision-collect";
-    script = ../ci/decision-collect.sh;
-    runtimeInputs = [ ];
-  };
-  decisionAuthority = mkRepositoryApplication {
-    name = "xo-nixpkg-authority-controller";
-    script = ../ci/decision-authority.sh;
-    runtimeInputs = with pkgs; [
-      oras
-      decisions
-    ];
-  };
-  inspectQualification = mkRepositoryApplication {
-    name = "xo-nixpkg-inspect-qualification";
-    script = ../ci/inspect-qualification.sh;
-    runtimeInputs = with pkgs; [
-      python3
-      gh
-      oras
-    ];
-    prelude = ''
-      export PYTHONPATH=${decisions}/lib/decisions
-      export XO_NIXPKG_RETAINED_FETCH_SOURCE=${../ci/fetch-retained.py}
-      export XO_NIXPKG_QUALIFICATION_INSPECTOR=${../ci/inspect-qualification.py}
-    '';
-  };
-  reconcileRetained = mkRepositoryApplication {
-    name = "xo-nixpkg-reconcile-retained";
-    script = ../ci/reconcile-retained.sh;
-    runtimeInputs = with pkgs; [
-      coreutils
-      gh
-      jq
-      oras
-      python3
-      decisions
-      inspectQualification
-    ];
-    prelude = ''
-      export XO_NIXPKG_OPERATIONS_SOURCE=${../ci/decisions/operations.py}
-      export XO_NIXPKG_RETAINED_FETCH_SOURCE=${../ci/fetch-retained.py}
-      export XO_NIXPKG_RESCAN_VERIFIER_SOURCE=${../ci/verify-rescan-evidence.py}
-      export PYTHONPATH=${decisions}/lib/decisions
-    '';
-  };
   queuePreflight = mkRepositoryApplication {
     name = "xo-nixpkg-queue-preflight";
     script = ../ci/queue-preflight.sh;
@@ -325,14 +279,6 @@ rec {
       python3
       nix
       git
-    ];
-  };
-  decisionReconcile = mkRepositoryApplication {
-    name = "xo-nixpkg-decision-reconcile-candidate";
-    script = ../ci/decision-reconcile.sh;
-    runtimeInputs = with pkgs; [
-      coreutils
-      decisions
     ];
   };
   securityInventory = mkRepositoryApplication {
@@ -397,11 +343,37 @@ rec {
       export XO_NIXPKG_DISTRIBUTION_CACHE_SOURCE=${../ci/distribution-cache.py}
     '';
   };
+  publicationPlan = mkRepositoryApplication {
+    name = "xo-nixpkg-publication-plan";
+    script = ../ci/publication-plan.sh;
+    runtimeInputs = with pkgs; [
+      python3
+      gh
+      git
+      oras
+    ];
+    prelude = ''
+      export PYTHONPATH=${decisions}/lib/decisions
+      export XO_NIXPKG_PUBLICATION_PLANNER=${../ci/publication-plan.py}
+    '';
+  };
+  releaseProposal = mkRepositoryApplication {
+    name = "xo-nixpkg-release-proposal";
+    script = ../ci/propose-release.sh;
+    runtimeInputs = with pkgs; [
+      python3
+      gh
+    ];
+    prelude = ''
+      export XO_NIXPKG_RELEASE_PROPOSAL_SOURCE=${../ci/propose-release.py}
+      export PYTHONPATH=${decisions}/lib/decisions
+    '';
+  };
   publicationGate = mkRepositoryApplication {
     name = "xo-nixpkg-publication-gate";
     script = ../ci/publication-gate.sh;
     runtimeInputs = [
-      decisions
+      publicationPlan
       pkgs.git
       pkgs.gh
       pkgs.python3
@@ -418,25 +390,16 @@ rec {
     '';
   };
   decisions = pkgs.stdenvNoCC.mkDerivation {
-    pname = "xo-nixpkg-decisions";
+    pname = "xo-nixpkg-evidence-validators";
     version = "1";
     src = ../ci/decisions;
-    nativeBuildInputs = [ pkgs.makeWrapper ];
     dontBuild = true;
     installPhase = ''
       mkdir -p "$out/lib/decisions" "$out/bin"
       cp *.py "$out/lib/decisions/"
-      for leaf in authority admission proposal readiness publication recovery handoff reconcile check; do
-        makeWrapper ${pkgs.python3}/bin/python3 "$out/bin/xo-nixpkg-decision-$leaf" \
-          --add-flags "$out/lib/decisions/$leaf.py" \
-          --prefix PATH : ${
-            pkgs.lib.makeBinPath [
-              pkgs.gh
-              pkgs.git
-              pkgs.oras
-            ]
-          }
-      done
+      # Only shared evidence and CI helpers ship; retired decision CLI leaves
+      # remain in source/history regression fixtures, without executable apps.
+      rm -f "$out/lib/decisions/"{authority,admission,proposal,readiness,publication,recovery,handoff,reconcile,check,reconciliation}.py
     '';
   };
   classifyCi = mkRepositoryApplication {
@@ -588,9 +551,6 @@ rec {
       jq
       python3
     ];
-    prelude = ''
-      export XO_NIXPKG_REVIEW_PROTOCOL=${../ci/decisions/review_protocol.py}
-    '';
   };
 
   queueAutomation = mkRepositoryApplication {

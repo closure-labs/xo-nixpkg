@@ -107,13 +107,52 @@ class PublicationFetchSource(unittest.TestCase):
         for producer in [dict(self.packet['producer'], runId=122),
                          dict(self.packet['producer'], runAttempt=1), self.packet['producer']]:
             packet = dict(self.packet, producer=producer)
-            path = 'automation/decisions/releases/' + 'c' * 64 + '.json'
-            with patch.object(m.authority, 'github_api', side_effect=[
-                    {'object': {'sha': 'd' * 40}}, {'truncated': False, 'tree': [{'path': path}]}]), \
-                    patch.object(m.authority, 'collection', return_value=[]), \
-                    patch.object(m.authority, 'document_at', return_value={'payload': {'packet': packet}}):
+            import common
+            with patch.object(common, 'ledger', return_value=('d' * 40, {
+                    'c' * 64: {'payload': {'packet': packet}}})):
                 found = m.find_packets({'repository': repository}, 123, 2)
             self.assertEqual(found, [packet] if producer == self.packet['producer'] else [])
+
+    def test_native_retry_discovers_exact_public_handoff_without_reading_the_old_ledger(self):
+        import base64
+        import common
+        import hashlib
+        from test_native_approvals import cfg, request
+        policy, approved = cfg(), request()
+        raw = json.dumps(approved).encode()
+        metadata = {'type': 'file', 'encoding': 'base64', 'size': len(raw),
+                    'sha': hashlib.sha1(b'blob ' + str(len(raw)).encode() + b'\0' + raw).hexdigest(),
+                    'content': base64.b64encode(raw).decode()}
+        packet = dict(self.packet, reference='ghcr.io/closure-labs/xo-nixpkg-products@sha256:' + 'a' * 64)
+        receipt = {'schema': 1, 'destination': 'handoff', 'productHash': approved['productHash'],
+                   'status': 'verified', 'expected': packet, 'observed': packet,
+                   'verifiedAt': '2026-11-24T00:00:00Z', 'verifier': 'f' * 64}
+        journal = {'schema': 2, 'productHash': approved['productHash'], 'receipts': {'handoff': receipt},
+                   'steps': [{'name': 'handoff', 'state': 'complete', 'identity': packet}]}
+        ref = {'object': {'type': 'commit', 'sha': 'e' * 40}}
+        with patch.object(m, 'optional_metadata', side_effect=[metadata, ref]), \
+                patch.object(m.authority, 'github_api', return_value={'object': {'sha': 'd' * 40}}), \
+                patch.object(m.authority, 'document_at', return_value=journal), \
+                patch.object(common, 'ledger', side_effect=AssertionError('retired ledger')):
+            self.assertEqual(m.find_packets(policy, 123, 2), [packet])
+        self.assertEqual(m.packets.REGISTRY, 'ghcr.io/closure-labs/xo-nixpkg-products')
+
+    def test_optional_native_transport_metadata_never_treats_denial_as_absence(self):
+        import subprocess
+        for code in (403, 429, 500):
+            value = subprocess.CompletedProcess([], 1, '', 'gh: request failed (HTTP ' + str(code) + ')')
+            with patch.object(m.subprocess, 'run', return_value=value), self.assertRaisesRegex(ValueError, 'unavailable'):
+                m.optional_metadata('fixed-repository-endpoint')
+        value = subprocess.CompletedProcess([], 1, '', 'gh: Not Found (HTTP 404)')
+        with patch.object(m.subprocess, 'run', return_value=value):
+            self.assertIsNone(m.optional_metadata('fixed-repository-endpoint'))
+
+    def test_first_native_publication_never_needs_the_retired_ledger(self):
+        import common
+        from test_native_approvals import cfg
+        with patch.object(m, 'published_packet', return_value=None), \
+                patch.object(common, 'ledger', side_effect=AssertionError('retired ledger')):
+            self.assertEqual(m.find_packets(cfg(), 123, 2), [])
 
 
 if __name__ == '__main__':

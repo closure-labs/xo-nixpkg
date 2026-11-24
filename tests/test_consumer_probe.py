@@ -71,12 +71,12 @@ class ConsumerProbe(unittest.TestCase):
 class ConsumerSelection(unittest.TestCase):
     def setUp(self):
         from unittest.mock import patch
+        from test_native_approvals import cfg
         self.provenance = patch.object(probe.common, 'historical_provenance').start()
         self.addCleanup(patch.stopall)
         probe.common.packets.REFERENCE = __import__('re').compile(
             r'ghcr.io/closure-labs/xo-nixpkg-decisions@sha256:[0-9a-f]{64}')
-        self.cfg = {'repository': 'closure-labs/xo-nixpkg',
-                    'producerWorkflows': ['.github/workflows/qualification.yml']}
+        self.cfg = cfg()
 
     def proposal(self, run, product=None, disposition='accepted'):
         import copy
@@ -89,40 +89,27 @@ class ConsumerSelection(unittest.TestCase):
     def records(self, *values):
         return {probe.common.canonical_hash(p): p for p in values}
 
-    def test_old_ambiguous_product_does_not_select_or_block_current(self):
-        old1, old2 = self.proposal(10), self.proposal(11)
-        current = self.proposal(20, dict(PRODUCT, revision='b' * 40))
-        self.assertEqual(probe.current_product(self.cfg, self.records(old1, old2, current)), current)
-        self.provenance.assert_called_once_with(self.cfg, current)
+    def test_single_native_request_selects_the_exact_reviewed_product(self):
+        from unittest.mock import patch
+        from test_native_approvals import request
+        value = request()
+        with patch.object(probe.common, 'main_revision', return_value='a' * 40), \
+                patch.object(probe.common.authority, 'document_at', return_value=value) as document:
+            self.assertEqual(probe.current_product(self.cfg), ('a' * 40, value))
+            document.assert_called_once_with(probe.common.authority.github_api, self.cfg['repository'],
+                                             '.github/release-request.json', 'a' * 40)
+        self.provenance.assert_not_called()
 
-    def test_current_ambiguity_rejection_revocation_and_cycles_fail(self):
-        for disposition in ('rejected', 'revoked'):
-            with self.subTest(disposition=disposition), self.assertRaisesRegex(ValueError, 'not accepted'):
-                probe.current_product(self.cfg, self.records(self.proposal(10),
-                    self.proposal(20, dict(PRODUCT, revision='b' * 40), disposition)))
-        with self.assertRaisesRegex(ValueError, 'Ambiguous release'):
-            probe.current_product(self.cfg, self.records(self.proposal(10), self.proposal(20)))
-        a, b = self.proposal(10), self.proposal(20)
-        a['payload']['supersedes'] = ['b']
-        b['payload']['supersedes'] = ['a']
-        with self.assertRaisesRegex(ValueError, 'Cyclic'):
-            probe.current_product(self.cfg, {'a': a, 'b': b})
-
-    def test_tied_distinct_products_and_malformed_order_fail(self):
-        with self.assertRaisesRegex(ValueError, 'Ambiguous current'):
-            probe.current_product(self.cfg, self.records(self.proposal(20),
-                self.proposal(20, dict(PRODUCT, revision='b' * 40))))
-        for invalid in (True, 0, -1, '20', None):
-            with self.subTest(run=invalid), self.assertRaisesRegex(ValueError, 'ordering'):
-                probe.current_product(self.cfg, self.records(self.proposal(invalid)))
-        with self.assertRaisesRegex(ValueError, 'No admitted'):
-            probe.current_product(self.cfg, {})
-
-    def test_same_product_ties_still_need_explicit_supersession(self):
-        old, new = self.proposal(20), self.proposal(20)
-        new['payload']['rationale'] = 'Superseding reviewed fixture.'
-        new['payload']['supersedes'] = [probe.common.canonical_hash(old)]
-        self.assertEqual(probe.current_product(self.cfg, self.records(old, new)), new)
+    def test_malformed_native_request_never_selects_an_older_product(self):
+        from unittest.mock import patch
+        from test_native_approvals import request
+        for field, value in [('purpose', 'unknown'), ('productHash', 'f' * 64), ('policyHash', 'f' * 64)]:
+            current = request()
+            current[field] = value
+            with patch.object(probe.common, 'main_revision', return_value='a' * 40), \
+                    patch.object(probe.common.authority, 'document_at', return_value=current), \
+                    self.subTest(field=field), self.assertRaises(ValueError):
+                probe.current_product(self.cfg)
 
     def journal_fixture(self):
         import copy

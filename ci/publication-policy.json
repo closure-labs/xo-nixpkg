@@ -1,0 +1,31 @@
+{
+  "schema": 1,
+  "approvalMode": "github-pr-v1",
+  "enabled": true,
+  "repository": "closure-labs/xo-nixpkg",
+  "policyPath": "ci/publication-policy.json",
+  "environment": "publication",
+  "profiles": [
+    "xo-latest",
+    "xo-stable",
+    "xo-rolling",
+    "libvhdi"
+  ],
+  "producerWorkflows": [
+    ".github/workflows/qualification.yml"
+  ],
+  "publisherWorkflow": ".github/workflows/publish.yml",
+  "maxEvidenceAgeHours": 48,
+  "maxDatabaseAgeHours": 48,
+  "minimumQueueTimeoutMinutes": 300,
+  "repositorySecretPolicy": {
+    "policyId": "gitleaks-incoming-native-publication-v2",
+    "policySha256": "6dc96d52c1c07569136546f4a61173ee0b378593dfe837a976228c2b9c8fbef6"
+  },
+  "codeOwners": [
+    "@closure-labs/maintainers",
+    "@closure-labs/super-admins"
+  ],
+  "releaseRequestPath": ".github/release-request.json",
+  "rulesetId": 21015412
+}

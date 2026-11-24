@@ -10,7 +10,7 @@ class MaintenanceScope(unittest.TestCase):
         files = ['qualification.yml', 'prewarm-runtime.yml', 'libvhdi-input-update.yml',
                  'update-rolling.yml', 'update-check.yml', 'security-scan.yml',
                  'consumer-probe.yml', 'queue-automation.yml', 'security-audit.yml',
-                 'review-observer.yml', 'decision-authority.yml']
+                 'release-proposal.yml', 'publish.yml']
         for name in files:
             before, text = (ROOT / '.github/workflows' / name).read_text().split('\njobs:\n', 1)
             self.assertNotIn('    if:', before)

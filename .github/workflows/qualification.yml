@@ -4,9 +4,11 @@ run-name: ${{ inputs.qualification_run != '' && format('Refresh qualification {0
 on:
   push:
     branches: [main]
-    paths-ignore: ['automation/decisions/**', 'docs/**', '*.md']
+    paths-ignore: ['automation/decisions/**', '.github/release-request.json', 'docs/**', '*.md']
   schedule:
-    - cron: '17 5 * * *'
+    # Refresh inventories daily; renew original closure transport before artifact expiry.
+    - cron: '17 5 2-31 * *'
+    - cron: '17 5 1 * *'
   workflow_dispatch:
     inputs:
       qualification_run:
@@ -48,7 +50,7 @@ jobs:
         with:
           github-token: ${{ github.token }}
       - name: Fetch authenticated retained product for rescan
-        if: github.event_name == 'schedule' || inputs.qualification_run != ''
+        if: (github.event_name == 'schedule' && github.event.schedule != '17 5 1 * *') || inputs.qualification_run != ''
         env:
           QUALIFICATION_RUN: ${{ inputs.qualification_run }}
           QUALIFICATION_ATTEMPT: ${{ inputs.qualification_attempt }}
@@ -58,12 +60,12 @@ jobs:
           XO_NIXPKG_EVIDENCE: retained-product
         run: nix run .#devenv -- tasks run --mode single --option 'packages:pkgs!' '' security:fetch-rescan
       - name: Refresh exact retained product with current trusted scanner
-        if: github.event_name == 'schedule' || inputs.qualification_run != ''
+        if: (github.event_name == 'schedule' && github.event.schedule != '17 5 1 * *') || inputs.qualification_run != ''
         env:
           XO_NIXPKG_RESCAN_SOURCE: retained-product
         run: nix run .#devenv -- tasks run --mode single --option 'packages:pkgs!' '' security:refresh
       - name: Build complete runtime inventories and scan fresh databases
-        if: github.event_name != 'schedule' && inputs.qualification_run == ''
+        if: (github.event_name != 'schedule' || github.event.schedule == '17 5 1 * *') && inputs.qualification_run == ''
         env:
           GH_TOKEN: ${{ github.token }}
         run: nix run .#devenv -- tasks run --mode single --option 'packages:pkgs!' '' security:qualify

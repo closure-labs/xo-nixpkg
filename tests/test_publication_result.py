@@ -88,6 +88,19 @@ class PublicationResult(unittest.TestCase):
             m.main()
         return json.loads(self.artifact.read_text())
 
+    def test_public_retry_source_uses_only_the_exact_product_registry(self):
+        source = dict(self.source, reference='ghcr.io/closure-labs/xo-nixpkg-products@sha256:' + 'd' * 64)
+        with patch.object(packets, 'REGISTRY', packets.REGISTRY), \
+                patch.object(packets, 'REFERENCE', packets.REFERENCE), \
+                patch.object(m, 'registry', return_value=contextlib.nullcontext()), \
+                patch.object(packets, 'inspect', return_value=({}, {})), \
+                patch.object(packets, 'fetch_member', return_value=Path('descriptor')), \
+                patch.object(packets, 'packet_descriptor', return_value=self.descriptor):
+            self.assertEqual(m.source_descriptor(source), self.descriptor)
+            self.assertEqual(packets.REGISTRY, 'ghcr.io/closure-labs/xo-nixpkg-products')
+            with self.assertRaisesRegex(ValueError, 'exact private evidence or public product registry'):
+                m.source_descriptor(dict(source, reference='ghcr.io/other/products@sha256:' + 'd' * 64))
+
     def test_rolling_publishes_same_exact_handoff_without_tag_or_release_leaves(self):
         os.environ['XO_NIXPKG_PUBLICATION_PURPOSE'] = 'rolling'
         result = self.execute()

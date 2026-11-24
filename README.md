@@ -155,7 +155,7 @@ architectures in package metadata are potential ports, not validated flake
 outputs. No macOS or cross-compilation support is claimed.
 
 Ordinary package builds use public upstream sources and need no Decider key,
-organization membership or Cachix write token. Organization release, decision and
+organization membership or Cachix write token. Organization release-review and
 publication workflows are separate maintenance services. The public cache probe
 checks download/signature availability; it does not prove an independent source
 build. See [development](docs/development.md) and the

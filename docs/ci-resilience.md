@@ -1,5 +1,12 @@
 # CI resilience rollout
 
+The current approval path uses native GitHub PR reviews for code and exact
+release requests, with shared planners and validators. See
+[native approvals](security-decisions.md) and the
+[staged cutover](native-approvals-migration.md). Earlier decision-ledger and
+reconciliation measurements below describe the retired controller; they do not
+define the current approval mechanism.
+
 The refactor preserves exact product approval, independently attested hosted
 builders, protected-main authority and separately credentialed publication.
 Source approval does not authorize a product. Reconciliation remains scheduling

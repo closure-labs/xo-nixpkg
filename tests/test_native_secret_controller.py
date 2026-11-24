@@ -219,11 +219,13 @@ class ControllerTests(unittest.TestCase):
 
     @unittest.skipUnless(HAS_NATIVE_BOUNDARY, 'Stage2 publication wiring not installed in bootstrap')
     def test_both_publication_boundaries_get_separate_observer(self):
-        publisher = (ROOT / '.github/workflows/publish.yml').read_text()
-        for boundary in ('release:fetch', 'release:resume'):
-            step = next(part for part in publisher.split('      - name:') if boundary in part)
-            self.assertIn('NATIVE_SECRET_OBSERVER_TOKEN: ${{ steps.native_observer.outputs.token }}', step)
-            self.assertIn('GH_TOKEN: ${{ steps.publisher.outputs.token }}', step)
+        import yaml
+        publisher = yaml.load((ROOT / '.github/workflows/publish.yml').read_text(), Loader=yaml.BaseLoader)
+        steps = publisher['jobs']['publish']['steps']
+        for command in ('xo-nixpkg-fetch-evidence', 'xo-nixpkg-publication-controller'):
+            step = next(step for step in steps if command in step.get('run', '') and 'env' in step)
+            self.assertEqual(step['env']['NATIVE_SECRET_OBSERVER_TOKEN'], '${{ steps.observer.outputs.token }}')
+            self.assertEqual(step['env']['GH_TOKEN'], '${{ steps.writer.outputs.token }}')
         workflow = (ROOT / '.github/workflows/repository-secret-scan.yml').read_text()
         self.assertIn('name: Repository security audit', workflow)
         self.assertNotIn('DECIDER_KEY', workflow)
@@ -305,20 +307,21 @@ class ControllerTests(unittest.TestCase):
         self.assertNotIn('DECIDER_KEY', observer)
         publisher = (ROOT / '.github/workflows/publish.yml').read_text()
         self.assertIn('permission-secret-scanning-alerts: read', publisher)
-        self.assertIn('NATIVE_SECRET_OBSERVER_TOKEN: ${{ steps.native_observer.outputs.token }}', publisher)
-        self.assertIn('GH_TOKEN: ${{ steps.publisher.outputs.token }}', publisher)
+        self.assertIn('NATIVE_SECRET_OBSERVER_TOKEN: ${{ steps.observer.outputs.token }}', publisher)
+        self.assertIn('GH_TOKEN: ${{ steps.writer.outputs.token }}', publisher)
 
-    def test_original_product_security_provenance_and_superadmin_checks_remain(self):
+    def test_original_product_security_provenance_and_native_review_binding_remain(self):
         scan = (ROOT / 'ci/security-scan.sh').read_text()
         self.assertIn('grype "sbom:$output/inventory.cdx.json"', scan)
         gate = (ROOT / 'ci/publication-gate.sh').read_text()
-        self.assertIn('exec xo-nixpkg-decision-publication', gate)
+        self.assertIn('exec xo-nixpkg-publication-plan gate', gate)
+        self.assertIn('XO_NIXPKG_AUDIT_FRESHNESS_SOURCE', gate)
         common = (ROOT / 'ci/decisions/common.py').read_text()
-        for expected in ['attest(path, cfg,', 'def admission(', 'required_check(cfg, api)',
-                         'Exact immutable product approval required', 'authorize(cfg, release, api)']:
+        for expected in ['attest(path, cfg,', 'def product(', 'Original product producer revision required']:
             self.assertIn(expected, common)
-        authority = (ROOT / 'ci/decisions/decision_authority.py').read_text()
-        self.assertIn('super-admin', authority.lower())
+        native = (ROOT / 'ci/decisions/native_approvals.py').read_text()
+        for expected in ['validate_plan', 'current_request', 'qualified', 'require_code_owner_review']:
+            self.assertIn(expected, native)
 
 
 if __name__ == '__main__':
