@@ -1,0 +1,122 @@
+# SPDX-License-Identifier: Apache-2.0
+name: Propose qualified release
+run-name: ${{ format('Review {0} qualification {1} attempt {2}', inputs.purpose || 'rolling', inputs.qualification_run || github.event.workflow_run.id, inputs.qualification_attempt || github.event.workflow_run.run_attempt || 'current') }}
+on:
+  workflow_run: # zizmor: ignore[dangerous-triggers] -- metadata selects authenticated data; only protected main code executes.
+    workflows: [Qualify release products]
+    types: [completed]
+  workflow_dispatch:
+    inputs:
+      qualification_run:
+        description: Exact successful qualification run to review
+        type: string
+        required: true
+      qualification_attempt:
+        description: Expected successful attempt; empty resolves it before review
+        type: string
+        required: false
+      purpose:
+        description: Requested publication destinations
+        type: choice
+        options: [rolling, release]
+        default: rolling
+permissions:
+  contents: read
+concurrency:
+  group: release-proposal-${{ inputs.purpose || 'rolling' }}
+  cancel-in-progress: false
+jobs:
+  propose:
+    name: Propose qualified product for native PR review
+    if: github.repository == 'closure-labs/xo-nixpkg' && github.ref == 'refs/heads/main' && vars.NATIVE_RELEASE_APPROVALS_ENABLED == 'true' && (github.event_name != 'workflow_run' || github.event.workflow_run.conclusion == 'success')
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    permissions:
+      contents: read
+      actions: read
+      attestations: read
+      packages: read
+    env:
+      XO_NIXPKG_EVIDENCE: security-evidence
+      XO_NIXPKG_PUBLICATION_PURPOSE: ${{ inputs.purpose || 'rolling' }}
+      QUALIFICATION_RUN: ${{ inputs.qualification_run || github.event.workflow_run.id }}
+      QUALIFICATION_ATTEMPT: ${{ inputs.qualification_attempt || github.event.workflow_run.run_attempt }}
+      GH_TOKEN: ${{ github.token }}
+      REGISTRY_TOKEN: ${{ github.token }}
+    steps:
+      - name: Audit runner traffic
+        uses: step-security/harden-runner@46b06cea07f9e64621fdf066ba77ac6915163d43 # v2.22.3
+        with:
+          egress-policy: audit
+      - name: Checkout immutable protected workflow source
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.workflow_sha }}
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Set up Nix
+        uses: ./.github/actions/setup-nix # zizmor: ignore[self-repository] -- immutable protected workflow source.
+        with:
+          github-token: ${{ github.token }}
+      - name: Prepare read-only tools before observer credentials
+        id: tools
+        shell: bash
+        run: |
+          planner=$(nix build .#publication-plan --no-link --print-out-paths)
+          fetcher=$(nix build .#fetch-evidence --no-link --print-out-paths)
+          proposer=$(nix build .#release-proposal --no-link --print-out-paths)
+          [[ $planner =~ ^/nix/store/[a-z0-9]{32}-xo-nixpkg-publication-plan$ ]]
+          [[ $fetcher =~ ^/nix/store/[a-z0-9]{32}-xo-nixpkg-fetch-evidence$ ]]
+          [[ $proposer =~ ^/nix/store/[a-z0-9]{32}-xo-nixpkg-release-proposal$ ]]
+          printf 'planner=%s\nfetcher=%s\nproposer=%s\n' "$planner" "$fetcher" "$proposer" >>"$GITHUB_OUTPUT"
+      - name: Mint read-only native protection observer
+        id: observer
+        uses: actions/create-github-app-token@64ab729a6294000f5aa4a4bc0b73d1f32bc45510 # v3.3.0
+        with:
+          client-id: ${{ vars.DECIDER_CLIENT }}
+          private-key: ${{ secrets.DECIDER_KEY }}
+          owner: closure-labs
+          repositories: xo-nixpkg
+          permission-administration: read
+          permission-secret-scanning-alerts: read
+      - name: Fetch only authenticated review inventories
+        env:
+          FETCHER: ${{ steps.tools.outputs.fetcher }}
+          XO_NIXPKG_FETCH_FOR_PLAN: 'true'
+        run: '"$FETCHER/bin/xo-nixpkg-fetch-evidence"'
+      - name: Prepare complete findings and the release request
+        id: plan
+        env:
+          PLANNER: ${{ steps.tools.outputs.planner }}
+          NATIVE_SECRET_OBSERVER_TOKEN: ${{ steps.observer.outputs.token }}
+        shell: bash
+        run: |
+          python3 ci/audit-freshness.py
+          "$PLANNER/bin/xo-nixpkg-publication-plan" plan --output "$RUNNER_TEMP/publication-plan.json"
+      - name: Retain complete review evidence
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: publication-review
+          path: |
+            ${{ runner.temp }}/publication-plan.json
+            publication-review.json
+            security-evidence/product.json
+            security-evidence/scans.json
+          if-no-files-found: error
+          compression-level: 0
+          retention-days: 90
+      - name: Mint repository-scoped release PR writer after planning
+        id: writer
+        uses: actions/create-github-app-token@64ab729a6294000f5aa4a4bc0b73d1f32bc45510 # v3.3.0
+        with:
+          client-id: ${{ vars.DECIDER_CLIENT }}
+          private-key: ${{ secrets.DECIDER_KEY }}
+          owner: closure-labs
+          repositories: xo-nixpkg
+          permission-contents: write
+          permission-pull-requests: write
+      - name: Open the single-file native release PR
+        env:
+          PROPOSER: ${{ steps.tools.outputs.proposer }}
+          GH_TOKEN: ${{ steps.writer.outputs.token }}
+        run: '"$PROPOSER/bin/xo-nixpkg-release-proposal" --request "$RUNNER_TEMP/publication-plan.json"'

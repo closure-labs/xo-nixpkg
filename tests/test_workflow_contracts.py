@@ -31,13 +31,14 @@ class WorkflowContracts(unittest.TestCase):
         self.assertIn('dependency-name: nixpkgs', (ROOT / '.github/dependabot.yml').read_text())
         self.assertIn('"0 6,18 * * *"', (WORKFLOWS / 'update-check.yml').read_text())
 
-    def test_reconciliation_binds_qualification_completion_to_its_run_and_attempt(self):
-        source = (WORKFLOWS / 'security-reconcile.yml').read_text()
-        for variable, field in [('QUALIFICATION_RUN', 'id'), ('QUALIFICATION_ATTEMPT', 'run_attempt')]:
-            line = next(line for line in source.splitlines() if line.strip().startswith(variable + ':'))
-            self.assertIn("github.event_name == 'workflow_run'", line)
-            self.assertIn("github.event.workflow_run.name == 'Qualify release products'", line)
-            self.assertIn('github.event.workflow_run.' + field, line)
+    def test_release_proposal_binds_qualification_completion_to_run_and_attempt(self):
+        import yaml
+        workflow = yaml.load((WORKFLOWS / 'release-proposal.yml').read_text(), Loader=yaml.BaseLoader)
+        self.assertEqual(workflow['on']['workflow_run']['workflows'], ['Qualify release products'])
+        env = workflow['jobs']['propose']['env']
+        self.assertIn('github.event.workflow_run.id', env['QUALIFICATION_RUN'])
+        self.assertIn('github.event.workflow_run.run_attempt', env['QUALIFICATION_ATTEMPT'])
+        self.assertIn("github.ref == 'refs/heads/main'", workflow['jobs']['propose']['if'])
 
     def test_referenced_workflow_tasks_are_declared(self):
         tasks = set(re.findall(r'"([a-z-]+:[a-z-]+)"\.exec', (ROOT / 'devenv.nix').read_text()))
@@ -98,33 +99,19 @@ class WorkflowContracts(unittest.TestCase):
             self.assertNotRegex(step.get('run', ''), r'\bnix\s+(?:run|build|eval)\b|\bdevenv\s|\./ci/|\./scripts/')
         self.assertEqual(source.count('steps.writer.outputs.token'), 1)
 
-    def test_reconcile_uses_exact_official_transport_without_expanding_budget_or_permissions(self):
+    def test_release_proposal_reads_evidence_before_minting_the_pr_writer(self):
         import yaml
-        workflow = yaml.load((WORKFLOWS / 'security-reconcile.yml').read_text(), Loader=yaml.BaseLoader)
-        self.assertEqual(workflow['permissions'], {'contents': 'read', 'actions': 'read',
-            'packages': 'write', 'attestations': 'read'})
-        self.assertEqual(list(workflow['jobs']), ['reconcile'])
-        steps = workflow['jobs']['reconcile']['steps']
-        plan = next(step for step in steps if step.get('id') == 'transport')
-        download = next(step for step in steps if step.get('id') == 'products')
-        resume = next(step for step in steps if 'XO_NIXPKG_RECONCILE_DOWNLOAD_OUTCOME' in step.get('env', {}))
-        self.assertLess(steps.index(plan), steps.index(download))
-        self.assertLess(steps.index(download), steps.index(resume))
-        self.assertEqual(plan['env']['XO_NIXPKG_RECONCILE_PLAN_ONLY'], 'true')
-        self.assertEqual(download['uses'], 'actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333')
-        self.assertEqual(download['if'], "steps.transport.outputs.artifact_id != ''")
-        self.assertEqual(download['timeout-minutes'], '10')
-        self.assertEqual(download['continue-on-error'], 'true')
-        self.assertEqual(download['with']['artifact-ids'], '${{ steps.transport.outputs.artifact_id }}')
-        self.assertEqual(download['with']['run-id'], '${{ steps.transport.outputs.run_id }}')
-        self.assertEqual(download['with']['github-token'], '${{ github.token }}')
-        self.assertEqual(download['with']['digest-mismatch'], 'error')
-        self.assertNotIn('name', download['with'])
-        self.assertEqual(resume['if'], "steps.transport.outputs.run_id != ''")
-        self.assertEqual(resume['env']['QUALIFICATION_RUN'], '${{ steps.transport.outputs.run_id }}')
-        self.assertEqual(resume['env']['QUALIFICATION_ATTEMPT'], '${{ steps.transport.outputs.attempt }}')
-        self.assertEqual(resume['env']['XO_NIXPKG_RECONCILE_DOWNLOAD_OUTCOME'], '${{ steps.products.outcome }}')
-        self.assertEqual(resume['env']['XO_NIXPKG_RECONCILE_DOWNLOADED_EVIDENCE'], download['with']['path'])
-        retained = steps[-1]
-        self.assertEqual(retained['if'], 'always()')
-        self.assertIn('reconciliation-transport.jsonl', retained['with']['path'])
+        workflow = yaml.load((WORKFLOWS / 'release-proposal.yml').read_text(), Loader=yaml.BaseLoader)
+        self.assertEqual(workflow['permissions'], {'contents': 'read'})
+        job = workflow['jobs']['propose']
+        self.assertEqual(job['permissions'], {'contents': 'read', 'actions': 'read', 'attestations': 'read', 'packages': 'read'})
+        steps = job['steps']
+        writer = next(step for step in steps if step.get('id') == 'writer')
+        preparation = next(step for step in steps if step.get('id') == 'plan')
+        self.assertLess(steps.index(preparation), steps.index(writer))
+        self.assertEqual(writer['with']['permission-contents'], 'write')
+        self.assertEqual(writer['with']['permission-pull-requests'], 'write')
+        self.assertNotIn('permission-checks', writer['with'])
+        for step in steps[steps.index(writer) + 1:]:
+            self.assertNotIn('nix build', step.get('run', ''))
+            self.assertNotIn('nix run', step.get('run', ''))

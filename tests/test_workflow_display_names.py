@@ -26,7 +26,7 @@ class WorkflowDisplayNames(unittest.TestCase):
         self.assertIn("CHECK_NAME = 'Maintainer decision authority'",
                       (ROOT / 'ci/decisions/check.py').read_text())
         for needle, path in [('Refresh qualification {0} attempt {1}', 'qualification.yml'),
-                             ('Publish {0} qualification {1} attempt {2}', 'publish.yml')]:
+                             ('Publish the release request approved on protected main', 'publish.yml')]:
             self.assertIn(needle, (W / path).read_text())
 
     def test_exact_signal_relay_template_tracks_display_name(self):

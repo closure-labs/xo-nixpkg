@@ -42,7 +42,7 @@ class AdvisoryInputs(unittest.TestCase):
         with patch.dict(os.environ,XO_NIXPKG_RETAINED_FETCH_SOURCE=str(self.retained)), \
              patch.object(sys,'argv',['advisory-inputs',str(output)]), \
              patch.object(self.module.operations,'run',return_value=subprocess.CompletedProcess([],0,stdout=self.revision,stderr='')), \
-             patch.object(self.module.common,'config',return_value={'repository':'closure-labs/xo-nixpkg'}), \
+             patch.object(self.module.native_approvals,'policy',return_value={'repository':'closure-labs/xo-nixpkg'}), \
              patch.object(self.module.authority,'github_api',return_value={'workflow_runs':[self.run]}), \
              patch.object(self.module.packets,'metadata_bytes',side_effect=metadata), \
              patch.object(self.module,'inventory_bytes',side_effect=metadata), \

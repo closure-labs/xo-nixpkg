@@ -252,7 +252,7 @@ class Integration(unittest.TestCase):
                     'actor': deepcopy(dependency.BOT), 'triggering_actor': deepcopy(dependency.BOT)}
         self.collector = {**deepcopy(self.run), 'id': 41, 'workflow_id': 51, 'event': 'pull_request_review',
                           'path': admission.COLLECTOR, 'conclusion': 'success'}
-        self.recovery = {**deepcopy(self.run), 'id': 42, 'workflow_id': 52, 'path': admission.AUTHORITY,
+        self.recovery = {**deepcopy(self.run), 'id': 42, 'workflow_id': 52, 'path': '.github/workflows/decision-authority.yml',
                          'event': 'workflow_run', 'head_branch': 'main', 'head_sha': BASE, 'conclusion': 'success'}
 
     def api(self, endpoint):
@@ -380,20 +380,14 @@ class Integration(unittest.TestCase):
         self.assertEqual(self.admit(), 'not-pending-ci')
         self.assertEqual(self.posts, [])
 
-    def test_success_or_mixed_failure_authority_is_only_a_wakeup(self):
+    def test_retired_authority_completion_cannot_wake_native_ci_admission(self):
         self.humans.reviews = []
-        for conclusion in ('success', 'failure'):
+        for conclusion in ('success', 'failure', 'cancelled', 'timed_out'):
             self.recovery['conclusion'] = conclusion
-            self.assertEqual(admission.wake_runs(self.api, POLICY, 42), [40])
-        self.assertEqual(self.review_reads, 0)
-        self.assertEqual(self.admit(), 'approved')
-        self.assertEqual(len(self.posts), 1)
-        for change in ({'head_branch': 'attacker'}, {'event': 'pull_request'}, {'conclusion': 'cancelled'},
-                       {'conclusion': 'timed_out'}, {'repository': {'id': 1}}, {'head_repository': {'id': 1}}):
-            previous = deepcopy(self.recovery); self.recovery.update(change)
-            with self.subTest(change=change), self.assertRaises(admission.AuthorityError):
+            with self.subTest(conclusion=conclusion), self.assertRaises(admission.AuthorityError):
                 admission.wake_runs(self.api, POLICY, 42)
-            self.recovery = previous
+        self.assertEqual(self.review_reads, 0)
+        self.assertEqual(self.posts, [])
 
     def test_positive_native_195_codeql_pin_fixture(self):
         fixture = ROOT / 'tests/fixtures/dependabot-195'

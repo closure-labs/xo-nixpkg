@@ -22,6 +22,10 @@ def read_yaml(path):
 
 
 class SetupNix(unittest.TestCase):
+    def assert_installer_pins(self, step):
+        self.assertRegex(step['uses'], r'^DeterminateSystems/nix-installer-action@[0-9a-f]{40}$')
+        self.assertRegex(step['with']['source-tag'], r'^v[0-9]+\.[0-9]+\.[0-9]+$')
+
     def test_every_installer_disables_only_its_own_flakehub_login(self):
         paths = [ROOT / '.github/actions/setup-nix/action.yml',
                  *sorted((ROOT / '.github/workflows').glob('*.yml'))]
@@ -48,11 +52,7 @@ class SetupNix(unittest.TestCase):
                             self.assertEqual(inputs['determinate'], 'false')
                             self.assertEqual(inputs['flakehub'], 'false')
                             self.assertEqual(inputs['extra-args'], '--determinate')
-                            releases = {
-                                '33c9ab3ef95cd57c164d9d6eb1f9a46338538d41': 'v3.21.9',
-                                '9383ce2bf08796b65508822f5982f49151badc4e': 'v3.24.1',
-                            }
-                            self.assertEqual(inputs['source-tag'], releases[uses.split('@')[1]])
+                            self.assert_installer_pins(step)
                             if 'runs-on' in job:
                                 self.assertEqual(job['runs-on'], 'ubuntu-24.04')
                     else:
@@ -84,7 +84,8 @@ class SetupNix(unittest.TestCase):
                 steps = job['steps']
                 installer = next(s for s in steps if s.get('uses', '').startswith('DeterminateSystems/nix-installer-action@'))
                 guard = next(s for s in steps if s.get('name') == 'Verify public bootstrap cache')
-                self.assertEqual(installer['uses'], shared[0]['uses'])
+                self.assert_installer_pins(installer)
+                self.assertEqual(installer['with']['source-tag'], shared[0]['with']['source-tag'])
                 self.assertEqual(installer['with']['github-token'], '')
                 self.assertIn('access-tokens =\n', installer['with']['extra-conf'])
                 self.assertEqual(guard['run'], shared[2]['run'])
@@ -103,6 +104,22 @@ class SetupNix(unittest.TestCase):
         self.assertEqual(trusted['working-directory'], 'controller')
         self.assertIn('ci:runtime', trusted['run'])
         self.assertIn("github.event_name != 'pull_request'", workflow['jobs']['attest-builds']['if'])
+
+    def test_wrapper_updates_preserve_the_runtime_pin_and_mutable_pins_are_rejected(self):
+        from copy import deepcopy
+        installer = read_yaml(ROOT / '.github/actions/setup-nix/action.yml')['runs']['steps'][0]
+        changed = deepcopy(installer)
+        changed['uses'] = 'DeterminateSystems/nix-installer-action@' + 'a' * 40
+        self.assert_installer_pins(changed)
+        self.assertEqual(changed['with']['source-tag'], installer['with']['source-tag'])
+        for value in ('main', 'v22', 'a' * 39):
+            changed['uses'] = 'DeterminateSystems/nix-installer-action@' + value
+            with self.subTest(pin=value), self.assertRaises(AssertionError):
+                self.assert_installer_pins(changed)
+        changed = deepcopy(installer)
+        changed['with']['source-tag'] = 'main'
+        with self.assertRaises(AssertionError):
+            self.assert_installer_pins(changed)
 
     def test_final_cache_layer_preserves_existing_settings_privately(self):
         steps = read_yaml(ROOT / '.github/actions/setup-nix/action.yml')['runs']['steps']

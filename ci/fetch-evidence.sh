@@ -45,7 +45,7 @@ if [[ ${XO_NIXPKG_PUBLICATION_METADATA_ONLY:-false} == true ]]; then
 fi
 # Inventory-only refresh never downloads the closure artifact. Absence/expiry uses
 # the existing authenticated retained packet's bounded inventory members only.
-if [[ ${XO_NIXPKG_FETCH_FOR_RESCAN:-false} == true && ${XO_NIXPKG_FETCH_FULL_TRANSPORT:-false} != true ]]; then
+if [[ ( ${XO_NIXPKG_FETCH_FOR_RESCAN:-false} == true || ${XO_NIXPKG_FETCH_FOR_PLAN:-false} == true ) && ${XO_NIXPKG_FETCH_FULL_TRANSPORT:-false} != true ]]; then
   inventory_name="qualified-inventories-$QUALIFICATION_RUN-$attempt"
   catalog=$(gh api "repos/$GITHUB_REPOSITORY/actions/runs/$QUALIFICATION_RUN/artifacts?per_page=100")
   jq -e '(.artifacts | type) == "array" and (.total_count | type) == "number" and .total_count == (.artifacts | length) and .total_count <= 100' <<<"$catalog" >/dev/null
@@ -80,7 +80,11 @@ jq -e --argjson run "$QUALIFICATION_RUN" --argjson attempt "$attempt" \
   '.producer.runId == $run and .producer.runAttempt == $attempt' \
   "$XO_NIXPKG_EVIDENCE/scans.json" >/dev/null
 # Core re-verifies producer attestations, current policy and live human authority.
-if [[ ${XO_NIXPKG_FETCH_FOR_RESCAN:-false} != true ]]; then
+if [[ ${XO_NIXPKG_FETCH_FOR_PLAN:-false} == true ]]; then
+  # Shared planner authenticates the selected producer and complete metadata.
+  # This read-only transport leaf cannot grant publication authority.
+  :
+elif [[ ${XO_NIXPKG_FETCH_FOR_RESCAN:-false} != true ]]; then
   xo-nixpkg-publication-gate
 else
   python3 "$XO_NIXPKG_RESCAN_VERIFIER_SOURCE"

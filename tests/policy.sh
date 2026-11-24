@@ -3,7 +3,8 @@
 set -euo pipefail
 root=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)
 cd "$root"
-jq -e '.schema == 1 and (.enabled | type == "boolean") and (if .enabled then .appId > 0 else true end) and .repository == "closure-labs/xo-nixpkg" and .profiles == ["xo-latest","xo-stable","xo-rolling","libvhdi"]' ci/decision-policy.json >/dev/null
+jq -e '.schema == 1 and .approvalMode == "github-pr-v1" and (.enabled | type == "boolean") and .repository == "closure-labs/xo-nixpkg" and .profiles == ["xo-latest","xo-stable","xo-rolling","libvhdi"]' ci/publication-policy.json >/dev/null
+jq -e '.enabled == false' ci/decision-policy.json >/dev/null
 jq -e '.schemaVersion == 2 and (.channels | keys == ["latest","rolling","stable"])' nix/sources/xen-orchestra.json >/dev/null
 for channel in latest stable rolling; do
   rev=$(jq -er ".channels.$channel.rev" nix/sources/xen-orchestra.json)
@@ -26,10 +27,15 @@ while IFS= read -r action; do
     exit 1
   }
 done < <(yq -r '.. | .uses? | select(. != null)' .github/actions/*/*.yml .github/workflows/*.yml | sed '/^---$/d')
-rg -F 'ref: main' .github/workflows/publish.yml .github/workflows/decision-authority.yml >/dev/null
-yq -e '.jobs.publish.environment == "publication" and .concurrency.queue == "max" and .concurrency.cancel-in-progress == false' .github/workflows/publish.yml >/dev/null
-rg -F "if: github.repository == 'closure-labs/xo-nixpkg' && github.ref == 'refs/heads/main'" .github/workflows/publish.yml .github/workflows/security-reconcile.yml >/dev/null
-rg -F 'permission-checks: write' .github/workflows/decision-authority.yml >/dev/null
+rg -F 'ref: ${{ github.workflow_sha }}' .github/workflows/publish.yml .github/workflows/release-proposal.yml >/dev/null
+yq -e '.jobs.publish.environment.name == "publication" and .jobs.publish.concurrency.queue == "max" and .jobs.publish.concurrency.cancel-in-progress == false' .github/workflows/publish.yml >/dev/null
+rg -F "if: github.repository == 'closure-labs/xo-nixpkg' && github.ref == 'refs/heads/main'" .github/workflows/publish.yml .github/workflows/release-proposal.yml >/dev/null
+[[ ! -e .github/workflows/decision-authority.yml && ! -e .github/workflows/security-reconcile.yml ]]
+if rg -F 'permission-checks: write' .github/workflows/publish.yml .github/workflows/release-proposal.yml; then
+  echo 'Native release workflows must not publish custom authority checks' >&2
+  exit 1
+fi
+rg -F 'reviewDecision' ci/trusted-update.sh >/dev/null
 rg -F 'export XO_NIXPKG_PUBLICATION_PURPOSE=release' ci/tag-release.sh ci/tag-xo-release.sh ci/publish-release.sh >/dev/null
 if rg 'persist-credentials: true|cachix\.push|git tag -f' .github devenv.nix ci; then
   echo 'Credential persistence or mutable publication is forbidden' >&2

@@ -5,11 +5,12 @@ import os
 import hashlib
 import stat
 from pathlib import Path
-from common import config, scans, product
+from common import scans, product
+from native_approvals import policy as config
 
 
 def main():
-    cfg = config(Path('ci/decision-policy.json'), live=True)
+    cfg = config(live=True)
     directory = Path(os.environ['XO_NIXPKG_EVIDENCE'])
     native = scans(directory / 'scans.json', cfg, allow_expired=True)
     immutable = product(directory / 'product.json', cfg, native)

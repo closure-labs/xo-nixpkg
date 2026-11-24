@@ -131,7 +131,7 @@ class RetainedInventoryTests(unittest.TestCase):
             with self.subTest(change=change),self.assertRaises(ValueError):self.fetch(change)
 
 class FetchWiringTests(unittest.TestCase):
-    def fetch(self, mode='normal', full=False):
+    def fetch(self, mode='normal', full=False, plan=False):
         with tempfile.TemporaryDirectory() as t:
             d=Path(t);binary=d/'bin';binary.mkdir();log=d/'calls';output=d/'output'
             gh=binary/'gh'
@@ -165,7 +165,7 @@ else:sys.exit(90)
             verify=d/'verify.py';verify.write_text("import os\nfrom pathlib import Path\n(Path(os.environ['XO_NIXPKG_EVIDENCE'])/'verified').write_text('yes')\n")
             env=dict(os.environ,PATH=str(binary)+os.pathsep+os.environ['PATH'],FIXTURE_LOG=str(log),FIXTURE_MODE=mode,
                 QUALIFICATION_RUN='1',QUALIFICATION_ATTEMPT='1',GITHUB_REPOSITORY='closure-labs/xo-nixpkg',GITHUB_ACTOR='fixture',
-                XO_NIXPKG_FETCH_BOUNDED='true',XO_NIXPKG_FETCH_FOR_RESCAN='true',XO_NIXPKG_FETCH_FULL_TRANSPORT=str(full).lower(),
+                XO_NIXPKG_FETCH_BOUNDED='true',XO_NIXPKG_FETCH_FOR_RESCAN=str(not plan).lower(),XO_NIXPKG_FETCH_FOR_PLAN=str(plan).lower(),XO_NIXPKG_FETCH_FULL_TRANSPORT=str(full).lower(),
                 XO_NIXPKG_PUBLICATION_METADATA_ONLY='false',XO_NIXPKG_EVIDENCE=str(output),REGISTRY_TOKEN='synthetic',
                 XO_NIXPKG_OPERATIONS_SOURCE=str(ROOT/'ci/decisions/operations.py'),XO_NIXPKG_RETAINED_FETCH_SOURCE=str(retained),XO_NIXPKG_RESCAN_VERIFIER_SOURCE=str(verify))
             result=subprocess.run(['bash',str(ROOT/'ci/fetch-evidence.sh')],env=env,capture_output=True,text=True,timeout=15)
@@ -175,6 +175,11 @@ else:sys.exit(90)
         code,calls,verified,_=self.fetch();self.assertEqual(code,0);self.assertTrue(verified)
         downloads=[c for c in calls if c[1:3]==['run','download']]
         self.assertEqual(len(downloads),1);self.assertIn('qualified-inventories-1-1',downloads[0])
+    def test_native_planning_fetches_only_inventories_and_never_calls_a_publication_gate(self):
+        code,calls,verified,_=self.fetch(plan=True)
+        self.assertEqual(code,0);self.assertFalse(verified)
+        self.assertTrue(any('qualified-inventories-1-1' in c for c in calls))
+        self.assertFalse(any('qualified-products-1-1' in c for c in calls))
     def test_api_denial_duplicate_incomplete_oversized_or_failed_download_never_falls_back(self):
         for mode in ('api-denied','duplicate','incomplete','oversized','malformed','download-failed'):
             with self.subTest(mode=mode):

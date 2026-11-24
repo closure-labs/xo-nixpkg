@@ -10,6 +10,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- Replace custom merge authority and security/product supersession decisions
+  with native GitHub PR reviews and CODEOWNERS. Qualification proposes one exact
+  release request; merging it authorizes publishing the recorded product,
+  findings and purpose. Updated evidence requires a new PR review.
+- Share request, evidence and native protection validators across planning,
+  publication and the policy audit. Prepare tools before write credentials,
+  inspect inventory-only artifacts before publication, and preserve independent
+  scan health, attestations, secret observations and destination checkpoints.
+- Retire hourly release reconciliation and its custom authority workflow. Keep
+  daily inventory refresh and renew original transport with a monthly fresh
+  qualification, before the ninety-day Actions retention expires.
+- Share the PR-event collector between trusted CI admission and queue wakeups,
+  removing the duplicate review relay and obsolete authority-completion path.
+- Make installer boundary fixtures accept independently updated SHA-pinned
+  wrappers while retaining pinned runtime releases and credential restrictions.
+
 - Check the complete queued security ledger before authorizing a security
   proposal's merge group, rejecting parallel decisions that would fork the
   supersession graph. Ordinary code-fix PRs can still repair an existing fork.

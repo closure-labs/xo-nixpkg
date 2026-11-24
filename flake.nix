@@ -142,6 +142,10 @@ rec {
           automation-runtime = automationRuntime;
           ci-admission = applications.ciAdmission;
           open-update-pr = applications.openUpdatePr;
+          publication-plan = applications.publicationPlan;
+          release-proposal = applications.releaseProposal;
+          fetch-evidence = applications.fetchEvidence;
+          publication-controller = applications.publicationController;
           security-applicability = applications.securityApplicability;
           security-scan = applications.securityScan;
           security-review-all = applications.securityReviewAll;
@@ -209,13 +213,11 @@ rec {
           audit-policy = mkApp applications.auditPolicy "Audit effective protection with read-only administration credentials";
           consumer-probe = mkApp applications.consumerProbe "Verify downloaded public product bytes and signatures in a clean store";
           repository-audit = mkApp applications.repositoryAudit "Run the complete repository contract";
+          publication-plan = mkApp applications.publicationPlan "Plan and validate native PR-reviewed publications";
+          release-proposal = mkApp applications.releaseProposal "Request native PR review of an exact qualified product";
           publication-controller = mkApp applications.publicationController "Publish exact admitted products with durable recovery checkpoints";
           refresh-products = mkApp applications.refreshProducts "Rescan exact retained products without changing approval identity";
-          decision-collect = mkApp applications.decisionCollect "Collect decision event metadata";
           ci-admission = mkApp applications.ciAdmission "Approve CI runs for trusted PR authors";
-          decision-authority = mkApp applications.decisionAuthority "Publish the App-origin human authority check";
-          inspect-qualification = mkApp applications.inspectQualification "Inspect exact producer observations without downloading closure payloads";
-          reconcile-retained = mkApp applications.reconcileRetained "Reconcile retained security and release approvals";
           queue-preflight = mkApp applications.queuePreflight "Check merge queue runtime credential";
           rolling-failure = mkApp applications.rollingFailure "Report a preserved failed rolling candidate";
           fetch-evidence = mkApp applications.fetchEvidence "Fetch an authenticated immutable qualification packet";
@@ -224,10 +226,6 @@ rec {
           build-reuse = mkApp applications.buildReuse "Build sandboxed candidates and restore authenticated exact CI outputs";
           security-database = mkApp applications.securityDatabase "Prepare one verified run-local vulnerability database";
           ci-verdict = mkApp applications.ciVerdict "Enforce the classified validation result";
-          decision-reconcile = mkApp applications.decisionReconcile "Reconcile authenticated security or release proposals";
-          decision-readiness = mkApp (pkgs.writeShellScriptBin "xo-nixpkg-readiness" ''
-            exec ${applications.decisions}/bin/xo-nixpkg-decision-readiness --config ci/decision-policy.json "$@"
-          '') "Audit live publication authority and policy";
           classify-ci = mkApp applications.classifyCi "Classify a CI event into exact validation and publication plans";
           ci = mkApp applications.ci "Run the complete repository validation pipeline";
           security-applicability = mkApp applications.securityApplicability "Revalidate exact source-bound security applicability evidence";

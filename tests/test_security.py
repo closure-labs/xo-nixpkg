@@ -713,30 +713,33 @@ class PolicyCredentialTests(unittest.TestCase):
         from unittest.mock import patch
         sys.path.insert(0, str(ROOT / 'ci/decisions'))
         audit = module('audit-policy')
-        policy = json.loads((ROOT / 'ci/decision-policy.json').read_text())
-        self.assertIn('governance', policy)
+        from test_native_approvals import cfg, rules as native_rules, environment
+        policy = cfg()
         prefix = 'repos/closure-labs/xo-nixpkg/'
         revision = 'a' * 40
-        raw = json.dumps(policy).encode()
-        document = {'type': 'file', 'encoding': 'base64', 'size': len(raw),
+        def blob(raw):
+            return {'type': 'file', 'encoding': 'base64', 'size': len(raw),
                     'sha': hashlib.sha1(b'blob ' + str(len(raw)).encode() + b'\0' + raw).hexdigest(),
                     'content': base64.b64encode(raw).decode()}
-        rules = [{'type': 'deletion'}, {'type': 'non_fast_forward'},
-                 {'type': 'pull_request', 'parameters': {'required_review_thread_resolution': True}},
-                 {'type': 'merge_queue', 'parameters': {'max_entries_to_merge': 1,
-                                                      'check_response_timeout_minutes': 300}},
-                 {'type': 'required_status_checks', 'parameters': {'required_status_checks': [
-                     {'context': 'Maintainer decision authority', 'integration_id': policy['appId']}]}}]
+        document = blob(json.dumps(policy).encode())
+        owners = blob(('* ' + ' '.join(policy['codeOwners']) + '\n').encode())
+        rules = native_rules()
 
         def metadata(endpoint):
             if endpoint == prefix + 'git/ref/heads/main':
                 return {'object': {'sha': revision}}
-            self.assertEqual(endpoint, prefix + 'contents/ci/decision-policy.json?ref=' + revision)
+            if endpoint == prefix + 'contents/.github/CODEOWNERS?ref=' + revision:
+                return owners
+            self.assertEqual(endpoint, prefix + 'contents/ci/publication-policy.json?ref=' + revision)
             return document
 
         def administration(endpoint):
-            self.assertEqual(endpoint, prefix + 'rules/branches/main')
-            return rules
+            if endpoint == prefix + 'rules/branches/main':
+                return rules
+            if endpoint == prefix + 'environments/publication':
+                return environment()
+            self.assertEqual(endpoint, prefix + 'rulesets/21015412')
+            return {'enforcement': 'active', 'bypass_actors': []}
 
         with patch.object(audit, 'repository_api', side_effect=metadata), \
                 patch.object(audit.authority, 'github_api', side_effect=administration), \
@@ -745,7 +748,7 @@ class PolicyCredentialTests(unittest.TestCase):
             self.assertEqual(json.loads(output.getvalue())['status'], 'verified')
             good = deepcopy(rules)
             rules[-1]['parameters']['required_status_checks'][0]['integration_id'] += 1
-            with self.assertRaisesRegex(ValueError, 'App-bound'):
+            with self.assertRaisesRegex(ValueError, 'integration identity'):
                 audit.main()
             rules[:] = good
             for timeout in (None, 0, 180, 299, True, '300'):
@@ -754,7 +757,7 @@ class PolicyCredentialTests(unittest.TestCase):
                     audit.main()
             rules[3]['parameters']['check_response_timeout_minutes'] = 300
             rules[3]['parameters']['max_entries_to_merge'] = 2
-            with self.assertRaisesRegex(ValueError, 'single-PR'):
+            with self.assertRaisesRegex(ValueError, 'one PR'):
                 audit.main()
 
     def test_audit_router_rejects_other_administration_endpoints(self):
