@@ -14,6 +14,8 @@ REPOSITORY = 'closure-labs/xo-nixpkg'
 POLICY = 'ci/publication-policy.json'
 CHECKS = {'CI gate', 'Analyze (actions)', 'Analyze (python)',
           'Analyze (javascript-typescript)', 'Repository security audit'}
+CODEQL_RULE = {'type': 'code_scanning', 'parameters': {'code_scanning_tools': [
+    {'tool': 'CodeQL', 'alerts_threshold': 'errors', 'security_alerts_threshold': 'high_or_higher'}]}}
 
 
 def policy(path=Path(POLICY), *, live=False, api=None):
@@ -72,6 +74,12 @@ def validate_rules(cfg, rules):
               for c in r.get('parameters', {}).get('required_status_checks', [])
               if c.get('integration_id') == 15368}
     common.require(CHECKS <= checks, 'Required native Actions checks must retain their integration identity')
+    scanners = [tool for rule in rules if rule.get('type') == 'code_scanning'
+                for tool in rule.get('parameters', {}).get('code_scanning_tools', [])]
+    common.require(any(tool.get('tool') == 'CodeQL'
+                       and tool.get('alerts_threshold') in ('errors', 'errors_and_warnings', 'all')
+                       and tool.get('security_alerts_threshold') in ('high_or_higher', 'medium_or_higher', 'all')
+                       for tool in scanners), 'Native CodeQL finding protection must block errors and high-severity alerts')
     queues = [r.get('parameters', {}) for r in rules if r.get('type') == 'merge_queue']
     common.require(any(p.get('max_entries_to_merge') == 1 for p in queues), 'Native queue must merge one PR at a time')
     common.require(any(type(p.get('check_response_timeout_minutes')) is int

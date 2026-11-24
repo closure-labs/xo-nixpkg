@@ -45,6 +45,7 @@ def rules():
                 'required_approving_review_count': 1, 'dismiss_stale_reviews_on_push': True,
                 'require_code_owner_review': True, 'required_review_thread_resolution': True}},
             {'type': 'merge_queue', 'parameters': {'max_entries_to_merge': 1, 'check_response_timeout_minutes': 300}},
+            deepcopy(native.CODEQL_RULE),
             {'type': 'required_status_checks', 'parameters': {'required_status_checks': [
                 {'context': name, 'integration_id': 15368} for name in native.CHECKS]}}]
 
@@ -56,6 +57,21 @@ def environment():
 
 
 class NativeProtection(unittest.TestCase):
+    def test_completed_analysis_jobs_do_not_replace_finding_protection(self):
+        without = [rule for rule in rules() if rule['type'] != 'code_scanning']
+        with self.assertRaisesRegex(ValueError, 'CodeQL finding protection'):
+            native.validate_rules(cfg(), without)
+        for key, value in [('tool', 'Other scanner'), ('alerts_threshold', 'none'),
+                           ('security_alerts_threshold', 'none'), ('security_alerts_threshold', 'critical')]:
+            current = rules()
+            current[4]['parameters']['code_scanning_tools'][0][key] = value
+            with self.subTest(key=key, value=value), self.assertRaisesRegex(ValueError, 'CodeQL finding protection'):
+                native.validate_rules(cfg(), current)
+        current = rules()
+        current[4]['parameters']['code_scanning_tools'][0].update(
+            alerts_threshold='all', security_alerts_threshold='medium_or_higher')
+        native.validate_rules(cfg(), current)
+
     def test_native_reviews_and_owned_actions_checks_are_required(self):
         native.validate_rules(cfg(), rules())
         mutations = [(2, 'required_approving_review_count', 0),
@@ -365,6 +381,31 @@ class NativeReleaseProposal(unittest.TestCase):
 
 
 class Cutover(unittest.TestCase):
+    def test_prepare_adds_codeql_and_preserves_stricter_thresholds_and_other_tools(self):
+        spec = importlib.util.spec_from_file_location('native_cutover_codeql', ROOT / 'ci/configure-native-approvals.py')
+        module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(module)
+        value = {'name': 'main', 'target': 'branch', 'enforcement': 'active', 'conditions': {},
+                 'bypass_actors': [], 'rules': [rule for rule in rules() if rule['type'] != 'code_scanning']}
+        prepared = module.prepare_rules(value)
+        scanner = next(rule for rule in prepared['rules'] if rule['type'] == 'code_scanning')
+        self.assertEqual(scanner['parameters']['code_scanning_tools'], [
+            {'tool': 'CodeQL', 'alerts_threshold': 'errors', 'security_alerts_threshold': 'high_or_higher'}])
+        self.assertFalse(any(rule['type'] == 'code_scanning' for rule in value['rules']))
+        tool = scanner['parameters']['code_scanning_tools'][0]
+        tool.update(alerts_threshold='all', security_alerts_threshold='medium_or_higher')
+        other = {'tool': 'Other scanner', 'alerts_threshold': 'all', 'security_alerts_threshold': 'all'}
+        scanner['parameters']['code_scanning_tools'].append(other)
+        self.assertEqual(module.prepare_rules(prepared)['rules'], prepared['rules'])
+        scanner['parameters']['code_scanning_tools'].pop(0)
+        restored = module.prepare_rules(prepared)
+        tools = next(rule for rule in restored['rules'] if rule['type'] == 'code_scanning')['parameters']['code_scanning_tools']
+        self.assertEqual(tools[0], other)
+        self.assertEqual(tools[1]['tool'], 'CodeQL')
+        tools[1].update(alerts_threshold='none', security_alerts_threshold='critical')
+        tightened = module.prepare_rules(restored)
+        native.validate_rules(cfg(), tightened['rules'])
+
     def test_prepare_preserves_legacy_gate_until_reviewed_source_is_activated(self):
         spec = importlib.util.spec_from_file_location('native_cutover', ROOT / 'ci/configure-native-approvals.py')
         module = importlib.util.module_from_spec(spec)

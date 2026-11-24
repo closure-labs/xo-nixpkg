@@ -29,6 +29,19 @@ def prepare_rules(value):
     pulls[0]['parameters'].update(required_approving_review_count=1, dismiss_stale_reviews_on_push=True,
                                  require_code_owner_review=True, require_last_push_approval=True,
                                  required_review_thread_resolution=True)
+    scanning = next((rule for rule in result['rules'] if rule['type'] == 'code_scanning'), None)
+    if scanning is None:
+        result['rules'].append(deepcopy(native.CODEQL_RULE))
+    else:
+        tools = scanning['parameters']['code_scanning_tools']
+        codeql = next((tool for tool in tools if tool['tool'] == 'CodeQL'), None)
+        if codeql is None:
+            tools.append(deepcopy(native.CODEQL_RULE['parameters']['code_scanning_tools'][0]))
+        else:
+            if codeql['alerts_threshold'] == 'none':
+                codeql['alerts_threshold'] = 'errors'
+            if codeql['security_alerts_threshold'] in ('none', 'critical'):
+                codeql['security_alerts_threshold'] = 'high_or_higher'
     return result
 
 
