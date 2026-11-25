@@ -47,7 +47,6 @@ in
     "security:qualify".exec = "nix run .#qualify-products";
     "release:plan".exec =
       "nix run .#publication-plan -- plan --output \"$RUNNER_TEMP/publication-plan.json\"";
-    "release:retain".exec = "nix run .#publication-plan -- retain";
     "release:resume".exec = "nix run .#publication-controller";
     "release:fetch".exec = "nix run .#fetch-evidence";
     "release:publish".exec = "nix run .#publish";

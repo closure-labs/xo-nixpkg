@@ -1,5 +1,13 @@
 # Native approval cutover
 
+CodeQL's native PR finding rule blocks errors and High/Critical security alerts,
+in addition to requiring the language analysis jobs to complete. The shared
+protection validator checks those thresholds and preserves stricter settings.
+GitHub [does not apply this finding rule to merge queue groups](https://docs.github.com/en/code-security/concepts/code-scanning/merge-protection).
+Queued candidates still require all three language analyses; enforcement for
+findings introduced only by combining queued changes needs a separate automated
+validator.
+
 The migration replaces custom security/product decision graphs with native
 GitHub PR reviews for both code and releases. It does not accept the historical
 finding ledger or publish a product during installation.
