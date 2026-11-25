@@ -58,6 +58,7 @@ jobs:
     permissions:
       contents: read
       security-events: write
+      actions: read
     strategy:
       fail-fast: false
       matrix:
@@ -77,6 +78,15 @@ jobs:
           languages: ${{ matrix.language }}
           build-mode: none
       - name: Perform CodeQL analysis
+        id: analysis
         uses: github/codeql-action/analyze@33d7b85da1a04171e211befe2c739303b9a4c066 # v4.39.3
         with:
           category: /language:${{ matrix.language }}
+          wait-for-processing: true
+      - name: Enforce merge candidate findings against protected base
+        if: github.event_name == 'merge_group'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          CODEQL_LANGUAGE: ${{ matrix.language }}
+          CODEQL_UPLOAD: ${{ steps.analysis.outputs.sarif-id }}
+        run: python3 ci/check-codeql-findings.py

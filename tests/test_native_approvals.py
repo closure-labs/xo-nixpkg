@@ -43,7 +43,8 @@ def rules():
     return [{'type': 'deletion'}, {'type': 'non_fast_forward'},
             {'type': 'pull_request', 'parameters': {
                 'required_approving_review_count': 1, 'dismiss_stale_reviews_on_push': True,
-                'require_code_owner_review': True, 'required_review_thread_resolution': True}},
+                'require_code_owner_review': True, 'required_review_thread_resolution': True,
+                'require_last_push_approval': True, 'require_extra_approval_for_unattributed_changes': True}},
             {'type': 'merge_queue', 'parameters': {'max_entries_to_merge': 1, 'check_response_timeout_minutes': 300}},
             deepcopy(native.CODEQL_RULE),
             {'type': 'required_status_checks', 'parameters': {'required_status_checks': [
@@ -140,6 +141,8 @@ class NativeProtection(unittest.TestCase):
         native.validate_rules(cfg(), rules())
         mutations = [(2, 'required_approving_review_count', 0),
                      (2, 'dismiss_stale_reviews_on_push', False), (2, 'require_code_owner_review', False),
+                     (2, 'require_last_push_approval', False),
+                     (2, 'require_extra_approval_for_unattributed_changes', False),
                      (2, 'required_review_thread_resolution', False), (3, 'max_entries_to_merge', 2),
                      (3, 'check_response_timeout_minutes', 180), (3, 'check_response_timeout_minutes', True)]
         for index, key, value in mutations:
@@ -385,6 +388,7 @@ class NativeReleaseProposal(unittest.TestCase):
         self.calls, self.documents, self.old = [], {}, 'b' * 40
         self.head, self.move = self.old, False
         self.owner = 'cl-decider[bot]'
+        self.open = False
 
     def api(self, endpoint, body=None, method=None, missing=False):
         self.calls.append((endpoint, body, method))
@@ -406,7 +410,9 @@ class NativeReleaseProposal(unittest.TestCase):
             self.head = 'f' * 40 if self.move else body['sha']
             return {}
         if '/pulls?' in endpoint:
-            return [] if self.owner == 'cl-decider[bot]' else [{'user': {'login': self.owner}, 'number': 7}]
+            return [] if not self.open and self.owner == 'cl-decider[bot]' else [{
+                'user': {'login': self.owner}, 'number': 7, 'state': 'open',
+                'head': {'sha': self.old}, 'html_url': 'https://github.com/example/pull/7'}]
         if endpoint.endswith('/pulls'):
             self.assertIn('publication-review', body['body'])
             return {'number': 7, 'user': {'login': 'cl-decider[bot]'}, 'html_url': 'https://github.com/example/pull/7'}
@@ -425,6 +431,39 @@ class NativeReleaseProposal(unittest.TestCase):
         self.documents[self.old] = request()
         self.assertEqual(self.propose()['head'], self.old)
         self.assertFalse(any('/git/refs' in endpoint for endpoint, _, _ in self.calls))
+
+    def test_fresh_evidence_is_deferred_while_any_native_review_is_open(self):
+        self.open = True
+        self.documents[self.old] = dict(request(), qualificationRun=111)
+        result = self.propose()
+        self.assertEqual(result['status'], 'deferred')
+        self.assertEqual(result['head'], self.old)
+        self.assertTrue(all(body is None for _, body, _ in self.calls))
+
+    def test_identical_open_review_is_not_rewritten(self):
+        self.open = True
+        self.documents[self.old] = request()
+        self.assertEqual(self.propose()['status'], 'pending')
+        self.assertTrue(all(body is None for _, body, _ in self.calls))
+
+    def test_invalid_pending_request_is_not_silently_replaced(self):
+        self.open = True
+        self.documents[self.old] = dict(request(), policyHash='f' * 64)
+        with self.assertRaisesRegex(ValueError, 'different policy'):
+            self.propose()
+        self.assertTrue(all(body is None for _, body, _ in self.calls))
+
+    def test_deferred_proposal_does_not_enable_auto_merge_for_other_bytes(self):
+        with patch.object(self.module.native, 'policy', return_value=cfg()), \
+                patch.object(self.module.native, 'read_request', return_value=request()), \
+                patch.object(self.module, 'propose', return_value={'status': 'deferred'}), \
+                patch.object(self.module.common, 'emit'), \
+                patch.object(self.module.subprocess, 'run') as execute, \
+                patch.object(sys, 'argv', ['propose', '--request', '/fixture']), \
+                patch.dict(os.environ, {'GITHUB_REPOSITORY': native.REPOSITORY, 'GITHUB_REF': 'refs/heads/main',
+                                        'GITHUB_RUN_ID': '456'}):
+            self.module.main()
+            execute.assert_not_called()
 
     def test_already_approved_request_does_not_create_an_empty_release_pr(self):
         self.documents['a' * 40] = request()

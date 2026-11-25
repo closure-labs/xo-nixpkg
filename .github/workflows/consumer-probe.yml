@@ -1,24 +1,28 @@
 # SPDX-License-Identifier: Apache-2.0
 name: Verify public cache
 on:
+  workflow_run: # zizmor: ignore[dangerous-triggers] -- protected code validates completed publisher identity and reads immutable requests only.
+    workflows: [Publish reviewed products]
+    types: [completed]
   schedule:
     - cron: "23 10 * * 0"
   workflow_dispatch:
 permissions:
   contents: read
+  actions: read
 concurrency:
-  group: public-consumer-verification
+  group: public-consumer-verification-${{ github.event.workflow_run.id || github.ref }}
   cancel-in-progress: false
 jobs:
   consumer:
-    if: github.repository == 'closure-labs/xo-nixpkg' && (github.ref == 'refs/heads/main')
+    if: github.repository == 'closure-labs/xo-nixpkg' && github.ref == 'refs/heads/main' && (github.event_name != 'workflow_run' || (github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.head_branch == 'main' && github.event.workflow_run.head_repository.full_name == github.repository))
     runs-on: ubuntu-24.04
     timeout-minutes: 35
     steps:
       - name: Checkout protected consumer code
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          ref: main
+          ref: ${{ github.workflow_sha }}
           persist-credentials: false
       - name: Set up Nix
         uses: ./.github/actions/setup-nix # zizmor: ignore[self-repository] -- protected-main consumer code only.
@@ -27,6 +31,8 @@ jobs:
       - name: Verify public downloads and signatures in a disposable store
         env:
           GH_TOKEN: ${{ github.token }}
+          CONSUMER_PUBLICATION_RUN: ${{ github.event.workflow_run.id }}
+          CONSUMER_PUBLICATION_ATTEMPT: ${{ github.event.workflow_run.run_attempt }}
         run: nix run .#devenv -- tasks run --mode single --option 'packages:pkgs!' '' ci:consumer-probe
       - name: Retain immutable decision byte reuse observations
         if: always()

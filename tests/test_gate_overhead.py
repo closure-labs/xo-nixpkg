@@ -28,11 +28,21 @@ class GateOverhead(unittest.TestCase):
             expected = (classify == preflight == 'success'
                         and validate == ('success' if enabled == 'true' else 'skipped'))
             env = dict(os.environ, CLASSIFY_RESULT=classify, PREFLIGHT_RESULT=preflight,
-                       VALIDATE_ENABLED=enabled, VALIDATE_RESULT=validate)
+                       VALIDATE_ENABLED=enabled, VALIDATE_RESULT=validate,
+                       ATTEST_ENABLED='false', ATTEST_RESULT='skipped')
             result = subprocess.run(['bash', str(ROOT / 'ci/ci-verdict.sh')], env=env,
                                     capture_output=True, timeout=2)
             self.assertEqual(result.returncode == 0, expected,
                              (classify, preflight, enabled, validate))
+
+    def test_attestation_failure_cancellation_and_unexpected_skip_block_the_gate(self):
+        for enabled, result in itertools.product(('true', 'false'), ('success', 'failure', 'skipped', 'cancelled', '')):
+            environment = dict(os.environ, CLASSIFY_RESULT='success', PREFLIGHT_RESULT='success',
+                               VALIDATE_ENABLED='true', VALIDATE_RESULT='success',
+                               ATTEST_ENABLED=enabled, ATTEST_RESULT=result)
+            verdict = subprocess.run(['bash', str(ROOT / 'ci/ci-verdict.sh')], env=environment,
+                                     capture_output=True, timeout=2)
+            self.assertEqual(verdict.returncode == 0, result == ('success' if enabled == 'true' else 'skipped'))
 
     def test_gate_keeps_required_identity_dependencies_and_trusted_source(self):
         gate = yaml.safe_load((ROOT / '.github/workflows/ci.yml').read_text())['jobs']['gate']

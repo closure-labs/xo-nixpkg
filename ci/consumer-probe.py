@@ -84,7 +84,7 @@ def publication_snapshot(cfg, product, api=None):
 
 def unchanged(cfg, main, journal, api=None):
     api = api or common.authority.github_api
-    common.require(common.main_revision(cfg, api) == main,
+    common.require(main is None or common.main_revision(cfg, api) == main,
                    'Consumer selection changed on current main; retry from fresh evidence')
     common.require(api(journal[0]).get('object', {}).get('sha') == journal[1],
                    'Consumer publication changed; retry from fresh evidence')
@@ -136,12 +136,22 @@ def main():
     parser.add_argument('--key', required=True)
     args = parser.parse_args()
     cfg = native.policy(args.config, live=True)
-    revision, request = current_product(cfg)
+    run_id, attempt = os.environ.get('CONSUMER_PUBLICATION_RUN', ''), os.environ.get('CONSUMER_PUBLICATION_ATTEMPT', '')
+    publication = {}
+    if run_id or attempt:
+        common.require(re.fullmatch(r'[1-9][0-9]*', run_id) and re.fullmatch(r'[1-9][0-9]*', attempt),
+                       'Exact consumer publication run and attempt required')
+        revision, request = native.published_request(cfg, int(run_id), int(attempt))
+        publication = {'publicationRun': int(run_id), 'publicationAttempt': int(attempt), 'publishedRevision': revision}
+    else:
+        revision, request = current_product(cfg)
     journal = publication_snapshot(cfg, request['product'])
-    unchanged(cfg, revision, journal)
+    selection = None if publication else revision
+    unchanged(cfg, selection, journal)
     result = probe(request['product'], args.cache, args.key)
-    unchanged(cfg, revision, journal)
+    unchanged(cfg, selection, journal)
     result['requestHash'] = common.canonical_hash(request)
+    result.update(publication)
     if os.environ.get('RUNNER_TEMP'):
         common.emit(result, Path(os.environ['RUNNER_TEMP']) / 'public-consumer-result.json')
     else:

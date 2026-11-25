@@ -56,6 +56,17 @@ def propose(cfg, request, review_run, call=api):
     common.require(isinstance(pulls, list) and len(pulls) <= 1, 'Ambiguous release PR inventory')
     common.require(not pulls or pulls[0].get('user', {}).get('login') == 'cl-decider[bot]',
                    'Release proposal must retain its automation author')
+    if pulls:
+        # Freeze every open native review, including the interval before its
+        # first approval. This avoids a check-then-push race with human reviews
+        # and keeps GitHub as the only reviewer/queue authority.
+        pull = pulls[0]
+        common.require(pull.get('state') == 'open' and pull.get('head', {}).get('sha') == old,
+                       'Open release PR differs from the observed branch')
+        pending = document(call, prefix, cfg['releaseRequestPath'], old)
+        native.validate_request(cfg, pending)
+        return {'status': 'pending' if pending == request else 'deferred',
+                'number': pull['number'], 'head': old, 'url': pull['html_url']}
     head = old
     if old is None or document(call, prefix, cfg['releaseRequestPath'], old) != request:
         commit = call(prefix + '/git/commits/' + base)
@@ -106,7 +117,7 @@ def main():
     request = native.read_request(cfg, args.request)
     # Resolve and validate the complete request before any branch or PR write.
     result = propose(cfg, request, int(os.environ['GITHUB_RUN_ID']))
-    if result.get('status') == 'already-approved':
+    if result.get('status') in ('already-approved', 'deferred'):
         common.emit(result)
         return
     subprocess.run(['gh', 'pr', 'merge', str(result['number']), '--repo', cfg['repository'], '--auto', '--merge',

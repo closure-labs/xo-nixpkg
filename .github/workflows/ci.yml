@@ -367,6 +367,8 @@ jobs:
       PREFLIGHT_RESULT: ${{ needs.preflight.result }}
       CLASSIFY_RESULT: ${{ needs.classify.result }}
       VALIDATE_RESULT: ${{ needs.validate.result }}
+      ATTEST_RESULT: ${{ needs.attest-builds.result }}
+      ATTEST_ENABLED: ${{ github.event_name != 'pull_request' && github.event_name != 'pull_request_review' && needs.validate.outputs.cache_eligible == 'true' }}
       VALIDATE_ENABLED: ${{ needs.classify.result == 'success' && fromJSON(needs.classify.outputs.workflow).jobs.validate.enabled || false }}
     steps:
       - name: Audit runner traffic

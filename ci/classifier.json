@@ -177,7 +177,7 @@
       "publication": []
     },
     {
-      "pattern": "^(?:ci/(?:publication-plan|propose-release|configure-native-approvals)\\.(?:py|sh)|ci/publication-policy\\.json|tests/test_native_approvals\\.py|\\.github/CODEOWNERS)$",
+      "pattern": "^(?:ci/(?:publication-plan|propose-release|configure-native-approvals|check-codeql-findings)\\.(?:py|sh)|ci/publication-policy\\.json|tests/test_(?:native_approvals|codeql_findings|published_consumer)\\.py|\\.github/CODEOWNERS)$",
       "validation": [
         "repository-policy",
         "ci-runtime-fixtures",

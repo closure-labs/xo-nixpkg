@@ -5,6 +5,11 @@ set -euo pipefail
 if [[ -n ${PREFLIGHT_RESULT:-} ]]; then
   [[ $PREFLIGHT_RESULT == success ]]
 fi
+if [[ ${ATTEST_ENABLED:?} == true ]]; then
+  [[ ${ATTEST_RESULT:?} == success ]]
+else
+  [[ ${ATTEST_RESULT:?} == skipped ]]
+fi
 if [[ ${VALIDATE_ENABLED:?} == true ]]; then
   [[ ${VALIDATE_RESULT:?} == success ]]
 else
