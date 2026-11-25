@@ -16,9 +16,9 @@
       "libvhdi--derivations.json": "6ce37037622e127e4687b1737580be8e152b1ef62ffe4df1aafa6a153e2ca4a1",
       "libvhdi--inventory.json": "7c31895363571f148374aee0124a33cc60145f954938167034c2321884fcd36b",
       "libvhdi--runtime.cdx.json": "73640df4b64bf959c083a5dff45d8a786801fe02f4f14e7cb56a47bbed5d2682",
-      "xo-latest--closure.json": "cd88f2277dcee303fc2345c74f4c555d9fa4e9421b2441b31efc456a4da91e62",
-      "xo-latest--derivations.json": "594f06ae54a803d8efedb8e2402fb771f4017cd5da086b571a5d8fd60ba11e66",
-      "xo-latest--inventory.json": "8320f0a6053e406783516bcd0d8329ed2ddc974a1d7397ee6f9a12489dc10c27",
+      "xo-latest--closure.json": "d34d49a44fb3151f3b9b114277f830e03cbd89d8df09767d59520e0160d4aaee",
+      "xo-latest--derivations.json": "f4a8fb775b216fecee71b9ed5fa2d6164b8d64c1f63b97d201c8478ff44a36e6",
+      "xo-latest--inventory.json": "97ae5a4efde39fd6aa2db6136189edf79f354cba9fd5d66ce66734e19751528d",
       "xo-latest--runtime.cdx.json": "b3b1a7fcaf4e74c5f5597a21b606195ddf1144246dacabf2c04c9030b72097f6",
       "xo-latest--supply-protector--SHA256SUMS": "a1d9f358ec40c23e8e583894caa6cd333ec39cc2cc1946bf89ba47f517c84489",
       "xo-latest--supply-protector--assertion.json": "869e8f8a29f54e60252ee8c36d0cd828a54e552186f301001745249eb3435b13",
@@ -67,12 +67,12 @@
       "policyId": "gitleaks-incoming-native-publication-v2",
       "policySha256": "6dc96d52c1c07569136546f4a61173ee0b378593dfe837a976228c2b9c8fbef6"
     },
-    "revision": "6adb43e69df96c8bb27205bf1162147f5479a896",
+    "revision": "63479b5f6a8242179af2d8c3e1c0b6bdc8929124",
     "roots": {
       "automation-runtime": {
-        "narHash": "sha256-gHXaFh/WlIPa9COuR2KXGozrozLKDtbQGkyrZhr+dEw=",
+        "narHash": "sha256-EDIMwyavIi0tQzyC6PpMe9IWTgOdSh7tr/+yX3i+cgM=",
         "profile": "xo-latest",
-        "storePath": "/nix/store/smnr3jlxv2gdywg8xdasqib9w2bhkfah-xo-nixpkg-automation-runtime-0.10.2"
+        "storePath": "/nix/store/zy0vzxi9bn0vc8qi9f6g1g08w1mbb8dj-xo-nixpkg-automation-runtime-0.10.2"
       },
       "supply-protector-latest": {
         "narHash": "sha256-7rMeF8O0RLMMNvbfNe+4Tcmje35L8FZvwxahQeP6Ylk=",
@@ -92,12 +92,12 @@
     },
     "schema": 1
   },
-  "productHash": "bdfd36b22f3d74875a80c2690ac627c7787c52613b711f91fa3d4ddc57ffff80",
+  "productHash": "ce1a0e798785553e7fcd8bdb7270f87884b9a4f021387a078b39336a96f1102a",
   "purpose": "rolling",
   "qualificationAttempt": 1,
-  "qualificationRun": 45539563393,
+  "qualificationRun": 45553882472,
   "repository": "closure-labs/xo-nixpkg",
-  "scansHash": "a1c386646a8f67860b86e79b3b0d5ee2bf53ec343b23944acd10daf756a773e4",
+  "scansHash": "a15c2a0a6038c568756710ac1d8660fe5f1c3f0dfb7b916dd75cf39bc1244d86",
   "schema": 1,
-  "sourceRevision": "6adb43e69df96c8bb27205bf1162147f5479a896"
+  "sourceRevision": "63479b5f6a8242179af2d8c3e1c0b6bdc8929124"
 }
