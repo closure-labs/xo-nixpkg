@@ -7,7 +7,7 @@ from pathlib import Path
 import sys
 import tempfile
 import unittest
-from unittest.mock import patch
+from unittest.mock import Mock, patch
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / 'ci/decisions'))
@@ -56,7 +56,71 @@ def environment():
             'deployment_branch_policy': {'protected_branches': True, 'custom_branch_policies': False}}
 
 
+def bypass_proof(count=0):
+    return {'data': {'repository': {'nameWithOwner': native.REPOSITORY,
+            'ruleset': {'databaseId': 21015412, 'enforcement': 'ACTIVE', 'bypassActors': {'totalCount': count}}}}}
+
+
+def redacted_protection_api(endpoint):
+    if endpoint.endswith('/rules/branches/main'):
+        return rules()
+    if endpoint.endswith('/rulesets/21015412'):
+        return {'enforcement': 'active', 'current_user_can_bypass': 'never'}
+    if endpoint.endswith('/environments/publication'):
+        return environment()
+    raise AssertionError('Unexpected protection endpoint: ' + endpoint)
+
+
 class NativeProtection(unittest.TestCase):
+    def test_read_only_rest_redaction_requires_explicit_graphql_zero(self):
+        reader = Mock(return_value=bypass_proof())
+        self.assertEqual(native.protections(cfg(), redacted_protection_api, graphql=reader), 12)
+        reader.assert_called_once_with()
+
+    def test_hidden_bypasses_errors_and_incomplete_proofs_never_authorize(self):
+        mutations = [
+            (('errors',), [{'message': 'field unavailable'}]),
+            (('data', 'repository'), None),
+            (('data', 'repository', 'nameWithOwner'), 'other/repository'),
+            (('data', 'repository', 'ruleset'), None),
+            (('data', 'repository', 'ruleset', 'databaseId'), 1),
+            (('data', 'repository', 'ruleset', 'enforcement'), 'DISABLED'),
+            (('data', 'repository', 'ruleset', 'bypassActors'), {}),
+            (('data', 'repository', 'ruleset', 'bypassActors', 'totalCount'), True),
+            (('data', 'repository', 'ruleset', 'bypassActors', 'totalCount'), '0'),
+            (('data', 'repository', 'ruleset', 'bypassActors', 'totalCount'), -1),
+            (('data', 'repository', 'ruleset', 'bypassActors', 'totalCount'), 1),
+        ]
+        for path, value in mutations:
+            proof = bypass_proof()
+            target = proof
+            for key in path[:-1]:
+                target = target[key]
+            target[path[-1]] = value
+            with self.subTest(path=path, value=value), self.assertRaises(ValueError):
+                native.protections(cfg(), redacted_protection_api, graphql=lambda: proof)
+
+    def test_visible_rest_bypass_data_cannot_be_replaced_by_graphql(self):
+        reader = Mock(side_effect=AssertionError('No fallback for visible REST data'))
+        native.validate_ruleset(cfg(), {'enforcement': 'active', 'bypass_actors': []}, reader)
+        for value in (None, False, [{'actor_id': 1}]):
+            with self.subTest(value=value), self.assertRaisesRegex(ValueError, 'bypass actors'):
+                native.validate_ruleset(cfg(), {'enforcement': 'active', 'bypass_actors': value}, reader)
+        reader.assert_not_called()
+
+    def test_graphql_is_one_pinned_read_query_with_the_same_observer(self):
+        with patch.dict(os.environ, {'NATIVE_SECRET_OBSERVER_TOKEN': 'fixture-observer', 'GH_TOKEN': 'metadata'}), \
+                patch.object(native.subprocess, 'run') as execute:
+            execute.return_value.stdout = json.dumps(bypass_proof())
+            self.assertEqual(native.protection_graphql(), bypass_proof())
+            self.assertEqual(execute.call_args.args[0], ['gh', 'api', '--method', 'POST', 'graphql', '--input', '-'])
+            self.assertEqual(json.loads(execute.call_args.kwargs['input']), {'query': native.RULESET_BYPASS_QUERY})
+            self.assertTrue(native.RULESET_BYPASS_QUERY.startswith('query '))
+            self.assertEqual(execute.call_args.kwargs['env']['GH_TOKEN'], 'fixture-observer')
+            self.assertEqual(os.environ['GH_TOKEN'], 'metadata')
+            with self.assertRaisesRegex(ValueError, 'observer required'):
+                native.protection_graphql(token='')
+
     def test_completed_analysis_jobs_do_not_replace_finding_protection(self):
         without = [rule for rule in rules() if rule['type'] != 'code_scanning']
         with self.assertRaisesRegex(ValueError, 'CodeQL finding protection'):
@@ -381,6 +445,14 @@ class NativeReleaseProposal(unittest.TestCase):
 
 
 class Cutover(unittest.TestCase):
+    def test_configuration_graphql_callback_is_a_read_query(self):
+        spec = importlib.util.spec_from_file_location('native_cutover_graphql', ROOT / 'ci/configure-native-approvals.py')
+        module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(module)
+        with patch.object(module, 'api', return_value=bypass_proof()) as api:
+            self.assertEqual(module.ruleset_graphql(), bypass_proof())
+            api.assert_called_once_with('graphql', {'query': native.RULESET_BYPASS_QUERY}, method='POST')
+
     def test_prepare_adds_codeql_and_preserves_stricter_thresholds_and_other_tools(self):
         spec = importlib.util.spec_from_file_location('native_cutover_codeql', ROOT / 'ci/configure-native-approvals.py')
         module = importlib.util.module_from_spec(spec)

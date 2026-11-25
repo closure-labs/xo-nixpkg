@@ -8,6 +8,13 @@ Queued candidates still require all three language analyses; enforcement for
 findings introduced only by combining queued changes needs a separate automated
 validator.
 
+GitHub's [REST ruleset response](https://docs.github.com/en/rest/repos/rules#get-a-repository-ruleset)
+omits bypass actors for read-only callers. When that field is absent, the shared
+validator uses the same observer's permissions for a fixed GraphQL read query.
+It requires the expected repository, active ruleset and an explicit zero bypass
+count. Missing data, query errors and nonzero counts still block publication;
+the observer does not need ruleset write access.
+
 The migration replaces custom security/product decision graphs with native
 GitHub PR reviews for both code and releases. It does not accept the historical
 finding ledger or publish a product during installation.

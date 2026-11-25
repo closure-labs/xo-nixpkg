@@ -704,6 +704,27 @@ class PolicyCredentialTests(unittest.TestCase):
             with self.assertRaisesRegex(ValueError, 'metadata reader'):
                 audit.repository_api(endpoint)
 
+    def test_ruleset_graphql_fallback_keeps_administration_reader(self):
+        import io
+        import os
+        import sys
+        from contextlib import redirect_stdout
+        from unittest.mock import patch
+        sys.path.insert(0, str(ROOT / 'ci/decisions'))
+        audit = module('audit-policy')
+        from test_native_approvals import bypass_proof, redacted_protection_api
+        policy = audit.native.policy(ROOT / 'ci/publication-policy.json')
+        with patch.dict(os.environ, {'GH_TOKEN': 'fixture-audit-reader',
+                                    'REPOSITORY_READ_TOKEN': 'fixture-repository-reader',
+                                    'NATIVE_SECRET_OBSERVER_TOKEN': 'fixture-other-observer'}), \
+                patch.object(audit.native, 'policy', return_value=policy), \
+                patch.object(audit, 'audit_api', side_effect=redacted_protection_api), \
+                patch.object(audit.native, 'protection_graphql', return_value=bypass_proof()) as graphql, \
+                redirect_stdout(io.StringIO()) as output:
+            audit.main()
+            self.assertEqual(json.loads(output.getvalue())['status'], 'verified')
+            graphql.assert_called_once_with(token='fixture-audit-reader')
+
     def test_live_governed_audit_routes_rules_to_administration_reader(self):
         import base64
         import io
