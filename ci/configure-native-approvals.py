@@ -63,6 +63,10 @@ def enabled_variable(prefix, enabled):
     common.require(api(endpoint).get('value') == value['value'], 'Native activation flag readback differs')
 
 
+def ruleset_graphql():
+    return api('graphql', {'query': native.RULESET_BYPASS_QUERY}, method='POST')
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('phase', choices=('prepare', 'activate', 'check'))
@@ -74,7 +78,7 @@ def main():
     environment_path = prefix + '/environments/' + cfg['environment']
     ruleset, environment = api(rules_path), api(environment_path)
     if args.phase == 'check':
-        native.protections(cfg, api)
+        native.protections(cfg, api, graphql=ruleset_graphql)
         print('Native PR and publication protections verified.')
         return
     args.backup_dir.mkdir(parents=True, exist_ok=True)
@@ -98,10 +102,10 @@ def main():
             document = api(prefix + '/contents/' + path + '?ref=' + revision)
             common.require(native.github.decode_blob(document, document.get('sha'), document.get('size'))
                            == Path(path).read_bytes(), 'Reviewed native workflow differs from local migration source')
-        native.protections(cfg, api)
+        native.protections(cfg, api, graphql=ruleset_graphql)
         api(rules_path, activate_rules(ruleset), method='PUT')
         enabled_variable(prefix, True)
-    native.protections(cfg, api)
+    native.protections(cfg, api, graphql=ruleset_graphql)
     print('Native approval migration ' + args.phase + ' completed; no review or deployment was approved.')
 
 

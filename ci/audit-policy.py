@@ -37,7 +37,8 @@ def audit_api(endpoint):
 
 def main():
     cfg = native.policy(Path(native.POLICY), live=True, api=audit_api)
-    native.protections(cfg, audit_api)
+    native.protections(cfg, audit_api,
+                       graphql=lambda: native.protection_graphql(token=os.environ.get('GH_TOKEN', '')))
     print(json.dumps({'schema': 1, 'status': 'verified', 'publicationEnabled': cfg['enabled']}))
 
 

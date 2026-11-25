@@ -16,6 +16,14 @@ CHECKS = {'CI gate', 'Analyze (actions)', 'Analyze (python)',
           'Analyze (javascript-typescript)', 'Repository security audit'}
 CODEQL_RULE = {'type': 'code_scanning', 'parameters': {'code_scanning_tools': [
     {'tool': 'CodeQL', 'alerts_threshold': 'errors', 'security_alerts_threshold': 'high_or_higher'}]}}
+RULESET_BYPASS_QUERY = '''query NativeRulesetBypassCount {
+  repository(owner: "closure-labs", name: "xo-nixpkg") {
+    nameWithOwner
+    ruleset(databaseId: 21015412) {
+      databaseId enforcement bypassActors(first: 1) { totalCount }
+    }
+  }
+}'''
 
 
 def policy(path=Path(POLICY), *, live=False, api=None):
@@ -100,14 +108,50 @@ def validate_environment(cfg, environment):
     return environment['id']
 
 
-def protections(cfg, api=None):
+def validate_ruleset(cfg, ruleset, graphql):
+    common.require(isinstance(ruleset, dict) and ruleset.get('enforcement') == 'active',
+                   'Native main ruleset must remain active without bypass actors')
+    if 'bypass_actors' in ruleset:
+        common.require(ruleset['bypass_actors'] == [], 'Native main ruleset must remain active without bypass actors')
+        return
+    # REST omits bypass_actors for read-only observers. Missing is not empty:
+    # require an explicit GraphQL count using the same observer permissions.
+    proof = graphql()
+    common.require(isinstance(proof, dict) and proof.get('errors') in (None, []),
+                   'Ruleset bypass visibility is unavailable')
+    data = proof.get('data')
+    common.require(isinstance(data, dict) and isinstance(data.get('repository'), dict),
+                   'Ruleset bypass visibility is unavailable')
+    repository = data['repository']
+    ruleset = repository.get('ruleset')
+    common.require(repository.get('nameWithOwner') == cfg['repository'] and isinstance(ruleset, dict)
+                   and type(ruleset.get('databaseId')) is int and ruleset['databaseId'] == cfg['rulesetId']
+                   and ruleset.get('enforcement') == 'ACTIVE', 'Native ruleset GraphQL identity is invalid')
+    actors = ruleset.get('bypassActors')
+    common.require(isinstance(actors, dict) and type(actors.get('totalCount')) is int,
+                   'Ruleset bypass visibility is unavailable')
+    common.require(actors['totalCount'] == 0, 'Native main ruleset must remain active without bypass actors')
+
+
+def protections(cfg, api=None, *, graphql=None):
     api = api or protection_api
     prefix = 'repos/' + cfg['repository']
     validate_rules(cfg, api(prefix + '/rules/branches/main'))
     ruleset = api(prefix + '/rulesets/' + str(cfg['rulesetId']))
-    common.require(ruleset.get('enforcement') == 'active' and ruleset.get('bypass_actors') == [],
-                   'Native main ruleset must remain active without bypass actors')
+    validate_ruleset(cfg, ruleset, graphql or protection_graphql)
     return validate_environment(cfg, api(prefix + '/environments/' + cfg['environment']))
+
+
+def protection_graphql(*, token=None):
+    """One pinned read query; POST does not require any write permission."""
+    if token is None:
+        token = os.environ.get('NATIVE_SECRET_OBSERVER_TOKEN')
+    common.require(isinstance(token, str) and token.strip(), 'Read-only native protection observer required')
+    response = subprocess.run(['gh', 'api', '--method', 'POST', 'graphql', '--input', '-'],
+                              input=json.dumps({'query': RULESET_BYPASS_QUERY}),
+                              check=True, capture_output=True, text=True, timeout=30,
+                              env=dict(os.environ, GH_TOKEN=token))
+    return json.loads(response.stdout)
 
 
 def protection_api(endpoint):
