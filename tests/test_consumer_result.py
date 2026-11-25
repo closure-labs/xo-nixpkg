@@ -65,6 +65,32 @@ class ConsumerResult(unittest.TestCase):
         self.probe.assert_called_once_with(self.selected['product'], 'https://cache.example', 'public')
         self.provenance.assert_not_called()
 
+    def test_publication_event_uses_its_exact_run_even_when_current_main_moves(self):
+        with patch.dict(os.environ, {'CONSUMER_PUBLICATION_RUN': '123', 'CONSUMER_PUBLICATION_ATTEMPT': '2'}), \
+                patch.object(consumer.native, 'published_request', return_value=('published-sha', self.old)) as selected, \
+                patch.object(consumer, 'current_product') as current, \
+                patch.object(consumer, 'unchanged') as unchanged:
+            result = self.invoke()
+            selected.assert_called_once_with({}, 123, 2)
+            current.assert_not_called()
+            self.assertEqual(result['requestHash'], consumer.common.canonical_hash(self.old))
+            self.assertEqual(result['publicationRun'], 123)
+            self.assertEqual(result['publicationAttempt'], 2)
+            self.assertEqual(result['publishedRevision'], 'published-sha')
+            self.probe.assert_called_once_with(self.old['product'], 'https://cache.example', 'public')
+            self.assertEqual(unchanged.call_count, 2)
+            self.assertTrue(all(call.args[1] is None for call in unchanged.call_args_list))
+
+    def test_partial_or_failed_publication_never_falls_back_to_current_product(self):
+        with patch.dict(os.environ, {'CONSUMER_PUBLICATION_RUN': '123', 'CONSUMER_PUBLICATION_ATTEMPT': ''}):
+            with self.assertRaisesRegex(ValueError, 'run and attempt'):
+                self.invoke()
+        with patch.dict(os.environ, {'CONSUMER_PUBLICATION_RUN': '123', 'CONSUMER_PUBLICATION_ATTEMPT': '1'}), \
+                patch.object(consumer.native, 'published_request', side_effect=ValueError('unsuccessful publication')):
+            with self.assertRaisesRegex(ValueError, 'unsuccessful publication'):
+                self.invoke()
+        self.probe.assert_not_called()
+
     def test_local_result_remains_available_on_stdout(self):
         with patch.dict(os.environ, {'RUNNER_TEMP': ''}):
             result = self.invoke()

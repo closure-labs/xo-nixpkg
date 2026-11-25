@@ -28,6 +28,7 @@ def prepare_rules(value):
     common.require(len(pulls) == 1 and result['bypass_actors'] == [], 'Expected one main PR rule without bypasses')
     pulls[0]['parameters'].update(required_approving_review_count=1, dismiss_stale_reviews_on_push=True,
                                  require_code_owner_review=True, require_last_push_approval=True,
+                                 require_extra_approval_for_unattributed_changes=True,
                                  required_review_thread_resolution=True)
     scanning = next((rule for rule in result['rules'] if rule['type'] == 'code_scanning'), None)
     if scanning is None:

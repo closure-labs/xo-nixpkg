@@ -26,9 +26,7 @@ RULESET_BYPASS_QUERY = '''query NativeRulesetBypassCount {
 }'''
 
 
-def policy(path=Path(POLICY), *, live=False, api=None):
-    api = api or github.github_api
-    cfg = load_json(path)
+def validate_policy(cfg):
     common.require(isinstance(cfg, dict) and type(cfg.get('schema')) is int and cfg['schema'] == 1
                    and cfg.get('approvalMode') == 'github-pr-v1'
                    and cfg.get('repository') == REPOSITORY and cfg.get('policyPath') == POLICY
@@ -52,6 +50,12 @@ def policy(path=Path(POLICY), *, live=False, api=None):
                    'Native secret policy required')
     packets.REGISTRY = 'ghcr.io/' + REPOSITORY + '-decisions'
     packets.REFERENCE = re.compile(re.escape(packets.REGISTRY) + r'@sha256:[0-9a-f]{64}')
+    return cfg
+
+
+def policy(path=Path(POLICY), *, live=False, api=None):
+    api = api or github.github_api
+    cfg = validate_policy(load_json(path))
     if live:
         revision = common.main_revision(cfg, api)
         current = github.document_at(api, REPOSITORY, POLICY, revision)
@@ -66,6 +70,38 @@ def policy(path=Path(POLICY), *, live=False, api=None):
     return cfg
 
 
+def published_request(cfg, run_id, attempt, api=None):
+    """Select immutable completed publication facts for a read-only consumer."""
+    api = api or github.github_api
+    common.require(type(run_id) is int and run_id > 0 and type(attempt) is int and attempt > 0,
+                   'Exact completed publication run and attempt required')
+    prefix = f'repos/{cfg["repository"]}/actions/runs/{run_id}/attempts/{attempt}'
+    run = api(prefix)
+    revision = run.get('head_sha')
+    common.require(run.get('id') == run_id and run.get('run_attempt') == attempt
+                   and run.get('status') == 'completed' and run.get('conclusion') == 'success'
+                   and run.get('path') == cfg['publisherWorkflow'] and run.get('head_branch') == 'main'
+                   and run.get('event') in ('push', 'workflow_dispatch')
+                   and run.get('repository', {}).get('full_name') == cfg['repository']
+                   and run.get('head_repository', {}).get('full_name') == cfg['repository']
+                   and isinstance(revision, str) and common.SHA.fullmatch(revision),
+                   'Untrusted or unsuccessful completed publication')
+    jobs = api(prefix + '/jobs?per_page=100')
+    common.require(type(jobs.get('total_count')) is int and 0 < jobs['total_count'] < 100
+                   and len(jobs.get('jobs', [])) == jobs['total_count'], 'Incomplete completed publication jobs')
+    for name in ('Validate the native-reviewed product', 'Publish reviewed immutable product'):
+        matches = [job for job in jobs['jobs'] if job.get('name') == name]
+        common.require(len(matches) == 1 and matches[0].get('status') == 'completed'
+                       and matches[0].get('conclusion') == 'success' and matches[0].get('head_sha') == revision,
+                       'Completed publication lacks successful protected jobs')
+    current = common.main_revision(cfg, api)
+    common.require(api(f'repos/{cfg["repository"]}/compare/{revision}...{current}').get('status')
+                   in ('ahead', 'identical'), 'Completed publication is not protected main ancestry')
+    historical = validate_policy(github.document_at(api, cfg['repository'], POLICY, revision))
+    request = github.document_at(api, cfg['repository'], historical['releaseRequestPath'], revision)
+    return revision, validate_request(historical, request)
+
+
 def validate_rules(cfg, rules):
     common.require(isinstance(rules, list), 'Effective native rules are unavailable')
     kinds = {r.get('type') for r in rules}
@@ -76,6 +112,8 @@ def validate_rules(cfg, rules):
                        and p['required_approving_review_count'] >= 1
                        and p.get('dismiss_stale_reviews_on_push') is True
                        and p.get('require_code_owner_review') is True
+                       and p.get('require_last_push_approval') is True
+                       and p.get('require_extra_approval_for_unattributed_changes') is True
                        and p.get('required_review_thread_resolution') is True for p in pull_rules),
                    'Native PR reviews, stale dismissal and CODEOWNERS must be enforced')
     checks = {c.get('context') for r in rules if r.get('type') == 'required_status_checks'
