@@ -25,15 +25,15 @@
       "xo-latest--supply-protector--closure.graph": "1a7199e69c48edf83c93e992ae88810ee44ba744b16611ff0ce5bf130ea2a96e",
       "xo-latest--supply-protector--xen-orchestra.cdx.json": "4212f85f80857cdaecc4229b22f79c3ca2ed514f1d5f8c40c25b4d031b35670a",
       "xo-latest--supply-protector--xen-orchestra.spdx.json": "42343020cf624ed4e659461cdbd41e8b24a807d3b32655f95b005b633ba43b46",
-      "xo-rolling--closure.json": "a6393ee4e004608e3e167bbb24a33c0537d41312e9183376d6925466bba3dfa5",
-      "xo-rolling--derivations.json": "b019ae9399195cd8867da061622cd8f648f665dccf25bc4b7d6f68f11d9b5c51",
-      "xo-rolling--inventory.json": "0f8587e30712866f9a645263c4e133c8ff75e15ba08f75f200d52d6f6473a5d5",
-      "xo-rolling--runtime.cdx.json": "fbe690f27faf537c9a21b135c136f6fc07f731d4292ad3cda6e1ebe1aa2878d2",
-      "xo-rolling--supply-protector--SHA256SUMS": "8cedc6b648d3972438c58cde4cd7e6dd087b1c03523103adcd8a5ab49701d52a",
-      "xo-rolling--supply-protector--assertion.json": "9e04919c5fa049d759d4ee20f3b6969774ddba8f931d661f75d1cce8d1302453",
-      "xo-rolling--supply-protector--closure.graph": "e4dc232d50b2030f7b602cf21c97ab57d8c87c41d2c4af7d6dfc7447528209d1",
-      "xo-rolling--supply-protector--xen-orchestra.cdx.json": "4ba1b1838ae91c3bda07a9fd3408aa480e1497ab810e7463566c46003640ece1",
-      "xo-rolling--supply-protector--xen-orchestra.spdx.json": "2d6ed5e336ffc8b4e0d35fed4d24b1e13a9580d4d8e0521ecf375d3d8da05e10",
+      "xo-rolling--closure.json": "ddae928aeea77f3d3ec0c4e6df7e8b94fafee5e44175d989e5b92c9334573b24",
+      "xo-rolling--derivations.json": "4b8ce7be5f023403a075b3b6649527cc9972ac563514a3ab00ae3bad9b4ae9c1",
+      "xo-rolling--inventory.json": "661c80058669f2dbf8b7226c116671174ee50d509f368b05dadfadf77d8747bf",
+      "xo-rolling--runtime.cdx.json": "0ef53977571456cb9166610e672c1fc4a52b8cf692bdb74d7da1badf5230d459",
+      "xo-rolling--supply-protector--SHA256SUMS": "505dfaf57f64d6d5c3317d9679ce81e8008ea7790e784efc274076e5504b7235",
+      "xo-rolling--supply-protector--assertion.json": "76fac93a8522d7b14d48f3786eb3bcd7988a491820b670f6df6c6f281ad14852",
+      "xo-rolling--supply-protector--closure.graph": "5b1ab532da961ed980580221937df1015025a74ba9715ef98d20d5ffc905166e",
+      "xo-rolling--supply-protector--xen-orchestra.cdx.json": "a7bd29631389c1c025075e0c40ba49614e679e05c282f3e2be47e5d93aa5f919",
+      "xo-rolling--supply-protector--xen-orchestra.spdx.json": "899b8fa976c09ed9db23d45f481b5ceaf1650a81783467848fd71cc55ca27af5",
       "xo-stable--closure.json": "adfc1930719b10bb792de930a960b61054737a2460036b593e466a3b458908d4",
       "xo-stable--derivations.json": "8ee20060a6324f64653ba6df3ebe04933d09a781d019ce0c8cd3ca22f2a0fe07",
       "xo-stable--inventory.json": "3f9c60dbbc6b4066d33515c11cf37b91acf67dd32826ef8cd24973e371af44bb",
@@ -54,8 +54,8 @@
         "storePath": "/nix/store/a4ldqn5vf4xn7dczxa6vg337xw1jssri-xen-orchestra-ce-6.10.0"
       },
       "xo-rolling": {
-        "narHash": "sha256-bnWG62z5/C9ynQR/NsROvhMkgDV+ZK/U80ROL5ziVAM=",
-        "storePath": "/nix/store/ny1f9zn1zad2pip6fgdkjg4pqy9ildq3-xen-orchestra-ce-unstable-2026-11-24"
+        "narHash": "sha256-2Kj3eHFjf6GABLwsoKyVZ+o2NmfUvGeotsFOj03S128=",
+        "storePath": "/nix/store/3i4215rhdb4n4cp5ahhzl2h0dhjmirlv-xen-orchestra-ce-unstable-2026-11-25"
       },
       "xo-stable": {
         "narHash": "sha256-do+9n7Dsn+71KbcQMBeCohG5Vv3ZpBFfm4aLcBnCo2E=",
@@ -67,7 +67,7 @@
       "policyId": "gitleaks-incoming-native-publication-v2",
       "policySha256": "6dc96d52c1c07569136546f4a61173ee0b378593dfe837a976228c2b9c8fbef6"
     },
-    "revision": "63479b5f6a8242179af2d8c3e1c0b6bdc8929124",
+    "revision": "3997fc110a55c2a88fc313a64fb52b783870f52e",
     "roots": {
       "automation-runtime": {
         "narHash": "sha256-EDIMwyavIi0tQzyC6PpMe9IWTgOdSh7tr/+yX3i+cgM=",
@@ -80,9 +80,9 @@
         "storePath": "/nix/store/i8jrvawjg072c6djpv7hachc5gih5jf8-xo-latest-supply-protector-6.10.0"
       },
       "supply-protector-rolling": {
-        "narHash": "sha256-zktKvy3dpMMbRPaw/+4Uyaeg/fhqzv9Sm0HEtimV7Hc=",
+        "narHash": "sha256-ECwO7L8f27pZtEwNOmDtq8n5MuvXpBafemyiVUWgnt4=",
         "profile": "xo-rolling",
-        "storePath": "/nix/store/pzy712a5cfidpgx49xasymdphkcsamyf-xo-rolling-supply-protector-unstable-2026-11-24"
+        "storePath": "/nix/store/wyn6gbhximlkmvmpy4ppxzgfkxjabr3b-xo-rolling-supply-protector-unstable-2026-11-25"
       },
       "supply-protector-stable": {
         "narHash": "sha256-1u8coX4FQehP4uqHzeiwFGnqwKxhBom57K4xByV4HAw=",
@@ -92,12 +92,12 @@
     },
     "schema": 1
   },
-  "productHash": "ce1a0e798785553e7fcd8bdb7270f87884b9a4f021387a078b39336a96f1102a",
+  "productHash": "4d77743279754099ddfe07b25421885c6aeeb4df2ef5d1945821aac3719c1b51",
   "purpose": "rolling",
   "qualificationAttempt": 1,
-  "qualificationRun": 45648279794,
+  "qualificationRun": 45848729940,
   "repository": "closure-labs/xo-nixpkg",
-  "scansHash": "284cdf4c8a5813d3de8a89cf9960a2694fa70e66cd39608d9a96601a528431a9",
+  "scansHash": "f22592ab590d647236f846f19c98b8d1de66856759dfda9f078c1a529ad5ed93",
   "schema": 1,
-  "sourceRevision": "63479b5f6a8242179af2d8c3e1c0b6bdc8929124"
+  "sourceRevision": "3997fc110a55c2a88fc313a64fb52b783870f52e"
 }
