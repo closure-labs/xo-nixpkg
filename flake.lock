@@ -44,17 +44,17 @@
     "xo-rolling": {
       "flake": false,
       "locked": {
-        "lastModified": 1795709353,
-        "narHash": "sha256-wyU0tSTW37K9xH0dUT6m/KyG77U4oqBP5wABn9on5hc=",
+        "lastModified": 1795788351,
+        "narHash": "sha256-EIuUchWJh0hbI/nRLd1iXBC4wZXcUbr42CxMF1VaOec=",
         "owner": "vatesfr",
         "repo": "xen-orchestra",
-        "rev": "f67f94a60bb10cc0ed941bf5246cbf4cabd5f4b4",
+        "rev": "54051163e04adfb6e2090d465d697ad19940e492",
         "type": "github"
       },
       "original": {
         "owner": "vatesfr",
         "repo": "xen-orchestra",
-        "rev": "f67f94a60bb10cc0ed941bf5246cbf4cabd5f4b4",
+        "rev": "54051163e04adfb6e2090d465d697ad19940e492",
         "type": "github"
       }
     },
