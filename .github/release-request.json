@@ -95,9 +95,9 @@
   "productHash": "61b7dc25b8150116d330eb4d8120a81d4f7a770978549ad0cb56a6acab5afa3c",
   "purpose": "rolling",
   "qualificationAttempt": 1,
-  "qualificationRun": 45871874117,
+  "qualificationRun": 46022701536,
   "repository": "closure-labs/xo-nixpkg",
-  "scansHash": "5ab68cb87fead29a1b189e04c560c0c20d5953e28b91c4fe797e2fedf4aaaf96",
+  "scansHash": "07faf49ba2212be229a437f7b55a7cbea3ba16af46b96b3e9ae0b50b3309876b",
   "schema": 1,
   "sourceRevision": "aede62924cd8a3ec9117839549ad0ccd096d3214"
 }
